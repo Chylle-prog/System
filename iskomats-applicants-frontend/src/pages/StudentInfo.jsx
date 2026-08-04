@@ -1748,13 +1748,17 @@ const StudentInfo = () => {
       const video = document.createElement('video');
       video.muted = true;
       video.playsInline = true;
-      video.crossOrigin = 'anonymous';
+      // Only set crossOrigin for remote URLs - blob/data URIs don't need it and setting it can taint the canvas
+      if (typeof srcUrl === 'string' && srcUrl.startsWith('http')) {
+        video.crossOrigin = 'anonymous';
+      }
       video.style.position = 'fixed';
       video.style.top = '-9999px';
       video.style.left = '-9999px';
-      video.style.width = '1px';
-      video.style.height = '1px';
+      video.style.width = '640px';
+      video.style.height = '480px';
       video.style.opacity = '0';
+      video.style.pointerEvents = 'none';
       document.body.appendChild(video);
 
       const cleanup = () => {
@@ -2001,6 +2005,8 @@ const StudentInfo = () => {
     // Immediate local preview
     const localUrl = URL.createObjectURL(blob);
     setDocumentVideos(prev => ({ ...prev, [fieldName]: localUrl }));
+    // Store raw blob so video OCR can process actual bytes (not just URL)
+    setDocumentVideoBlobs(prev => ({ ...prev, [fieldName]: blob }));
 
     // Reset verification on video change
     if (fieldName === 'mayorIndigency_video') { setOcrVerified(null); setOcrStatus(''); }
@@ -2158,6 +2164,9 @@ const StudentInfo = () => {
     schoolIdBack_video: null,
     face_video: null
   });
+
+  // Store the raw Blob objects (not just blob URLs) so OCR can process actual bytes
+  const [documentVideoBlobs, setDocumentVideoBlobs] = useState({});
 
   const [uploadingFields, setUploadingFields] = useState({}); // { fieldName: Promise }
   const [uploadProgress, setUploadProgress] = useState({});
@@ -3206,25 +3215,33 @@ const StudentInfo = () => {
         }
 
         let videoVal = null;
+        // Prefer the raw Blob object (stored in documentVideoBlobs) so OCR gets actual bytes.
+        // Fall back to URL strings only when no blob is available (e.g. previously uploaded docs).
         if (docType === 'Indigency') {
-          videoVal = (documentVideos && documentVideos.mayorIndigency_video) || (documentFiles && documentFiles.mayorIndigency_video) || formData.mayorIndigency_video || formData.indigencyVideo || formData.indigency_vid_url;
+          videoVal = (documentVideoBlobs && documentVideoBlobs.mayorIndigency_video) || (documentFiles && documentFiles.mayorIndigency_video) || (documentVideos && documentVideos.mayorIndigency_video) || formData.mayorIndigency_video || formData.indigencyVideo || formData.indigency_vid_url;
         } else if (docType === 'Enrollment') {
-          videoVal = (documentVideos && documentVideos.mayorCOE_video) || (documentFiles && documentFiles.mayorCOE_video) || formData.mayorCOE_video || formData.enrollmentVideo || formData.enrollment_certificate_vid_url;
+          videoVal = (documentVideoBlobs && documentVideoBlobs.mayorCOE_video) || (documentFiles && documentFiles.mayorCOE_video) || (documentVideos && documentVideos.mayorCOE_video) || formData.mayorCOE_video || formData.enrollmentVideo || formData.enrollment_certificate_vid_url;
         } else if (docType === 'Grades') {
-          videoVal = (documentVideos && documentVideos.mayorGrades_video) || (documentFiles && documentFiles.mayorGrades_video) || formData.mayorGrades_video || formData.gradesVideo || formData.grades_vid_url;
+          videoVal = (documentVideoBlobs && documentVideoBlobs.mayorGrades_video) || (documentFiles && documentFiles.mayorGrades_video) || (documentVideos && documentVideos.mayorGrades_video) || formData.mayorGrades_video || formData.gradesVideo || formData.grades_vid_url;
         } else if (docType === 'SchoolID') {
-          videoVal = (documentVideos && documentVideos.schoolIdFront_video) || (documentFiles && documentFiles.schoolIdFront_video) || formData.schoolIdFront_video || formData.schoolid_front_vid_url;
+          videoVal = (documentVideoBlobs && documentVideoBlobs.schoolIdFront_video) || (documentFiles && documentFiles.schoolIdFront_video) || (documentVideos && documentVideos.schoolIdFront_video) || formData.schoolIdFront_video || formData.schoolid_front_vid_url;
         }
 
         const vFieldName = docType === 'Indigency' ? 'mayorIndigency_video' : (docType === 'Enrollment' ? 'mayorCOE_video' : (docType === 'Grades' ? 'mayorGrades_video' : 'schoolIdFront_video'));
 
         if (videoVal) {
-          formDataPayload.append(vFieldName, videoVal);
+          if (videoVal instanceof Blob || videoVal instanceof File) {
+            // Send actual binary bytes to backend for FFmpeg/OpenCV processing
+            formDataPayload.append(vFieldName, videoVal, 'video_proof.webm');
+          } else if (typeof videoVal === 'string' && videoVal.startsWith('http')) {
+            // Send the real remote URL so backend can resolve it
+            formDataPayload.append(vFieldName, videoVal);
+          }
+          // blob: URLs are not accessible from the backend — skip appending them
         }
 
         let videoOcrPromise = Promise.resolve(null);
         if (videoVal) {
-          const vFieldName = docType === 'Indigency' ? 'mayorIndigency_video' : (docType === 'Enrollment' ? 'mayorCOE_video' : (docType === 'Grades' ? 'mayorGrades_video' : 'schoolIdFront_video'));
           videoOcrPromise = validateVideoLiveness(videoVal, vFieldName).catch((err) => {
             console.warn('[Video OCR] Client video liveness error:', err);
             return null;

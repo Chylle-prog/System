@@ -3648,6 +3648,8 @@ def ocr_check():
         if video_param:
             video_bytes = resolve_verification_image_bytes(video_param)
 
+        print(f"[VIDEO OCR] doc_type={doc_type} | video_file={'YES' if video_file else 'NO'} | video_param_type={type(video_param).__name__} | video_param_len={len(video_param) if isinstance(video_param, (bytes, bytearray)) else (len(video_param) if isinstance(video_param, str) else 'N/A')} | video_bytes_len={len(video_bytes) if video_bytes else 0}", flush=True)
+
         if not video_bytes and getattr(request, 'user_no', None):
             try:
                 vid_col_map = {

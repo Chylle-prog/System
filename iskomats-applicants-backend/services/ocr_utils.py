@@ -2780,8 +2780,12 @@ def extract_frames_from_video_bytes(video_bytes, sample_positions=[0.15, 0.35, 0
                 out_pattern
             ]
             res = subprocess.run(cmd, capture_output=True, timeout=10)
+            print(f"[VIDEO OCR] FFmpeg returncode={res.returncode} input_size={len(video_bytes)} ext={ext}", flush=True)
+            if res.returncode != 0:
+                print(f"[VIDEO OCR] FFmpeg stderr: {res.stderr[-500:].decode('utf-8', errors='replace')}", flush=True)
             if res.returncode == 0:
                 frame_files = sorted([os.path.join(tmp_dir, f) for f in os.listdir(tmp_dir) if f.startswith('frame_') and f.endswith('.png')])
+                print(f"[VIDEO OCR] FFmpeg extracted {len(frame_files)} frame files", flush=True)
                 for f_path in frame_files:
                     img = cv2.imread(f_path)
                     if img is not None and img.size > 0:
