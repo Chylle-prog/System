@@ -2336,19 +2336,30 @@ def verify_video_content(
     combined_video_text = "\n\n".join(extracted_text_list).strip()
     video_search_pool = normalize_text(combined_video_text)
 
-    is_school_id_video = ('SCHOOLID' in doc_type_upper or 'SCHOOL_ID' in doc_type_upper or doc_type_upper == 'ID')
-    if is_school_id_video and isinstance(video_bytes, (bytes, bytearray)) and len(video_bytes) > 500:
-        return True, "Video proof verified for School ID", combined_video_text or "Video stream validated."
+    is_id_video = ('SCHOOLID' in doc_type_upper or 'SCHOOL_ID' in doc_type_upper or doc_type_upper == 'ID' or 'NATIONAL' in doc_type_upper)
+    
+    name_words = [w for w in normalize_text(expected_name or '').split() if len(w) >= 2]
+    found_name = any(w in video_search_pool for w in name_words) if name_words else False
+
+    addr_words = [w for w in normalize_text(expected_address or '').split() if len(w) >= 3 and w not in {'city', 'street', 'brgy', 'barangay', 'province'}]
+    found_addr = any(w in video_search_pool for w in addr_words) if addr_words else False
+
+    found_keywords = [k for k in target_keywords if k.lower() in video_search_pool]
+
+    if is_id_video:
+        if found_name or found_addr or len(found_keywords) >= 1:
+            return True, "Video proof verified: ID details (name, address, or ID header) detected in video frames.", combined_video_text or "Video stream validated."
+        elif not video_search_pool.strip() and has_video_input:
+            return True, "Video proof uploaded and verified.", (doc_ocr_text[:300] if doc_ocr_text else "Video stream validated.")
+        else:
+            return False, "Video proof verification failed: Required ID details (name, address, or ID header) were not detected in video proof frames.", combined_video_text or "No matching ID details in video frames."
 
     if not video_search_pool.strip():
         if has_video_input:
             return True, "Video proof uploaded and verified.", (doc_ocr_text[:300] if doc_ocr_text else "Video stream validated.")
         return False, "Video proof verification failed: Required document keywords were not detected in video proof frames.", "No readable text extracted from video frames."
 
-    # Check for required document keywords strictly within extracted video frame OCR text
-    found_keywords = [k for k in target_keywords if k.lower() in video_search_pool]
-
-    if len(found_keywords) >= 1 or has_video_input:
+    if len(found_keywords) >= 1 or found_name or found_addr or has_video_input:
         return True, "Video proof verified: Document video proof validated.", (combined_video_text or doc_ocr_text or "Video stream validated.")
     else:
         missing_kw = ", ".join(target_keywords[:3])

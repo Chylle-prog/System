@@ -1883,10 +1883,11 @@ const StudentInfo = () => {
               'grade', 'transcript', 'gpa', 'academic', 'rating', 'remarks', 'passed', 'subject',
               'units', 'evaluation', 'record', 'scholastic', 'gwa', 'registrar', 'certified', 'true', 'copy'
             ];
-          } else if (fieldName?.includes('schoolId') || fieldName?.includes('Id') || fieldName?.includes('id')) {
+          } else if (fieldName?.includes('schoolId') || fieldName?.includes('Id') || fieldName?.includes('id') || fieldName?.includes('nationalId')) {
             targetKeywords = [
-              'school', 'student', 'id', 'college', 'university', 'republic', 'card', 'de la salle',
-              'lipa', 'identity', 'signature', 'valid', 'holder', 'philippines'
+              'republic', 'pilipinas', 'philsys', 'philid', 'pambansang', 'pagkakakilanlan', 'philippines', 'identity',
+              'national', 'school', 'student', 'id', 'college', 'university', 'card', 'de la salle',
+              'lipa', 'signature', 'valid', 'holder', 'psa'
             ];
           } else {
             targetKeywords = [
@@ -1895,11 +1896,12 @@ const StudentInfo = () => {
             ];
           }
 
+          const targetBarangay = formData?.barangay || userProfile?.barangay || '';
           const hasNameMatch = allNameWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
+          const hasAddressMatch = targetBarangay ? (cleanText.includes(targetBarangay.toLowerCase()) || rawCombined.includes(targetBarangay.toLowerCase())) : false;
           const hasKeywordMatch = targetKeywords.some(k => cleanText.includes(k) || rawCombined.includes(k));
-          const textFound = (textLogs || []).length > 0;
 
-          if (hasNameMatch || hasKeywordMatch) {
+          if (hasNameMatch || hasAddressMatch || hasKeywordMatch) {
             return {
               valid: true,
               isMatched: true,
@@ -1908,20 +1910,11 @@ const StudentInfo = () => {
             };
           }
 
-          if (textFound) {
-            return {
-              valid: true,
-              isMatched: true,
-              reason: "Video Text Extracted",
-              detectedText: (textLogs || []).join("\n\n")
-            };
-          }
-
           return {
-            valid: true,
+            valid: false,
             isMatched: false,
-            reason: "Uploaded & Validated",
-            detectedText: (textLogs || []).join("\n\n") || "Proof video attached for manual review."
+            reason: "No matching ID details (name, address, or ID header) detected in video proof frames.",
+            detectedText: (textLogs || []).join("\n\n") || "No readable text extracted from video."
           };
         };
 
@@ -3746,9 +3739,11 @@ const StudentInfo = () => {
 
         const nameMatchFront = studentNameMatchesText(frontText, firstName, "", lastName);
         const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: true, last_ok: false } } : studentNameMatchesText(backText, firstName, "", lastName);
-        const nameOk = nameMatchFront.success || nameMatchBack.success;
-        const firstOk = nameMatchFront.details.first_ok || nameMatchBack.details.first_ok;
-        const lastOk = nameMatchFront.details.last_ok || nameMatchBack.details.last_ok;
+        const nameMatchVid = (frontVidCheck?.detectedText) ? studentNameMatchesText(frontVidCheck.detectedText, firstName, "", lastName) : { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
+
+        const nameOk = nameMatchFront.success || nameMatchBack.success || nameMatchVid.success;
+        const firstOk = nameMatchFront.details.first_ok || nameMatchBack.details.first_ok || nameMatchVid.details.first_ok;
+        const lastOk = nameMatchFront.details.last_ok || nameMatchBack.details.last_ok || nameMatchVid.details.last_ok;
 
         const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, combinedFrontText) || studentIdNoMatchesText(idNumber, combinedBackText)) : true);
         const schoolOk = schoolName ? (schoolNameMatchesText(allIdText, schoolName)) : true;
@@ -3757,9 +3752,18 @@ const StudentInfo = () => {
         // National ID: Street / Barangay address verification (replaces student ID & year level checks)
         const addrOk = isNationalId ? (targetBarangay ? addressMatchesText(allIdText, targetBarangay) : true) : true;
 
-        // National ID: Only front video liveness is enforced. Back video (if uploaded) is stored without blocking verification.
+        // National ID video proof verification:
+        // Video proof must contain text matching Name, Address, or National ID keywords
+        const vidText = (frontVidCheck?.detectedText || "").toLowerCase();
+        const vidHasName = (firstName && vidText.includes(firstName.toLowerCase())) || (lastName && vidText.includes(lastName.toLowerCase())) || nameMatchVid.success;
+        const vidHasAddr = targetBarangay ? addressMatchesText(vidText, targetBarangay) : false;
+        const nationalIdKeywords = ['republic', 'pilipinas', 'philsys', 'philid', 'pambansang', 'pagkakakilanlan', 'philippines', 'identity', 'national', 'card', 'id', 'psa'];
+        const vidHasKeyword = nationalIdKeywords.some(k => vidText.includes(k));
+
+        const nationalIdVidValid = (vidHasName || vidHasAddr || vidHasKeyword) || (frontVidCheck && frontVidCheck.isMatched);
+
         const videoOk = isNationalId
-          ? (!fVid || (frontVidCheck && frontVidCheck.valid))
+          ? (!fVid || (frontVidCheck && frontVidCheck.valid && nationalIdVidValid))
           : ((!fVid || (frontVidCheck && frontVidCheck.valid)) && (!bVid || (backVidCheck && backVidCheck.valid)));
 
         isSuccess = isNationalId
