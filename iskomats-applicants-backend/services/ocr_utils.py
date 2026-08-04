@@ -76,7 +76,12 @@ def decode_base64(data):
         if ',' in data:
             data = data.split(',')[1]
         try:
-            return base64.b64decode(data)
+            payload = data.strip().replace(' ', '+').replace('-', '+').replace('_', '/')
+            payload = re.sub(r'[\r\n\t\s]', '', payload)
+            missing_padding = len(payload) % 4
+            if missing_padding:
+                payload += '=' * (4 - missing_padding)
+            return base64.b64decode(payload)
         except Exception:
             return None
     return data

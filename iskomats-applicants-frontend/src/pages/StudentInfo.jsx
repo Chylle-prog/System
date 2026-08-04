@@ -1872,6 +1872,9 @@ const StudentInfo = () => {
       video.onloadeddata = () => {
         runPlayingVideoSample();
       };
+      video.onloadedmetadata = () => {
+        runPlayingVideoSample();
+      };
 
       video.onerror = () => {
         evaluateFinal();
@@ -1879,6 +1882,10 @@ const StudentInfo = () => {
 
       video.src = srcUrl;
       video.load();
+
+      if (video.readyState >= 1) {
+        runPlayingVideoSample();
+      }
     });
   };
 

@@ -1413,7 +1413,12 @@ def decode_base64(data_uri):
             if ',' not in payload:
                 return None
             payload = payload.split(',', 1)[1]
-        return base64.b64decode(payload, validate=True)
+        payload = payload.replace(' ', '+').replace('-', '+').replace('_', '/')
+        payload = re.sub(r'[\r\n\t\s]', '', payload)
+        missing_padding = len(payload) % 4
+        if missing_padding:
+            payload += '=' * (4 - missing_padding)
+        return base64.b64decode(payload)
     except Exception:
         return None
 
