@@ -1882,19 +1882,31 @@ const StudentInfo = () => {
 
           const hasNameMatch = allNameWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
           const hasKeywordMatch = targetKeywords.some(k => cleanText.includes(k) || rawCombined.includes(k));
+          const textFound = (textLogs || []).length > 0;
 
-          if (hasNameMatch || hasKeywordMatch || srcUrl) {
+          if (hasNameMatch || hasKeywordMatch) {
             return {
               valid: true,
-              reason: "Uploaded & Validated",
-              detectedText: (textLogs || []).join("\n\n") || "Proof video attached for manual review."
+              isMatched: true,
+              reason: "Video Text Verified",
+              detectedText: (textLogs || []).join("\n\n")
+            };
+          }
+
+          if (textFound) {
+            return {
+              valid: true,
+              isMatched: true,
+              reason: "Video Text Extracted",
+              detectedText: (textLogs || []).join("\n\n")
             };
           }
 
           return {
             valid: true,
+            isMatched: false,
             reason: "Uploaded & Validated",
-            detectedText: textLogs.join("\n\n") || "Proof video attached for manual review."
+            detectedText: (textLogs || []).join("\n\n") || "Proof video attached for manual review."
           };
         };
 
@@ -2017,7 +2029,7 @@ const StudentInfo = () => {
 
                 // Fast early exit: if early frame text satisfies document keywords/name, finish immediately
                 const partialResult = evaluateVideoText(accumulatedText);
-                if (partialResult.valid) {
+                if (partialResult.isMatched) {
                   ocrTriggered = true;
                   clearTimeout(timeout);
                   cleanup();
