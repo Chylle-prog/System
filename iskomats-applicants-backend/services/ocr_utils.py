@@ -2757,6 +2757,11 @@ def extract_frames_from_video_bytes(video_bytes, sample_positions=[0.15, 0.35, 0
     if not video_bytes:
         return []
 
+    if isinstance(video_bytes, str):
+        video_bytes = resolve_verification_image_bytes(video_bytes)
+        if not video_bytes:
+            return []
+
     import tempfile
     import shutil
     import subprocess
@@ -2782,7 +2787,7 @@ def extract_frames_from_video_bytes(video_bytes, sample_positions=[0.15, 0.35, 0
             vf_filter = f"scale='min({max_width},iw)':-1"
             cmd = [
                 'ffmpeg', '-y', '-i', input_path,
-                '-vf', f"fps=1/2,{vf_filter}",
+                '-vf', f"fps=1,{vf_filter}",
                 '-vframes', '6',
                 out_pattern
             ]
@@ -2796,24 +2801,49 @@ def extract_frames_from_video_bytes(video_bytes, sample_positions=[0.15, 0.35, 0
         except Exception as ffmpeg_err:
             print(f"[VIDEO OCR] FFmpeg frame extraction note: {ffmpeg_err}", flush=True)
 
-        # ── PATH 2: OpenCV Direct VideoCapture Fallback ──
+        # ── PATH 2: OpenCV Direct VideoCapture Fallback (Seek + Sequential) ──
         if not frames:
             cap = cv2.VideoCapture(input_path)
             if cap.isOpened():
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                if total_frames <= 0:
-                    total_frames = 30
-                for pos in sample_positions:
-                    target_frame = int(total_frames * pos)
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
-                    ret, frame = cap.read()
-                    if ret and frame is not None:
-                        h, w = frame.shape[:2]
-                        if max_width and w > max_width:
-                            scale = max_width / float(w)
-                            frame = cv2.resize(frame, (max_width, int(h * scale)), interpolation=cv2.INTER_AREA)
-                        frames.append(frame)
+                if total_frames > 5:
+                    for pos in sample_positions:
+                        target_frame = int(total_frames * pos)
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+                        ret, frame = cap.read()
+                        if ret and frame is not None:
+                            h, w = frame.shape[:2]
+                            if max_width and w > max_width:
+                                scale = max_width / float(w)
+                                frame = cv2.resize(frame, (max_width, int(h * scale)), interpolation=cv2.INTER_AREA)
+                            frames.append(frame)
                 cap.release()
+
+            # Sequential fallback for WebM blobs without seek metadata
+            if not frames:
+                cap = cv2.VideoCapture(input_path)
+                if cap.isOpened():
+                    seq_frames = []
+                    frame_idx = 0
+                    max_read = 300
+                    while cap.isOpened() and frame_idx < max_read:
+                        ret, frame = cap.read()
+                        if not ret or frame is None:
+                            break
+                        seq_frames.append(frame)
+                        frame_idx += 1
+                    cap.release()
+
+                    if seq_frames:
+                        num_found = len(seq_frames)
+                        for pos in sample_positions:
+                            idx = min(int(num_found * pos), num_found - 1)
+                            target_frame = seq_frames[idx]
+                            h, w = target_frame.shape[:2]
+                            if max_width and w > max_width:
+                                scale = max_width / float(w)
+                                target_frame = cv2.resize(target_frame, (max_width, int(h * scale)), interpolation=cv2.INTER_AREA)
+                            frames.append(target_frame)
 
     except Exception as e:
         print(f"[VIDEO OCR] Error extracting frames: {e}", flush=True)
@@ -2841,11 +2871,9 @@ def verify_video_content(
     doc_type='Indigency',
     frame_bytes_list=None
 ):
-    """
-    Validates uploaded video content by running OCR on sampled frames and performing:
-    1. Mandatory Document Type Keyword Check
-    2. Video OCR Text Extraction and Verification against static image text.
-    """
+    if video_bytes and isinstance(video_bytes, str):
+        video_bytes = resolve_verification_image_bytes(video_bytes)
+
     has_video_input = (video_bytes and len(video_bytes) > 500) or (frame_bytes_list and len(frame_bytes_list) > 0)
     if not has_video_input:
         return False, "Mandatory video proof is missing.", "No video stream data found."

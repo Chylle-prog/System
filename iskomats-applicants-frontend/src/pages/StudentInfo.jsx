@@ -3250,13 +3250,13 @@ const StudentInfo = () => {
 
         let videoVal = null;
         if (docType === 'Indigency') {
-          videoVal = (documentVideos && documentVideos.mayorIndigency_video) || (documentFiles && documentFiles.mayorIndigency_video) || formData.mayorIndigency_video || formData.indigencyVideo;
+          videoVal = (documentVideos && documentVideos.mayorIndigency_video) || (documentFiles && documentFiles.mayorIndigency_video) || formData.mayorIndigency_video || formData.indigencyVideo || formData.indigency_vid_url;
         } else if (docType === 'Enrollment') {
-          videoVal = (documentVideos && documentVideos.mayorCOE_video) || (documentFiles && documentFiles.mayorCOE_video) || formData.mayorCOE_video || formData.enrollmentVideo;
+          videoVal = (documentVideos && documentVideos.mayorCOE_video) || (documentFiles && documentFiles.mayorCOE_video) || formData.mayorCOE_video || formData.enrollmentVideo || formData.enrollment_certificate_vid_url;
         } else if (docType === 'Grades') {
-          videoVal = (documentVideos && documentVideos.mayorGrades_video) || (documentFiles && documentFiles.mayorGrades_video) || formData.mayorGrades_video || formData.gradesVideo;
+          videoVal = (documentVideos && documentVideos.mayorGrades_video) || (documentFiles && documentFiles.mayorGrades_video) || formData.mayorGrades_video || formData.gradesVideo || formData.grades_vid_url;
         } else if (docType === 'SchoolID') {
-          videoVal = (documentVideos && documentVideos.schoolIdFront_video) || (documentFiles && documentFiles.schoolIdFront_video) || formData.schoolIdFront_video;
+          videoVal = (documentVideos && documentVideos.schoolIdFront_video) || (documentFiles && documentFiles.schoolIdFront_video) || formData.schoolIdFront_video || formData.schoolid_front_vid_url;
         }
 
         const vFieldName = docType === 'Indigency' ? 'mayorIndigency_video' : (docType === 'Enrollment' ? 'mayorCOE_video' : (docType === 'Grades' ? 'mayorGrades_video' : 'schoolIdFront_video'));

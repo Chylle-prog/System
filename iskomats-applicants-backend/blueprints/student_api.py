@@ -719,33 +719,39 @@ def resolve_verification_image_bytes(image_data):
                 return decrypt_if_encrypted(_url_bytes_cache[normalized])
 
             # If it's our own backend proxy URL, fetch directly from the DB!
-            if '/api/student/applicant/document/raw/' in normalized:
+            if '/api/student/applicant/document/raw/' in normalized or '/applicant/document/raw/' in normalized:
                 try:
                     from urllib.parse import urlparse
                     path = urlparse(normalized).path
                     parts = path.strip('/').split('/')
                     field_name = parts[-1]
                     
+                    field_mapping = {
+                        'face_video': 'id_vid_url',
+                        'mayorIndigency_video': 'indigency_vid_url',
+                        'mayorGrades_video': 'grades_vid_url',
+                        'mayorCOE_video': 'enrollment_certificate_vid_url',
+                        'schoolIdFront_video': 'schoolid_front_vid_url',
+                        'schoolIdBack_video': 'schoolid_back_vid_url',
+                        'id_front': 'id_img_front',
+                        'id_back': 'id_img_back',
+                        'face_photo': 'id_pic',
+                    }
+                    db_field = field_mapping.get(field_name, field_name)
+                    
                     student_id = getattr(request, 'user_no', None)
                     if student_id:
                         with get_db() as conn:
                             cur = conn.cursor()
                             from services.applicant_document_service import fetch_applicant_document_values
-                            row = fetch_applicant_document_values(cur, student_id, [field_name])
-                            if row and row[field_name]:
-                                val = row[field_name]
-                                if field_name == 'signature_image_data':
+                            row = fetch_applicant_document_values(cur, student_id, [db_field])
+                            if row and row.get(db_field):
+                                val = row.get(db_field)
+                                if db_field == 'signature_image_data':
                                     from services.ocr_utils import decode_signature
                                     val = decode_signature(val)
                                 
-                                if isinstance(val, str) and val.startswith('http'):
-                                    return resolve_verification_image_bytes(val)
-                                elif isinstance(val, str):
-                                    raw_bytes = val.encode('utf-8')
-                                elif hasattr(val, 'tobytes'):
-                                    raw_bytes = val.tobytes()
-                                else:
-                                    raw_bytes = bytes(val)
+                                return resolve_verification_image_bytes(val)
                 except Exception as e:
                     print(f"[RESOLVE] Failed to resolve local proxy URL {normalized}: {e}", flush=True)
 
