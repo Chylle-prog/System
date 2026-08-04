@@ -1965,43 +1965,41 @@ def detect_document_tampering(image_bytes, doc_type=None, **kwargs):
             r_start, r_end = int(rows * 0.08), int(rows * 0.92)
             c_start, c_end = int(cols * 0.05), int(cols * 0.95)
 
-            # 2a. Solid Whiteout / Blackout Overlay (#FFFFFF / #000000)
-            # Requires a 2×2 cluster of pure-white/pure-black patches to avoid false positives
-            # on paper form margins and single underline pixels.
+            # 2a. Solid Artificial Whiteout / Blackout Overlay (#FFFFFF / #000000)
+            # Requires a 3×3 cluster of zero-variance patches (stds < 0.35, means >= 252 or means <= 5)
+            # This detects flat digital rectangles drawn in image editors over text regions.
             overlay_patches = ((means >= 252) & (stds < 0.35)) | ((means <= 5) & (stds < 0.35))
             ovl = overlay_patches[r_start:r_end, c_start:c_end].astype(np.uint8)
-            # Erode to find 2×2 clusters: a patch is "clustered" if itself AND right AND below AND diagonal are all overlay
-            ovl_cluster = (
-                ovl[:-1, :-1] & ovl[:-1, 1:] & ovl[1:, :-1] & ovl[1:, 1:]
-            )
-            pure_cluster_count = int(np.sum(ovl_cluster))
-            if pure_cluster_count >= 4:
-                return True, f"Digital edit / solid overlay block detected on document ({pure_cluster_count} clustered artificial overlay patches found). Please upload an authentic, unedited document.", pure_cluster_count
+            # 3×3 cluster requirement: 3 rows × 3 cols of pure digital zero-variance patches
+            if ovl.shape[0] >= 3 and ovl.shape[1] >= 3:
+                ovl_cluster = (
+                    ovl[:-2, :-2] & ovl[:-2, 1:-1] & ovl[:-2, 2:] &
+                    ovl[1:-1, :-2] & ovl[1:-1, 1:-1] & ovl[1:-1, 2:] &
+                    ovl[2:, :-2] & ovl[2:, 1:-1] & ovl[2:, 2:]
+                )
+                pure_cluster_count = int(np.sum(ovl_cluster))
+                if pure_cluster_count >= 4:
+                    return True, f"Digital edit / solid overlay block detected on document ({pure_cluster_count} artificial zero-variance overlay clusters found). Please upload an authentic, unedited document.", pure_cluster_count
 
-            # 2b. Camera Photo / Shadowed Scan + 2D White Edit Block Check
-            # KEY FIX: pre-printed form fill-in underlines are 1 patch (16px) tall × many patches wide.
-            # A real digital whiteout/edit overlay is a RECTANGLE — multiple rows tall × multiple cols wide.
-            # By requiring a minimum 2-row height for any detected white block, we ignore thin form underlines
-            # while still catching real rectangular edit boxes that cover typed text.
+            # 2b. Camera Photo / Shadowed Scan + Artificial Digital White Edit Box Check
+            # Only triggers when standard deviation is extremely low (std < 0.8) indicating digital fill,
+            # and requires a substantial 2D block (>=3 rows / 48px tall AND >=10 cols / 160px wide).
+            # This prevents false positives on natural line spacing, paragraph gaps, and paper background.
             light_pixels = gray[gray >= 120]
             if len(light_pixels) > 0:
                 doc_bg_median = float(np.median(light_pixels))
                 if doc_bg_median <= 236:
-                    white_pixel_counts = np.sum(patches >= 240, axis=(2, 3))
-                    white_patch_mask = (white_pixel_counts >= 20)
+                    # Require both near-white mean AND artificial flat variance (std < 0.8)
+                    digital_white_mask = (means >= 248) & (stds < 0.8)
+                    wpm = digital_white_mask[r_start:r_end, c_start:c_end]
 
-                    # Find the largest contiguous 2D white block (rows × cols) using a sliding window.
-                    # A genuine form underline = 1 row tall; a real edit overlay = ≥2 rows tall.
-                    wpm = white_patch_mask[r_start:r_end, c_start:c_end]
                     max_block_area = 0
                     max_block_w = 0
                     max_block_h = 0
-                    # Check all 2-row or taller windows for horizontal extent ≥ 4 patches (64px)
-                    for block_h in range(2, min(8, wpm.shape[0])):
+                    # Requires block_h >= 3 (48px tall) to ignore normal 1-2 row line/paragraph gaps
+                    for block_h in range(3, min(10, wpm.shape[0])):
                         for r in range(wpm.shape[0] - block_h + 1):
-                            # Column mask: all rows in window are white
                             col_all_white = np.all(wpm[r:r + block_h, :], axis=0)
-                            # Find longest horizontal run of all-white columns
                             run = 0
                             for c_idx in range(len(col_all_white)):
                                 if col_all_white[c_idx]:
@@ -2014,10 +2012,7 @@ def detect_document_tampering(image_bytes, doc_type=None, **kwargs):
                                 else:
                                     run = 0
 
-                    # Only flag if block is at least 2 rows (32px) tall AND 6 cols (96px) wide.
-                    # Raising min width from 4→6 patches to avoid triggering on small inter-line whitespace.
-                    # This filters out 1-row-tall form underlines entirely.
-                    if max_block_h >= 2 and max_block_w >= 6:
+                    if max_block_h >= 3 and max_block_w >= 10:
                         block_px_w = max_block_w * grid_w
                         block_px_h = max_block_h * grid_h
                         return True, (
@@ -2027,13 +2022,12 @@ def detect_document_tampering(image_bytes, doc_type=None, **kwargs):
                             f"Please upload an authentic, unedited document."
                         ), max_block_area
 
-            # 2c. Off-White Smooth Overlay — requires a 2D block (not a thin horizontal line)
-            # Smooth near-white patches (mean ≥ 235, std < 1.6) that form a rectangle ≥ 2 rows × 8 cols.
-            smooth_edit_patches = (means >= 235) & (stds < 1.6)
+            # 2c. Off-White Smooth Overlay — requires a large 2D block with flat variance (std < 1.0)
+            smooth_edit_patches = (means >= 238) & (stds < 1.0)
             spm = smooth_edit_patches[r_start:r_end, c_start:c_end]
             max_smooth_block_w = 0
             max_smooth_block_h = 0
-            for block_h in range(2, min(6, spm.shape[0])):
+            for block_h in range(3, min(8, spm.shape[0])):
                 for r in range(spm.shape[0] - block_h + 1):
                     col_all_smooth = np.all(spm[r:r + block_h, :], axis=0)
                     run = 0
@@ -2046,7 +2040,7 @@ def detect_document_tampering(image_bytes, doc_type=None, **kwargs):
                         else:
                             run = 0
 
-            if max_smooth_block_h >= 2 and max_smooth_block_w >= 8:
+            if max_smooth_block_h >= 3 and max_smooth_block_w >= 12:
                 block_px_w = max_smooth_block_w * grid_w
                 block_px_h = max_smooth_block_h * grid_h
                 return True, (

@@ -3080,8 +3080,9 @@ const StudentInfo = () => {
               const stdDev = Math.sqrt(varianceSum / count);
 
               const isDigitalWhiteBox = ((avgR >= 252 && avgG >= 252 && avgB >= 252 && stdDev < 0.35) || (avgGray <= 5 && stdDev < 0.35));
-              const isSmoothEditPatch = (avgGray >= 235 && stdDev < 1.6);
-              const isPureWhitePixelPatch = (avgGray >= 240);
+              const isSmoothEditPatch = (avgGray >= 238 && stdDev < 1.0);
+              // Require both near-white mean AND flat artificial variance (stdDev < 0.8)
+              const isPureWhitePixelPatch = (avgGray >= 248 && stdDev < 0.8);
 
               if (isDigitalWhiteBox) {
                 suspiciousPatches++;
@@ -3101,12 +3102,12 @@ const StudentInfo = () => {
             return;
           }
 
-          // 2D Block Check (minimum 2 rows tall × 6 cols wide) to ignore 1-row-tall form underlines
+          // 2D Block Check (minimum 3 rows tall × 10 cols wide) to ignore normal 1-2 row line/paragraph gaps
           let maxBlockArea = 0;
           let maxBlockW = 0;
           let maxBlockH = 0;
 
-          for (let blockH = 2; blockH < Math.min(8, rows); blockH++) {
+          for (let blockH = 3; blockH < Math.min(10, rows); blockH++) {
             for (let r = 0; r <= rows - blockH; r++) {
               let run = 0;
               for (let c = 0; c < cols; c++) {
@@ -3132,7 +3133,7 @@ const StudentInfo = () => {
             }
           }
 
-          if (maxBlockH >= 2 && maxBlockW >= 6) {
+          if (maxBlockH >= 3 && maxBlockW >= 10) {
             const blockPxW = maxBlockW * gridW;
             const blockPxH = maxBlockH * gridH;
             resolve({
