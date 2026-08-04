@@ -2815,8 +2815,8 @@ def extract_frames_from_video_bytes(video_bytes, sample_positions=[0.15, 0.35, 0
         try:
             ffmpeg_bin = 'ffmpeg'
             try:
-                import imageio_ffmpeg
-                ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+                img_ff = __import__('imageio_ffmpeg')  # type: ignore
+                ffmpeg_bin = img_ff.get_ffmpeg_exe()
             except Exception:
                 pass
 
@@ -2921,7 +2921,7 @@ def verify_video_content(
 
     # Standard keyword dictionary per document type
     doc_type_upper = str(doc_type or '').upper()
-    default_keywords = ['indigency', 'indigent', 'residency', 'resident', 'barangay', 'republic', 'office', 'punong', 'kapitan', 'certify', 'batangas', 'mataasnakahoy']
+    default_keywords = ['indigency', 'indigent', 'residency', 'resident', 'barangay', 'republic', 'office', 'punong', 'kapitan', 'certify', 'batangas', 'mataasnakahoy', 'inosloban', 'inosluban', 'lipa', 'city', 'philippines', 'katibayan', 'purok', 'concern', 'certificate']
     
     if 'GRADES' in doc_type_upper or 'TRANSCRIPT' in doc_type_upper or 'TOR' in doc_type_upper:
         default_keywords = ['grades', 'transcript', 'gpa', 'gwa', 'units', 'student', 'semester', 'course', 'evaluation']

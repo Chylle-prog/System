@@ -1840,9 +1840,37 @@ const StudentInfo = () => {
           const worker = await getTesseractWorker();
           if (!worker) return false;
 
-          const res = await worker.recognize(canvas).catch(() => null);
-          const rawTxt = res?.data?.text || '';
-          const cleanTxt = rawTxt.trim().replace(/\s+/g, ' ');
+          // Pass 1: Raw canvas recognize
+          let res = await worker.recognize(canvas).catch(() => null);
+          let rawTxt = res?.data?.text || '';
+          let cleanTxt = rawTxt.trim().replace(/\s+/g, ' ');
+
+          // Pass 2: High-contrast enhanced canvas (removes background seal watermark/shadows)
+          if (!cleanTxt || cleanTxt.length < 5) {
+            const enhancedCanvas = document.createElement('canvas');
+            enhancedCanvas.width = targetW;
+            enhancedCanvas.height = targetH;
+            const eCtx = enhancedCanvas.getContext('2d');
+            eCtx.drawImage(video, 0, 0, targetW, targetH);
+            const imgData = eCtx.getImageData(0, 0, targetW, targetH);
+            const d = imgData.data;
+            for (let i = 0; i < d.length; i += 4) {
+              const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+              const enhanced = Math.min(255, Math.max(0, (g - 128) * 1.5 + 145));
+              d[i] = enhanced;
+              d[i + 1] = enhanced;
+              d[i + 2] = enhanced;
+            }
+            eCtx.putImageData(imgData, 0, 0);
+
+            const res2 = await worker.recognize(enhancedCanvas).catch(() => null);
+            const rawTxt2 = res2?.data?.text || '';
+            const cleanTxt2 = rawTxt2.trim().replace(/\s+/g, ' ');
+            if (cleanTxt2.length > cleanTxt.length) {
+              cleanTxt = cleanTxt2;
+            }
+          }
+
           console.log(`[Video OCR] ${label} t=${video.currentTime.toFixed(2)}s brightness=${avgBrightness.toFixed(0)} text="${cleanTxt.substring(0, 80)}"`);
           if (cleanTxt && cleanTxt.length >= 2) {
             accumulatedLogs.push(`[${label}]: "${cleanTxt}"`);
@@ -1875,6 +1903,14 @@ const StudentInfo = () => {
           await new Promise(r => setTimeout(r, sampleInterval));
           elapsed += sampleInterval;
           sampleIdx++;
+
+          // If browser paused playback (autoplay policy), seek manually to force frame decoding
+          if (video.paused && !video.ended) {
+            try {
+              video.currentTime = Math.min(10, sampleIdx * 1.5);
+            } catch (e) { }
+          }
+
           await captureFrame(`Frame-${sampleIdx}`);
 
           // Early exit if we found keywords
@@ -1889,8 +1925,8 @@ const StudentInfo = () => {
             return;
           }
 
-          // Stop if video ended
-          if (video.ended || video.paused) break;
+          // Stop if video reached end
+          if (video.ended) break;
         }
 
         evaluateFinal();
