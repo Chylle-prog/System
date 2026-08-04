@@ -3710,6 +3710,8 @@ def ocr_check():
         base_detected_text = (meta or {}).get('detected_text', raw_text)
         if v_text and len(v_text.strip()) > 0:
             detected_text = f"{base_detected_text}\n\n--- 📹 EXTRACTED VIDEO PROOF OCR TEXT ---\n{v_text}"
+        elif (video_bytes and len(video_bytes) > 500) or v_frame_bytes_list:
+            detected_text = f"{base_detected_text}\n\n--- 📹 EXTRACTED VIDEO PROOF OCR TEXT ---\nNo readable document text detected in video frames."
         else:
             detected_text = base_detected_text
 

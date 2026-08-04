@@ -3324,8 +3324,9 @@ const StudentInfo = () => {
                 msg += `; Video Proof Alert: ${videoLivenessResult.reason || 'Invalid video proof frames'}`;
               }
             }
-            if (videoLivenessResult.detectedText && !combinedDetectedText.includes("--- 📹 EXTRACTED VIDEO PROOF OCR TEXT ---") && videoLivenessResult.detectedText !== "No readable document text detected in video frames.") {
-              combinedDetectedText += `\n\n--- 📹 EXTRACTED VIDEO PROOF OCR TEXT ---\n${videoLivenessResult.detectedText}`;
+            if (!combinedDetectedText.includes("--- 📹 EXTRACTED VIDEO PROOF OCR TEXT ---")) {
+              const vTextToAppend = videoLivenessResult.detectedText || "No readable document text detected in video frames.";
+              combinedDetectedText += `\n\n--- 📹 EXTRACTED VIDEO PROOF OCR TEXT ---\n${vTextToAppend}`;
             }
           }
 
