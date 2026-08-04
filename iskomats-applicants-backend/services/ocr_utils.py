@@ -1352,53 +1352,53 @@ def extract_total_units_from_text(raw_text):
     if not raw_text:
         return None
     text_str = str(raw_text)
-    lines = text_str.splitlines()
+    lines = [l.strip() for l in text_str.splitlines() if l.strip()]
 
     # 1. Direct extraction right beside or below "TOTAL UNITS" before fee table headers
     for i, line in enumerate(lines):
         line_clean = line.strip()
         if re.search(r'total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit', line_clean, re.IGNORECASE):
-            # Check current line
-            m = re.search(r'(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit)[^\d]*\b([1-4]?[0-9])\b', line_clean, re.IGNORECASE)
+            # Check current line (e.g. 'TOTAL UNITS : 12' or 'TOTAL UNITS : 12.00' or 'TOTAL UNITS 27')
+            m = re.search(r'(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit)[^\d]*\b([1-4]?[0-9](?:\.0{1,2})?)\b', line_clean, re.IGNORECASE)
             if m:
                 try:
-                    val = int(m.group(1))
-                    if 6 <= val <= 48:
+                    val = int(float(m.group(1)))
+                    if 3 <= val <= 45:
                         return val
                 except ValueError:
                     pass
 
-            # Check next 4 lines, stopping before fee/assessment headers
-            for j in range(i + 1, min(len(lines), i + 5)):
+            # Check next 3 lines, stopping before fee/assessment headers
+            for j in range(i + 1, min(len(lines), i + 4)):
                 next_line = lines[j].strip()
-                if re.search(r'assessed\s*fees|schedule\s*of\s*payments|total\s*assessment|outstanding\s*balance|tuition|downpayment|reservation', next_line, re.IGNORECASE):
+                if re.search(r'assessed\s*fees|schedule\s*of\s*payments|total\s*assessment|outstanding\s*balance|tuition|downpayment|reservation|guidance|library', next_line, re.IGNORECASE):
                     break
                 if re.match(r'^[\-\=\_\s\|]+$', next_line):
                     continue
-                digits = re.findall(r'\b([1-4]?[0-9])\b', next_line)
-                for d in digits:
+                # Match standalone 1-2 digit number on unit total line (e.g. '12' or '27' or '12.00')
+                m_next = re.search(r'^\s*([1-4]?[0-9](?:\.0{1,2})?)\s*$', next_line) or re.search(r'\b([1-4]?[0-9])\b', next_line)
+                if m_next:
                     try:
-                        v = int(d)
-                        if 6 <= v <= 60:
+                        v = int(float(m_next.group(1)))
+                        if 3 <= v <= 45:
                             return v
                     except ValueError:
                         pass
 
-    def _is_metadata(l):
+    # 2. Subject Table Units Summing & Row Counting
+    in_subject_table = False
+    subject_rows = 0
+    units_sum = 0
+
+    def _is_metadata_line(l):
         return bool(re.search(r'^\s*(?:course|name|student\s*(?:no|id)?|year\s*level|scholarship|pay\s*type|reg\s*no|tran\s*date|college)\s*[:=\-]', l, re.I) or
                     re.search(r'bachelor\s*of|bachelor\s*in|master\s*of|doctor\s*of', l, re.I))
 
-    # 2. Robust Subject Table Row Counter & Explicit Unit Summing
-    in_subject_table = False
-    subject_row_count = 0
-    explicit_units_sum = 0
-
     for line in lines:
-        line_clean = line.strip()
-        lower = line_clean.lower()
+        lower = line.lower()
 
         if not in_subject_table:
-            if not _is_metadata(lower):
+            if not _is_metadata_line(lower):
                 if re.search(r'^\s*(?:subj(?:ect)?|sugect|suject|spect|course\s*code)\b', lower) or \
                    (('subject' in lower or 'sugect' in lower or 'suject' in lower or 'spect' in lower) and any(k in lower for k in ['sec', 'section', 'faculty', 'room', 'days', 'time', 'bldg', 'units'])) or \
                    ('units' in lower and any(k in lower for k in ['sec', 'section', 'faculty', 'room', 'days', 'time', 'bldg'])):
@@ -1406,56 +1406,33 @@ def extract_total_units_from_text(raw_text):
                     continue
 
         if in_subject_table:
-            if re.search(r'total\s*(?:no\.?\s*of\s*)?units?|otl\s*uns|tomas\b|assessed\s*fees|schedule\s*of\s*pay|schedule\s*of\s*path|total\s*assessment|review\s*your\s*assessment|refunds\s*and\s*other|official\s*certificate\s*of\s*registration', lower):
-                in_subject_table = False
+            if re.search(r'total\s*(?:no\.?\s*of\s*)?units?|otl\s*uns|assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|review\s*your\s*assessment|refunds\s*and\s*other|official\s*certificate\s*of\s*registration', lower):
                 break
 
-            if re.match(r'^[\-\=\_\*\#\s\|]+$', line_clean) or len(line_clean) < 3:
+            if re.match(r'^[\-\=\_\*\#\s\|]+$', line) or len(line) < 4:
                 continue
-            if _is_metadata(lower):
+            if _is_metadata_line(lower):
                 continue
 
-            subject_row_count += 1
-            unit_match = re.search(r'\b([1-6](?:\.0)?)\b', line_clean)
-            if unit_match:
+            # Look for unit column digit (1-6) right before section or room/days/time
+            m_u = re.search(r'\b([1-6](?:\.0)?)\s+(?:it\d[a-z\d]?|[a-z]{1,4}\d{1,2}|mb|jrf|nr|tf|m|t|w|th|f|s)\b', lower)
+            if m_u:
                 try:
-                    u = float(unit_match.group(1))
+                    u = int(float(m_u.group(1)))
                     if 1 <= u <= 6:
-                        explicit_units_sum += u
+                        units_sum += u
+                        subject_rows += 1
                 except ValueError:
                     pass
+            elif len(line) >= 8 and not any(k in lower for k in ['assessed', 'tuition', 'fee', 'total']):
+                subject_rows += 1
 
-    if 6 <= explicit_units_sum <= 60:
-        return int(round(explicit_units_sum))
+    if 3 <= units_sum <= 45:
+        return units_sum
 
-    if subject_row_count >= 2:
-        estimated = subject_row_count * 3
-        if 6 <= estimated <= 60:
-            return estimated
-
-    # 3. Fallback row counter between Metadata and Assessed Fees
-    inside_body = False
-    fallback_count = 0
-    for line in lines:
-        line_clean = line.strip()
-        lower = line_clean.lower()
-        if re.search(r'year\s*level|student\s*(?:no|id)|ay\s*20\d{2}|semester', lower):
-            inside_body = True
-            continue
-        if inside_body:
-            if re.search(r'total\s*units|otl\s*uns|assessed\s*fees|schedule\s*of\s*pay|schedule\s*of\s*path|total\s*assessment', lower):
-                break
-            if re.match(r'^[\-\=\_\*\#\s\|]+$', line_clean) or len(line_clean) < 3:
-                continue
-            if _is_metadata(lower):
-                continue
-            if re.search(r'official|certificate|registration|enrollment|de\s*la\s*salle|batangas|university|student|page', lower):
-                continue
-            fallback_count += 1
-
-    if fallback_count >= 2:
-        estimated = fallback_count * 3
-        if 6 <= estimated <= 60:
+    if subject_rows >= 1:
+        estimated = subject_rows * 3
+        if 3 <= estimated <= 45:
             return estimated
 
     return None
