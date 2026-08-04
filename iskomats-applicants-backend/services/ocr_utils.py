@@ -1040,7 +1040,28 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
     mid_words   = [w for w in mid_clean.split()   if len(w) >= 1]
 
     # Individual word presence (for UI / failure messages)
-    first_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) or re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in first_words) if first_words else True
+    first_ok = True
+    if first_words:
+        first_primary_ok = bool(re.search(rf'\b{re.escape(first_words[0])}\b', norm_target) or re.search(rf'\b{re.escape(first_words[0])}\b', norm_raw))
+        if not first_primary_ok:
+            first_ok = False
+        else:
+            first_all_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) or re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in first_words)
+            if first_all_ok:
+                first_ok = True
+            elif len(first_words) > 1:
+                rx_after = re.compile(rf'\b{re.escape(first_words[0])}\s+([a-z]+)', re.IGNORECASE)
+                m_after = rx_after.search(norm_target) or rx_after.search(norm_raw)
+                if m_after:
+                    next_tok = m_after.group(1).lower()
+                    sec_word = first_words[1].lower()
+                    if next_tok and len(next_tok) >= 2 and next_tok not in [sec_word, last_clean.lower(), mid_clean.lower()]:
+                        first_ok = False
+                    else:
+                        first_ok = True
+                else:
+                    first_ok = True
+
     last_ok  = all(re.search(rf'\b{re.escape(w)}\b', norm_target) or re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in last_words)  if last_words  else True
 
     middle_ok = True

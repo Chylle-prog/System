@@ -660,11 +660,12 @@ function studentNameMatchesText(text, first, middle, last) {
   const checkNameWordGroup = (nameStr, searchText) => {
     if (!nameStr) return true;
     const isMiddle = nameStr === middle;
+    const isFirst = nameStr === first;
     const words = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= (isMiddle ? 1 : 2));
     if (words.length === 0) return true;
     const ocrWords = searchText.split(/\s+/).filter(w => w.length >= 1);
 
-    const matchedCount = words.filter(word => {
+    const matchResults = words.map(word => {
       const normW = normalizeForOcr(word);
       const confW = normalizeNameConfusions(word);
       if (!normW) return true;
@@ -696,10 +697,45 @@ function studentNameMatchesText(text, first, middle, last) {
       }
 
       return false;
-    }).length;
+    });
 
-    // Strict full-name requirement: ALL words in each specified name component must match (100%)
-    return matchedCount === words.length;
+    const primaryOk = matchResults[0] === true;
+    if (!primaryOk) return false;
+
+    const allMatched = matchResults.every(Boolean);
+    if (allMatched) return true;
+
+    // Compound First Name rule (e.g. "Alexie Chyle"):
+    // Primary token ("Alexie") matched. If secondary token ("Chyle") is truncated on document, allow pass unless conflicting token exists.
+    if (isFirst && words.length > 1 && primaryOk) {
+      const normTextLower = normalizeForOcr(searchText);
+      const normLast = normalizeForOcr(last || '');
+      const normMid = normalizeForOcr(middle || '');
+
+      const hasConflict = words.slice(1).some(secWord => {
+        const normSec = normalizeForOcr(secWord);
+        const rxAfterPrimary = new RegExp('\\b' + normalizeForOcr(words[0]) + '\\s+([a-z]+)', 'i');
+        const mAfter = normTextLower.match(rxAfterPrimary);
+        if (mAfter) {
+          const nextTok = mAfter[1];
+          if (
+            nextTok.length >= 2 &&
+            !isSimilarWord(normSec, nextTok) &&
+            !isSimilarWord(normLast, nextTok) &&
+            !isSimilarWord(normMid, nextTok) &&
+            !normLast.includes(nextTok) &&
+            !normMid.includes(nextTok)
+          ) {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      if (!hasConflict) return true;
+    }
+
+    return matchResults.filter(Boolean).length === words.length;
   };
 
   const firstOk = checkNameWordGroup(first, targetText) || checkNameWordGroup(first, normText);
@@ -1002,7 +1038,7 @@ function academic_year_matches_expected(text, expectedYear) {
   const formattedText = textWithoutDates
     .replace(/\b(20\d{2})\s*(20\d{2})\b/g, '$1-$2')
     .replace(/\b(20\d{2})[\s_]?([2-9]\d)\b/g, '$1-20$2')
-    .replace(/\b([2-9]\d)(2[0-9])\b/g, '$1-$2');
+    .replace(/\b(2[4-9])(2[5-9])\b/g, '$1-$2');
 
   // 2. Check 4-digit pair matches e.g. "2025-2026", "2025/2026", "2026.2027", "2026-2027"
   const pairMatches4D = [...formattedText.matchAll(/\b(20\d{2})\s*[\-\/\.\:\+]\s*(20[0-9a-zA-Z]{2})\b/g)];
@@ -1011,8 +1047,8 @@ function academic_year_matches_expected(text, expectedYear) {
       const pStart = parseInt(m[1], 10);
       const rawEndStr = m[2].toLowerCase().replace(/b/g, '6').replace(/8/g, '6').replace(/g/g, '6').replace(/s/g, '5');
       const pEnd = parseInt(rawEndStr, 10);
-      // Strictly require start year to match expStart OR end year to match expEnd
-      return pStart === expStart || pEnd === expEnd;
+      // Require start year to match expStart AND end year to match expEnd (or allow +/- 1 on end year due to OCR noise)
+      return pStart === expStart && (pEnd === expEnd || Math.abs(pEnd - expEnd) <= 1);
     });
     if (hasMatchingPair) return true;
     // Explicit year pairs found on document but none matched expected academic year
@@ -1025,19 +1061,17 @@ function academic_year_matches_expected(text, expectedYear) {
     const hasMatching2DPair = pairMatches2D.some(m => {
       const y1 = m[1];
       const y2 = m[2];
-      return (y1 === expStart2D || y2 === expEnd2D);
+      return (y1 === expStart2D && y2 === expEnd2D);
     });
     if (hasMatching2DPair) return true;
     return false;
   }
 
-  // 4. Check "VALID UNTIL" / "SY" / "AY" single year match e.g. "VALID UNTIL SY 2025-2026", "VALID UNTIL 2026", "SY 2025"
+  // 4. Check "VALID UNTIL" / "SY" / "AY" single year match e.g. "VALID UNTIL 2025", "SY 2025"
   if (/(?:valid\s*until|sy|s\.?y\.?|ay|a\.?y\.?|school\s*year|academic\s*year)/i.test(formattedText)) {
     if (
-      formattedText.includes(String(expStart)) ||
-      formattedText.includes(String(expEnd)) ||
+      formattedText.includes(`20${expStart2D}-20${expEnd2D}`) ||
       formattedText.includes(`sy ${expStart2D}`) ||
-      formattedText.includes(`sy ${expEnd2D}`) ||
       new RegExp(`\\b${expStart2D}-${expEnd2D}\\b`).test(formattedText)
     ) {
       return true;
@@ -1046,7 +1080,7 @@ function academic_year_matches_expected(text, expectedYear) {
 
   // 5. Fallback check for single 4-digit years in text
   const found4DigitYears = formattedText.match(/\b20\d{2}\b/g) || [];
-  if (found4DigitYears.includes(String(expStart)) || found4DigitYears.includes(String(expEnd))) {
+  if (found4DigitYears.includes(String(expStart))) {
     return true;
   }
 
