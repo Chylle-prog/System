@@ -2490,10 +2490,18 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     l_words = [w for w in user_last_clean.split() if len(w) >= 3]
 
     # FIRST NAME VERIFICATION
-    f_in_doc = any(_word_in_text(w, doc_norm) for w in f_words) if f_words else True
+    f_in_doc = any(_word_in_text(w, doc_norm) or (w in doc_norm) for w in f_words) if f_words else True
     if doc_first:
         doc_first_clean = normalize_text(doc_first or '')
-        if any(w in doc_first_clean for w in f_words):
+        doc_first_match = any(w in doc_first_clean for w in f_words) if f_words else True
+        if doc_first_match:
+            f_in_doc = True
+        else:
+            # Document line clearly contains printed/typed name words (e.g. 'Alexie Chyle') that do NOT match input first name
+            f_in_doc = False
+    elif not f_in_doc:
+        is_fill_in_form = any(k in doc_norm for k in ['years old', 'single', 'married', 'resident', 'purok', 'bonafide', 'personally', 'certify that'])
+        if is_fill_in_form:
             f_in_doc = True
 
     # LAST NAME VERIFICATION
@@ -2511,15 +2519,6 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
                 if SequenceMatcher(None, w, tok).ratio() >= 0.70:
                     l_in_doc = True
                     break
-
-    # FIRST NAME HANDWRITTEN FORM BLANK FALLBACK:
-    # On printed Barangay forms, handwritten first names over underline rules (________)
-    # often produce OCR noise. When fill-in preambles are present (e.g. 'years old', 'single'),
-    # allow First Name to pass. BUT Last Name MUST actually match text in the document!
-    is_fill_in_form = any(k in doc_norm for k in ['years old', 'single', 'married', 'resident', 'purok', 'bonafide', 'personally', 'certify that'])
-
-    if is_fill_in_form and not f_in_doc:
-        f_in_doc = True
 
     first_ok = f_in_doc
     last_ok = l_in_doc
