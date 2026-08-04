@@ -1775,18 +1775,19 @@ const StudentInfo = () => {
         if (target.size === 0) {
           return { valid: false, reason: "Uploaded video file is empty (0 bytes)." };
         }
-        return { valid: true, reason: "Video Text Verified", detectedText: "Proof video stream active and validated." };
+        createdBlobUrl = URL.createObjectURL(target);
+        srcUrl = createdBlobUrl;
       } else if (typeof target === 'string') {
-        const trimmed = target.trim();
-        if (trimmed.length > 0) {
-          return { valid: true, reason: "Video Text Verified", detectedText: "Proof video stream active and validated." };
+        srcUrl = target.trim();
+        if (srcUrl.length === 0) {
+          return { valid: false, reason: "No video stream source URL provided." };
         }
+      } else {
+        return { valid: false, reason: "Invalid video stream source object provided." };
       }
     } catch (e) {
       return { valid: false, reason: "No video stream source found." };
     }
-
-    return { valid: false, reason: "No video stream source found." };
 
     return await new Promise((resolve) => {
       let cleanedUp = false;
