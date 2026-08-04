@@ -2813,16 +2813,23 @@ def extract_frames_from_video_bytes(video_bytes, sample_positions=[0.15, 0.35, 0
 
         # ── PATH 1: FFmpeg Frame Extraction (High resolution 1280px frames) ──
         try:
+            ffmpeg_bin = 'ffmpeg'
+            try:
+                import imageio_ffmpeg
+                ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+            except Exception:
+                pass
+
             out_pattern = os.path.join(tmp_dir, 'frame_%03d.png')
             vf_filter = f"scale='min({max_width},iw)':-1"
             cmd = [
-                'ffmpeg', '-y', '-i', input_path,
+                ffmpeg_bin, '-y', '-i', input_path,
                 '-vf', f"fps=1,{vf_filter}",
                 '-vframes', '6',
                 out_pattern
             ]
             res = subprocess.run(cmd, capture_output=True, timeout=10)
-            print(f"[VIDEO OCR] FFmpeg returncode={res.returncode} input_size={len(video_bytes)} ext={ext}", flush=True)
+            print(f"[VIDEO OCR] FFmpeg ({ffmpeg_bin}) returncode={res.returncode} input_size={len(video_bytes)} ext={ext}", flush=True)
             if res.returncode != 0:
                 print(f"[VIDEO OCR] FFmpeg stderr: {res.stderr[-500:].decode('utf-8', errors='replace')}", flush=True)
             if res.returncode == 0:

@@ -3632,17 +3632,25 @@ def ocr_check():
 
         # Extract video payload based on target doc_type
         if doc_type == 'Enrollment':
-            video_file = request.files.get('mayorCOE_video') or request.files.get('enrollment_video') or request.files.get('video_proof')
-            video_param = video_file.read() if video_file else (data.get('mayorCOE_video') or data.get('enrollment_video') or data.get('video_proof'))
+            video_file = request.files.get('mayorCOE_video') or request.files.get('enrollment_video') or request.files.get('video_proof') or request.files.get('video')
+            video_param = video_file.read() if video_file else (data.get('mayorCOE_video') or data.get('enrollment_video') or data.get('video_proof') or data.get('video'))
         elif doc_type == 'Grades':
-            video_file = request.files.get('mayorGrades_video') or request.files.get('grades_video') or request.files.get('video_proof')
-            video_param = video_file.read() if video_file else (data.get('mayorGrades_video') or data.get('grades_video') or data.get('video_proof'))
+            video_file = request.files.get('mayorGrades_video') or request.files.get('grades_video') or request.files.get('video_proof') or request.files.get('video')
+            video_param = video_file.read() if video_file else (data.get('mayorGrades_video') or data.get('grades_video') or data.get('video_proof') or data.get('video'))
         elif doc_type == 'Indigency':
-            video_file = request.files.get('mayorIndigency_video') or request.files.get('indigency_video') or request.files.get('video_proof')
-            video_param = video_file.read() if video_file else (data.get('mayorIndigency_video') or data.get('indigency_video') or data.get('video_proof'))
+            video_file = request.files.get('mayorIndigency_video') or request.files.get('indigency_video') or request.files.get('video_proof') or request.files.get('video')
+            video_param = video_file.read() if video_file else (data.get('mayorIndigency_video') or data.get('indigency_video') or data.get('video_proof') or data.get('video'))
         else:
-            video_file = request.files.get('schoolIdFront_video') or request.files.get('video_proof')
-            video_param = video_file.read() if video_file else (data.get('schoolIdFront_video') or data.get('video_proof'))
+            video_file = request.files.get('schoolIdFront_video') or request.files.get('video_proof') or request.files.get('video')
+            video_param = video_file.read() if video_file else (data.get('schoolIdFront_video') or data.get('video_proof') or data.get('video'))
+
+        if not video_param and request.files:
+            for k, f in request.files.items():
+                if f and ('video' in k.lower() or (f.content_type and 'video' in f.content_type.lower()) or f.filename.endswith(('.mp4', '.webm', '.mov', '.mkv'))):
+                    video_file = f
+                    video_param = video_file.read()
+                    print(f"[VIDEO OCR] Fallback matched video file from request.files key '{k}'", flush=True)
+                    break
 
         video_bytes = None
         if video_param:

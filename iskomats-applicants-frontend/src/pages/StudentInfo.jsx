@@ -3272,10 +3272,15 @@ const StudentInfo = () => {
         if (videoVal) {
           if (videoVal instanceof Blob || videoVal instanceof File) {
             // Send actual binary bytes to backend for FFmpeg/OpenCV processing
-            formDataPayload.append(vFieldName, videoVal, 'video_proof.webm');
+            const filename = (videoVal.name && videoVal.name.includes('.')) ? videoVal.name : 'video_proof.webm';
+            formDataPayload.append(vFieldName, videoVal, filename);
+            formDataPayload.append('video_proof', videoVal, filename);
+            formDataPayload.append('video', videoVal, filename);
           } else if (typeof videoVal === 'string' && videoVal.startsWith('http')) {
             // Send the real remote URL so backend can resolve it
             formDataPayload.append(vFieldName, videoVal);
+            formDataPayload.append('video_proof', videoVal);
+            formDataPayload.append('video', videoVal);
           }
           // blob: URLs are not accessible from the backend — skip appending them
         }
