@@ -1358,15 +1358,19 @@ def extract_total_units_from_text(raw_text):
     for i, line in enumerate(lines):
         line_clean = line.strip()
         if re.search(r'total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit', line_clean, re.IGNORECASE):
-            # Check current line (e.g. 'TOTAL UNITS : 12' or 'TOTAL UNITS : 12.00' or 'TOTAL UNITS 27')
-            m = re.search(r'(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit)[^\d]*\b([1-4]?[0-9](?:\.0{1,2})?)\b', line_clean, re.IGNORECASE)
-            if m:
-                try:
-                    val = int(float(m.group(1)))
-                    if 3 <= val <= 45:
-                        return val
-                except ValueError:
-                    pass
+            # Check current line (e.g. 'TOTAL UNITS : 12' or 'TOTAL UNITS : a2”' or 'TOTAL UNITS 27')
+            m_same = re.search(r'(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit)[^\d]*([a-zA-Z0-9\.\"\”\‘\’\-]+)', line_clean, re.IGNORECASE)
+            if m_same:
+                raw_val = m_same.group(1).strip()
+                digits_only = re.sub(r'[^0-9]', '', raw_val)
+                if digits_only and 3 <= int(digits_only) <= 45:
+                    return int(digits_only)
+                conf_mapped = raw_val.lower().replace('a2', '27').replace('z', '7').replace('i', '1').replace('l', '1').replace('o', '0').replace('s', '5').replace('b', '6').replace('”', '').replace('"', '').strip()
+                m_num = re.search(r'\b([1-4][0-9]|[3-9])\b', conf_mapped)
+                if m_num:
+                    v = int(m_num.group(1))
+                    if 3 <= v <= 45:
+                        return v
 
             # Check next 3 lines, stopping before fee/assessment headers
             for j in range(i + 1, min(len(lines), i + 4)):
@@ -1376,14 +1380,9 @@ def extract_total_units_from_text(raw_text):
                 if re.match(r'^[\-\=\_\s\|]+$', next_line):
                     continue
                 # Match standalone 1-2 digit number on unit total line (e.g. '12' or '27' or '12.00')
-                m_next = re.search(r'^\s*([1-4]?[0-9](?:\.0{1,2})?)\s*$', next_line) or re.search(r'\b([1-4]?[0-9])\b', next_line)
-                if m_next:
-                    try:
-                        v = int(float(m_next.group(1)))
-                        if 3 <= v <= 45:
-                            return v
-                    except ValueError:
-                        pass
+                digits_next = re.sub(r'[^0-9]', '', next_line)
+                if digits_next and 3 <= int(digits_next) <= 45:
+                    return int(digits_next)
 
     # 2. Subject Table Units Summing & Row Counting
     in_subject_table = False
