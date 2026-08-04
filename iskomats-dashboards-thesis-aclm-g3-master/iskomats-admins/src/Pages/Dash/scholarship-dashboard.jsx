@@ -509,6 +509,36 @@ const initialDashboardData = {
   }
 };
 
+const ALL_ADMIN_PROVIDER_ROOMS = [
+  {
+    room: 'provider_room_1',
+    pro_no: 1,
+    applicant_no: 'admin-room-1',
+    studentName: "Mayor Eric B. Africa's Scholarship",
+    studentEmail: "Mayor Africa Admin Channel",
+    badge: "Mayor Africa",
+    icon: "fas fa-landmark"
+  },
+  {
+    room: 'provider_room_2',
+    pro_no: 2,
+    applicant_no: 'admin-room-2',
+    studentName: "Governor Vilma Santos-Recto's Scholarship",
+    studentEmail: "Governor Vilma Admin Channel",
+    badge: "Governor Vilma",
+    icon: "fas fa-award"
+  },
+  {
+    room: 'provider_room_3',
+    pro_no: 3,
+    applicant_no: 'admin-room-3',
+    studentName: "CHED's Tulong Dunong",
+    studentEmail: "CHED Tulong Dunong Channel",
+    badge: "CHED",
+    icon: "fas fa-graduation-cap"
+  }
+];
+
 export default function ScholarshipDashboard({
   providerKey,
   providerName,
@@ -518,6 +548,7 @@ export default function ScholarshipDashboard({
   reportFilePrefix = providerName,
   proNo,
   logo,
+  standaloneInbox = false,
 }) {
   // Get user name and ID from localStorage / token
   const userName = localStorage.getItem('userName') || 'Admin';
@@ -561,7 +592,7 @@ export default function ScholarshipDashboard({
   const messengerTitle = `${scholarshipLabel} Messenger`;
   const administratorTitle = `${scholarshipLabel} Administrator`;
 
-  const [section, setSection] = useState('dashboard'); // dashboard | finder | manage | track | reports | inbox | view-applicant
+  const [section, setSection] = useState(standaloneInbox ? 'inbox' : 'dashboard'); // dashboard | finder | manage | track | reports | inbox | view-applicant
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [reportsView, setReportsView] = useState('tables'); // analytics | tables
@@ -577,6 +608,7 @@ export default function ScholarshipDashboard({
   const [viewApplicant, setViewApplicant] = useState(null); // { listType: 'all'|'accepted'|'declined', index }
   const [inboxSearch, setInboxSearch] = useState('');
   const [inboxFilter, setInboxFilter] = useState('all'); // all | pending | accepted
+  const [inboxMode, setInboxMode] = useState(standaloneInbox ? 'admin_rooms' : 'applicants'); // 'applicants' | 'admin_rooms'
   const [viewMessage, setViewMessage] = useState(null); // { messageId }
   const [replyText, setReplyText] = useState('');
   const [recommendationModal, setRecommendationModal] = useState(false);
@@ -1050,36 +1082,52 @@ export default function ScholarshipDashboard({
     if (token) {
       socketService.connect(token);
 
-      // Track which rooms belong to this admin
-      const myRooms = new Set();
+      const userRole = (localStorage.getItem('userRole') || '').toLowerCase();
+      const isSuperAdminUser = (
+        standaloneInbox ||
+        providerKey === 'system' ||
+        userRole === 'admin' ||
+        userRole === 'superadmin' ||
+        userRole === 'super_admin' ||
+        !activeProviderNo ||
+        activeProviderNo === 0
+      );
+
+      const visibleRooms = isSuperAdminUser
+        ? ALL_ADMIN_PROVIDER_ROOMS
+        : ALL_ADMIN_PROVIDER_ROOMS.filter(r => r.pro_no === Number(activeProviderNo));
+
+      visibleRooms.forEach(r => {
+        socketService.loadHistory(r.room);
+      });
 
       const unsubMsg = socketService.subscribe('message', (msg) => {
-        // Track room if valid
-        if (msg.room) myRooms.add(msg.room);
-
         setData(prev => {
-          // Check if message already exists
-          const roomMsgs = prev.inbox.filter(m => m.room === msg.room);
-          const isDuplicate = roomMsgs.some(m => {
-            if (msg.m_id && m.m_id) return String(m.m_id) === String(msg.m_id);
-            return (
-              m.message === msg.message &&
-              m.username === msg.username &&
-              m.timestamp === msg.timestamp
-            );
+          const existingIndex = prev.inbox.findIndex(m => {
+            if (msg.m_id && m.m_id && String(m.m_id) === String(msg.m_id)) return true;
+            if (typeof m.id === 'string' && m.id.startsWith('temp-') && m.message === msg.message && m.room === msg.room) return true;
+            return m.message === msg.message && m.studentName === msg.username && m.room === msg.room;
           });
 
-          if (isDuplicate) return prev;
+          if (existingIndex !== -1) {
+            const updatedInbox = [...prev.inbox];
+            updatedInbox[existingIndex] = {
+              ...updatedInbox[existingIndex],
+              id: msg.m_id || updatedInbox[existingIndex].id,
+              m_id: msg.m_id,
+              timestamp: msg.timestamp || updatedInbox[existingIndex].timestamp
+            };
+            return { ...prev, inbox: sortMessages(updatedInbox) };
+          }
 
-          const [appNo, proNo] = msg.room.split('+');
           const isActiveRoom = currentInboxRoomRef.current === msg.room;
           const isAdminMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
           const nextMessage = {
             id: msg.m_id || (Date.now() + Math.random()),
             m_id: msg.m_id,
             studentName: msg.username,
-            studentEmail: appNo,
-            applicant_no: msg.applicant_no || appNo,
+            studentEmail: msg.username,
+            applicant_no: msg.applicant_no || msg.room,
             studentStatus: msg.student_status,
             message: msg.message,
             timestamp: msg.timestamp,
@@ -1100,7 +1148,6 @@ export default function ScholarshipDashboard({
         const messages = data.messages || [];
 
         setData(prev => {
-          // Filter out existing messages in this room to avoid duplicates
           const otherMsgs = prev.inbox.filter(m => m.room !== roomId);
           const roomMsgs = prev.inbox.filter(m => m.room === roomId);
 
@@ -1112,17 +1159,15 @@ export default function ScholarshipDashboard({
             });
 
             if (!isDuplicate) {
-              const [appNo, proNo] = roomId.split('+');
               const isActiveRoom = currentInboxRoomRef.current === roomId;
-              // Check if it's admin/provider sender
               const isAdminMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
 
               nextMsgs.push({
                 id: msg.m_id || (Date.now() + Math.random()),
                 m_id: msg.m_id,
                 studentName: msg.username,
-                studentEmail: appNo,
-                applicant_no: msg.applicant_no || appNo,
+                studentEmail: msg.username,
+                applicant_no: msg.applicant_no || roomId,
                 studentStatus: msg.student_status,
                 message: msg.message,
                 timestamp: msg.timestamp,
@@ -1141,19 +1186,21 @@ export default function ScholarshipDashboard({
       });
 
       const unsubLogged = socketService.subscribe('logged_in', (data) => {
-        // Store authorized rooms and load history for each
-        // rooms may be [{room, provider_name}] objects or plain strings
+        // Load history for authorized rooms returned by backend
         if (data.rooms && data.rooms.length > 0) {
           data.rooms.forEach(roomObj => {
             const roomId = typeof roomObj === 'string' ? roomObj : roomObj.room;
-            myRooms.add(roomId);
-            socketService.loadHistory(roomId);
+            if (roomId) {
+              socketService.loadHistory(roomId);
+            }
           });
         }
       });
 
       const unsubRoom = socketService.subscribe('add_room', (roomData) => {
-        if (roomData.room) myRooms.add(roomData.room);
+        if (roomData && roomData.room) {
+          socketService.loadHistory(roomData.room);
+        }
       });
 
       // Subscribe to applicant status updates from other admins
@@ -1198,6 +1245,22 @@ export default function ScholarshipDashboard({
       };
     }
   }, [providerKey, providerName]);
+
+  useEffect(() => {
+    const allKnown = [
+      ...(data.applicants || []),
+      ...(data.accepted || []),
+      ...(data.rejected || []),
+      ...(data.declined || []),
+      ...(data.cancelled || [])
+    ];
+    allKnown.forEach(a => {
+      const appNo = a.applicant_no || a.id;
+      if (appNo) {
+        socketService.loadHistory(`${appNo}+${activeProviderNo || 1}`);
+      }
+    });
+  }, [data.applicants.length, data.accepted.length, activeProviderNo]);
 
   // Filter applicants by month
   const getMonthlyApplicants = (applicants, monthFilter) => {
@@ -2667,99 +2730,114 @@ export default function ScholarshipDashboard({
   };
 
   const groupMessagesByStudent = (messages) => {
-    const grouped = {};
     const userRole = (localStorage.getItem('userRole') || '').toLowerCase();
-    const isSuperAdmin = (userRole === 'admin' || userRole === 'superadmin' || userRole === 'super_admin');
+    const isSuperAdminUser = (
+      standaloneInbox ||
+      providerKey === 'system' ||
+      userRole === 'admin' ||
+      userRole === 'superadmin' ||
+      userRole === 'super_admin' ||
+      !activeProviderNo ||
+      activeProviderNo === 0
+    );
 
-    // Seed with all known applicants so rooms show up even if no messages exist yet
-    const allKnownApplicants = [
-      ...(data.applicants || []),
-      ...(data.accepted || []),
-      ...(data.rejected || []),
-      ...(data.declined || []),
-      ...(data.cancelled || [])
-    ];
-    allKnownApplicants.forEach(a => {
-      const key = (a.applicant_no || a.id || '').toString();
-      if (!key) return;
+    const grouped = {};
 
-      const applicantRoom = a.scholarshipNo ? `${key}+${activeProviderNo}` : null;
+    if (inboxMode === 'admin_rooms') {
+      const visibleRooms = isSuperAdminUser
+        ? ALL_ADMIN_PROVIDER_ROOMS
+        : ALL_ADMIN_PROVIDER_ROOMS.filter(r => r.pro_no === Number(activeProviderNo));
 
-      grouped[key] = {
-        studentName: a.name || (a.firstName ? `${a.firstName} ${a.lastName}` : 'Unknown Applicant'),
-        studentEmail: a.email || a.emailAddress,
-        studentPhone: a.mobileNumber || a.phone,
-        applicant_no: key,
-        room: applicantRoom,
-        messages: [],
-        unreadCount: 0,
-        lastMessage: {
-          timestamp: a.dateApplied || a.createdAt || new Date(0).toISOString(),
-          message: "No messages yet",
-          studentStatus: a.status || 'Pending',
-          subject: 'No conversations started yet',
-          room: applicantRoom
-        },
-      };
-    });
-
-    // Seed Super Admin Support conversation channel for provider admins
-    if (!isSuperAdmin) {
-      const superAdminRoom = `superadmin_room_${currentUserId || activeProviderNo || 1}`;
-      const superAdminKey = 'superadmin_channel';
-      grouped[superAdminKey] = {
-        studentName: 'Super Admin Support',
-        studentEmail: 'superadmin@iskomats.ph',
-        studentPhone: 'System Administrator',
-        applicant_no: superAdminKey,
-        room: superAdminRoom,
-        messages: [],
-        unreadCount: 0,
-        lastMessage: {
-          timestamp: new Date(0).toISOString(),
-          message: "No messages yet with Super Admin",
-          studentStatus: 'Admin Support',
-          subject: 'Super Admin Support Channel',
-          room: superAdminRoom
-        }
-      };
-    }
-
-    sortMessages(messages).forEach((m) => {
-      let key = '';
-
-      // Check if message belongs to a superadmin room
-      if (m.room && (m.room.startsWith('superadmin_room_') || m.room.startsWith('superadmin_'))) {
-        if (!isSuperAdmin) {
-          key = 'superadmin_channel';
-        } else {
-          const targetId = m.room.replace('superadmin_room_', '').replace('superadmin_', '');
-          key = `superadmin_${targetId}`;
-          if (!grouped[key]) {
-            const adminName = (m.username && m.username !== 'Super Admin' && m.username !== 'Admin')
-              ? m.username
-              : `Admin Account #${targetId}`;
-            grouped[key] = {
-              studentName: adminName,
-              studentEmail: `admin_${targetId}@iskomats.ph`,
-              studentPhone: 'Administrator Channel',
-              applicant_no: key,
-              room: m.room,
-              messages: [],
-              unreadCount: 0,
-              lastMessage: null
-            };
+      visibleRooms.forEach(r => {
+        grouped[r.applicant_no] = {
+          studentName: r.studentName,
+          studentEmail: r.studentEmail,
+          applicant_no: r.applicant_no,
+          room: r.room,
+          pro_no: r.pro_no,
+          badge: r.badge,
+          icon: r.icon,
+          isAdminRoom: true,
+          messages: [],
+          unreadCount: 0,
+          lastMessage: {
+            timestamp: new Date(0).toISOString(),
+            message: "No messages yet in this channel",
+            studentStatus: r.badge,
+            subject: "Official Admin Channel",
+            room: r.room
           }
+        };
+      });
+
+      sortMessages(messages).forEach((m) => {
+        if (!m.room) return;
+        const targetRoom = visibleRooms.find(r => r.room === m.room);
+        if (targetRoom && grouped[targetRoom.applicant_no]) {
+          grouped[targetRoom.applicant_no].messages.push(m);
+          if (!m.read) grouped[targetRoom.applicant_no].unreadCount += 1;
+          grouped[targetRoom.applicant_no].lastMessage = m;
         }
-      } else {
-        // Standard applicant room "app_no+pro_no"
+      });
+    } else {
+      // Applicant mode: Group applicant messages
+      const allKnownApplicants = [
+        ...(data.applicants || []),
+        ...(data.accepted || []),
+        ...(data.rejected || []),
+        ...(data.declined || []),
+        ...(data.cancelled || [])
+      ];
+
+      allKnownApplicants.forEach(a => {
+        const key = (a.applicant_no || a.id || '').toString();
+        if (!key) return;
+
+        const normName = normalizeProviderIdentity(a.name || (a.firstName ? `${a.firstName} ${a.lastName}` : ''));
+        const normEmail = (a.email || a.emailAddress || '').toLowerCase();
+
+        // Skip provider/admin alias accounts from applicant list
+        if (
+          adminSenderAliases.has(normName) ||
+          normName.includes('mayor') ||
+          normName.includes('vilma') ||
+          normName.includes('ched') ||
+          normName.includes('admin') ||
+          normEmail.includes('admin@') ||
+          normEmail.includes('superadmin')
+        ) {
+          return;
+        }
+
+        const applicantRoom = a.scholarshipNo ? `${key}+${activeProviderNo || 1}` : `${key}+${activeProviderNo || 1}`;
+
+        if (!grouped[key]) {
+          grouped[key] = {
+            studentName: a.name || (a.firstName ? `${a.firstName} ${a.lastName}` : `Applicant ${key}`),
+            studentEmail: a.email || a.emailAddress,
+            studentPhone: a.mobileNumber || a.phone,
+            applicant_no: key,
+            room: applicantRoom,
+            isAdminRoom: false,
+            messages: [],
+            unreadCount: 0,
+            lastMessage: {
+              timestamp: a.dateApplied || a.createdAt || new Date(0).toISOString(),
+              message: "No messages yet",
+              studentStatus: a.status || getStudentStatus(key, a.name),
+              subject: 'No conversations started yet',
+              room: applicantRoom
+            },
+          };
+        }
+      });
+
+      sortMessages(messages).forEach((m) => {
+        if (!m.room || m.room.startsWith('provider_room_')) return;
+
         let resolvedApplicantNo = m.applicant_no ? m.applicant_no.toString() : '';
-
-        if (!resolvedApplicantNo && m.room) {
-          const parts = m.room.split('+');
-          if (parts.length > 0 && parts[0]) {
-            resolvedApplicantNo = parts[0].toString();
-          }
+        if (!resolvedApplicantNo && m.room && m.room.includes('+')) {
+          resolvedApplicantNo = m.room.split('+')[0];
         }
 
         if (!resolvedApplicantNo) {
@@ -2772,46 +2850,20 @@ export default function ScholarshipDashboard({
           }
         }
 
-        key = resolvedApplicantNo || (m.studentEmail || m.studentName || m.room || '').toString();
-      }
+        const key = resolvedApplicantNo;
+        if (!key || !grouped[key]) return;
 
-      if (!key) return;
+        grouped[key].messages.push(m);
+        if (!m.read) grouped[key].unreadCount += 1;
+        grouped[key].lastMessage = m;
+      });
+    }
 
-      if (!grouped[key]) {
-        const applicant = allKnownApplicants.find(a =>
-          (a.applicant_no || a.id || '').toString() === key
-        );
-
-        let initialName = m.studentName;
-        if (applicant && applicant.name) {
-          initialName = applicant.name;
-        } else if (m.studentName === 'System' || /(?:Scholarship|Dunong) Program$/i.test(m.studentName || '')) {
-          initialName = `Applicant ${key}`;
-        }
-
-        grouped[key] = {
-          studentName: initialName,
-          studentEmail: m.studentEmail || (applicant?.email || applicant?.emailAddress),
-          studentPhone: m.studentPhone || (applicant?.mobileNumber || applicant?.phone),
-          applicant_no: key,
-          room: m.room,
-          messages: [],
-          unreadCount: 0,
-          lastMessage: null,
-        };
-      }
-      grouped[key].messages.push(m);
-      if (!m.read) grouped[key].unreadCount += 1;
-      grouped[key].lastMessage = m;
-    });
-
-    return Object.values(grouped)
-      .map((conversation) => ({
-        ...conversation,
-        messages: sortMessages(conversation.messages),
-        lastMessage: sortMessages(conversation.messages).at(-1) || conversation.lastMessage,
-      }))
-      .sort((a, b) => compareMessageOrder(b.lastMessage, a.lastMessage));
+    return Object.values(grouped).map((conversation) => ({
+      ...conversation,
+      messages: sortMessages(conversation.messages),
+      lastMessage: sortMessages(conversation.messages).at(-1) || conversation.lastMessage,
+    }));
   };
 
   const markAsRead = (messageId) => {
@@ -2845,16 +2897,76 @@ export default function ScholarshipDashboard({
       console.warn('Cannot send reply: Missing message text or room.', { room, replyText });
       return;
     }
-    socketService.sendMessage(room, userName, replyText, programName);
+
+    const textToSend = replyText.trim();
+    const tempId = `temp-${Date.now()}-${Math.random()}`;
+    const nowIso = new Date().toISOString();
+
+    const optimisticMsg = {
+      id: tempId,
+      m_id: tempId,
+      studentName: userName || userFirstName || 'Admin',
+      studentEmail: userName || userFirstName || 'Admin',
+      applicant_no: currentConversation?.applicant_no || room,
+      studentStatus: 'Active',
+      message: textToSend,
+      timestamp: nowIso,
+      read: true,
+      is_student_sender: false,
+      room: room
+    };
+
+    setData((prev) => ({
+      ...prev,
+      inbox: sortMessages([...(prev.inbox || []), optimisticMsg])
+    }));
+
     setReplyText('');
+    socketService.sendMessage(room, userName, textToSend, programName);
   };
 
   const allMessages = data.inbox || [];
   const unreadCount = allMessages.filter((m) => !m.read).length;
-  const conversations = useMemo(() => groupMessagesByStudent(allMessages), [allMessages]);
-  const currentConversation = viewMessage?.applicant_no
-    ? conversations.find((c) => c.applicant_no?.toString() === viewMessage.applicant_no?.toString())
-    : null;
+  const conversations = useMemo(() => groupMessagesByStudent(allMessages), [allMessages, inboxMode]);
+
+  const filteredConversations = useMemo(() => {
+    let filtered = conversations;
+
+    if (inboxMode === 'applicants') {
+      filtered = filtered.filter(c => !c.isAdminRoom && !c.room?.startsWith('provider_room_'));
+
+      if (inboxFilter !== 'all') {
+        filtered = filtered.filter((c) => {
+          const studentStatus = getStudentStatus(c.applicant_no, c.studentName, c.lastMessage?.studentStatus);
+          if (inboxFilter === 'pending') {
+            return studentStatus === 'Pending';
+          } else if (inboxFilter === 'accepted') {
+            return studentStatus === 'Accepted';
+          }
+          return true;
+        });
+      }
+
+      if (inboxSearch.trim()) {
+        const q = inboxSearch.toLowerCase();
+        filtered = filtered.filter((c) => {
+          return (
+            c.studentName.toLowerCase().includes(q) ||
+            (c.studentEmail || '').toLowerCase().includes(q) ||
+            c.messages.some((m) => (m.message || '').toLowerCase().includes(q))
+          );
+        });
+      }
+    } else {
+      filtered = filtered.filter(c => c.isAdminRoom || c.room?.startsWith('provider_room_'));
+    }
+
+    return filtered;
+  }, [conversations, inboxSearch, inboxFilter, inboxMode]);
+
+  const currentConversation = (viewMessage?.applicant_no
+    ? filteredConversations.find((c) => c.applicant_no?.toString() === viewMessage.applicant_no?.toString() || c.room === viewMessage.room)
+    : null) || filteredConversations[0] || null;
   const currentConversationMessages = useMemo(
     () => sortMessages(currentConversation?.messages || []),
     [currentConversation]
@@ -2874,42 +2986,7 @@ export default function ScholarshipDashboard({
     inboxMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [currentConversation, currentConversationMessages.length, section]);
 
-  const filteredConversations = useMemo(() => {
-    let filtered = conversations;
 
-    // Apply status filter
-    if (inboxFilter !== 'all') {
-      filtered = filtered.filter((c) => {
-        const studentStatus = getStudentStatus(c.studentEmail, c.studentName, c.lastMessage?.studentStatus);
-        if (inboxFilter === 'pending') {
-          return studentStatus === 'Pending';
-        } else if (inboxFilter === 'accepted') {
-          return studentStatus === 'Accepted';
-        }
-        return true;
-      });
-    } else {
-      // By default, do not show Declined applicants in the inbox
-      filtered = filtered.filter((c) => {
-        const studentStatus = getStudentStatus(c.studentEmail, c.studentName, c.lastMessage?.studentStatus);
-        return studentStatus !== 'Declined';
-      });
-    }
-
-    // Apply search filter
-    if (inboxSearch.trim()) {
-      const q = inboxSearch.toLowerCase();
-      filtered = filtered.filter((c) => {
-        return (
-          c.studentName.toLowerCase().includes(q) ||
-          (c.studentEmail || '').toLowerCase().includes(q) ||
-          c.messages.some((m) => (m.message || '').toLowerCase().includes(q))
-        );
-      });
-    }
-
-    return filtered;
-  }, [conversations, inboxSearch, inboxFilter]);
 
   const renderDashboard = () => {
     return (
@@ -5560,122 +5637,154 @@ export default function ScholarshipDashboard({
 
 
   const renderInbox = () => (
-    <div className="flex flex-col h-[calc(100vh-6.5rem)] sm:h-[calc(100vh-8rem)] bg-gradient-to-br from-gray-50 to-blue-50/30 animate-in fade-in duration-300">
-      <div className="relative overflow-hidden bg-gradient-to-br from-[#800020] via-[#650018] to-[#a00028] rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 text-white mb-3 sm:mb-4 flex-shrink-0">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.06\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-80" />
-        <div className="relative flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
-              <FaInbox className="text-lg sm:text-xl text-white" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-base sm:text-xl font-bold truncate">{messengerTitle}</h2>
-              <p className="text-white/90 text-xs sm:text-sm truncate">Hello, {userFirstName}! {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}</p>
-            </div>
-          </div>
-          <button type="button" onClick={() => setSection('track')} className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors text-white font-medium text-xs sm:text-sm flex-shrink-0">
-            Track
+    <div className={`flex flex-col ${standaloneInbox ? 'h-[calc(100vh-14rem)] min-h-[500px]' : 'h-[calc(100vh-6.5rem)] sm:h-[calc(100vh-8rem)]'} bg-gradient-to-br from-gray-50 to-blue-50/30 animate-in fade-in duration-300`}>
+        <div className="flex items-center gap-3 mb-3 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              setInboxMode('applicants');
+              setViewMessage(null);
+            }}
+            className={`px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2.5 ${
+              inboxMode === 'applicants'
+                ? 'bg-[#800020] text-white shadow-lg shadow-rose-900/20 ring-2 ring-[#800020]/30'
+                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
+            }`}
+          >
+            <FaUsers className="text-sm" /> Applicant Messages
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setInboxMode('admin_rooms');
+              setViewMessage(null);
+            }}
+            className={`px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2.5 ${
+              inboxMode === 'admin_rooms'
+                ? 'bg-[#800020] text-white shadow-lg shadow-rose-900/20 ring-2 ring-[#800020]/30'
+                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
+            }`}
+          >
+            <FaInbox className="text-sm" /> Super Admin Chat
           </button>
         </div>
-      </div>
 
       <div className="flex-1 flex flex-col md:flex-row gap-3 sm:gap-4 overflow-hidden">
         <div className={`w-full md:w-80 flex-shrink-0 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col ${currentConversation ? 'hidden md:flex' : 'flex'}`}>
-          <div className="p-3 sm:p-4 border-b border-gray-100">
-            <div className="flex items-center gap-2 mb-2 sm:mb-3">
-              <FaSearch className="text-gray-400 flex-shrink-0" />
-              <input
-                type="text"
-                placeholder="Search conversations..."
-                value={inboxSearch}
-                onChange={(e) => setInboxSearch(e.target.value)}
-                className="flex-1 px-3 py-1.5 sm:py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020] text-xs sm:text-sm"
-              />
+          {inboxMode === 'applicants' ? (
+            <div className="p-3 sm:p-4 border-b border-gray-100 bg-white">
+              <div className="flex items-center gap-2 mb-2 sm:mb-3">
+                <FaSearch className="text-gray-400 flex-shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Search conversations..."
+                  value={inboxSearch}
+                  onChange={(e) => setInboxSearch(e.target.value)}
+                  className="flex-1 px-3 py-1.5 sm:py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020] text-xs sm:text-sm"
+                />
+              </div>
+              <div className="flex gap-1.5 sm:gap-2">
+                <button
+                  onClick={() => setInboxFilter('all')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                    inboxFilter === 'all' ? 'bg-[#800020] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setInboxFilter('pending')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                    inboxFilter === 'pending' ? 'bg-yellow-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Pending
+                </button>
+                <button
+                  onClick={() => setInboxFilter('accepted')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                    inboxFilter === 'accepted' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Accepted
+                </button>
+              </div>
             </div>
-            <div className="flex gap-1.5 sm:gap-2">
-              <button
-                onClick={() => setInboxFilter('all')}
-                className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-medium transition-colors ${inboxFilter === 'all'
-                  ? 'bg-[#800020] text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setInboxFilter('pending')}
-                className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-medium transition-colors ${inboxFilter === 'pending'
-                  ? 'bg-yellow-500 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-              >
-                Pending
-              </button>
-              <button
-                onClick={() => setInboxFilter('accepted')}
-                className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-medium transition-colors ${inboxFilter === 'accepted'
-                  ? 'bg-green-500 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-              >
-                Accepted
-              </button>
+          ) : (
+            <div className="p-3 sm:p-4 border-b border-gray-100 bg-gray-50/80 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-[#800020] text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                  <FaInbox />
+                </div>
+                <div>
+                  <h3 className="font-bold text-xs sm:text-sm text-gray-900 uppercase tracking-wider">Official Admin Rooms</h3>
+                  <p className="text-[10px] text-gray-400 font-medium">Channel Communications</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-[#800020]/10 text-[#800020] border border-[#800020]/20">
+                {filteredConversations.length} {filteredConversations.length === 1 ? 'Room' : 'Rooms'}
+              </span>
             </div>
-          </div>
+          )}
 
           <div className="flex-1 overflow-y-auto">
             {filteredConversations.length > 0 ? (
               <div className="divide-y divide-gray-100">
                 {filteredConversations.map((conv) => {
-                  const isActive = currentConversation && currentConversation.applicant_no?.toString() === conv.applicant_no?.toString();
+                  const isActive = currentConversation && (currentConversation.applicant_no?.toString() === conv.applicant_no?.toString() || currentConversation.room === conv.room);
+                  const status = getStudentStatus(conv.applicant_no, conv.studentName, conv.lastMessage?.studentStatus);
+
                   return (
                     <div
-                      key={conv.studentEmail || conv.studentName}
+                      key={conv.room || conv.applicant_no}
                       onClick={() => {
-                        const room = conv.room || (conv.messages.length > 0 ? conv.messages[0].room : conv.lastMessage?.room);
-                        if (room) {
-                          markConversationAsRead(conv.applicant_no, room);
-                          setViewMessage({
-                            messageId: conv.lastMessage?.id || `new-${conv.applicant_no}`,
-                            applicant_no: conv.applicant_no
-                          });
-                          socketService.loadHistory(room);
-                        } else {
-                          console.warn('No room found for conversation:', conv);
-                          const fallbackRoom = `${conv.applicant_no}+${activeProviderNo}`;
-                          markConversationAsRead(conv.applicant_no, fallbackRoom);
-                          setViewMessage({
-                            messageId: `new-${conv.applicant_no}`,
-                            applicant_no: conv.applicant_no
-                          });
-                          socketService.loadHistory(fallbackRoom);
-                        }
+                        markConversationAsRead(conv.applicant_no, conv.room);
+                        setViewMessage({
+                          messageId: conv.lastMessage?.id || `new-${conv.applicant_no}`,
+                          applicant_no: conv.applicant_no,
+                          room: conv.room
+                        });
+                        socketService.loadHistory(conv.room);
                       }}
                       className={`p-3 sm:p-4 cursor-pointer transition-colors border-l-4 ${isActive
-                        ? 'bg-blue-100 border-l-4 border-[#800020] shadow-sm'
-                        : `border-l-4 border-transparent hover:bg-blue-50/50 ${conv.unreadCount > 0 ? 'bg-blue-50/30' : ''}`
+                        ? 'bg-rose-50/80 border-l-4 border-[#800020] shadow-sm'
+                        : `border-l-4 border-transparent hover:bg-gray-50 ${conv.unreadCount > 0 ? 'bg-rose-50/20' : ''}`
                         }`}
                     >
                       <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-semibold flex-shrink-0 text-sm">
-                          {conv.studentName.charAt(0).toUpperCase()}
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-black flex-shrink-0 text-base shadow-sm border border-white/20">
+                          {conv.isAdminRoom ? (
+                            <i className={conv.icon || 'fas fa-landmark'}></i>
+                          ) : (
+                            conv.studentName.charAt(0).toUpperCase()
+                          )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="font-semibold text-gray-900 truncate text-xs sm:text-sm">{conv.studentName}</span>
+                            <span className="font-bold text-gray-900 truncate text-xs sm:text-sm">{conv.studentName}</span>
                             {conv.unreadCount > 0 && (
-                              <span className="ml-2 px-2 py-0.5 bg-blue-600 text-white text-[10px] sm:text-xs font-bold rounded-full flex-shrink-0">
+                              <span className="ml-2 px-2 py-0.5 bg-[#800020] text-white text-[10px] sm:text-xs font-bold rounded-full flex-shrink-0">
                                 {conv.unreadCount}
                               </span>
                             )}
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold uppercase bg-gray-100 text-gray-700 border border-gray-200 flex-shrink-0">
-                              {getStudentStatus(conv.studentEmail, conv.studentName, conv.lastMessage?.studentStatus)}
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold uppercase flex-shrink-0 ${
+                              conv.isAdminRoom
+                                ? 'bg-rose-50 text-[#800020] border border-rose-100'
+                                : status === 'Accepted'
+                                ? 'bg-green-100 text-green-700 border border-green-200'
+                                : status === 'Pending'
+                                ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                                : 'bg-gray-100 text-gray-700 border border-gray-200'
+                            }`}>
+                              {conv.isAdminRoom ? conv.badge : status}
                             </span>
-                            <p className="text-xs text-gray-600 truncate mb-1 flex-1">{conv.lastMessage?.subject || ''}</p>
+                            <p className="text-xs text-gray-600 truncate flex-1">{conv.lastMessage?.message || ''}</p>
                           </div>
-                          <span className="text-[10px] sm:text-xs text-gray-400">{conv.lastMessage ? formatDate(conv.lastMessage.timestamp) : ''}</span>
+                          {!conv.isAdminRoom && conv.lastMessage?.timestamp && conv.lastMessage.timestamp !== new Date(0).toISOString() && (
+                            <span className="text-[10px] sm:text-xs text-gray-400 mt-1 block">{formatDate(conv.lastMessage.timestamp)}</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -5685,7 +5794,7 @@ export default function ScholarshipDashboard({
             ) : (
               <div className="flex flex-col items-center justify-center py-12 px-6">
                 <FaInbox className="text-4xl text-gray-300 mb-3" />
-                <p className="text-gray-500 text-sm text-center">{inboxSearch ? 'No conversations found' : 'No messages yet'}</p>
+                <p className="text-gray-500 text-sm text-center">No conversations found</p>
               </div>
             )}
           </div>
@@ -5703,20 +5812,22 @@ export default function ScholarshipDashboard({
                   >
                     ← Back
                   </button>
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-semibold flex-shrink-0 text-sm">
-                    {currentConversation.studentName.charAt(0).toUpperCase()}
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-black flex-shrink-0 text-base shadow-sm border border-white/20">
+                    {currentConversation.isAdminRoom ? (
+                      <i className={currentConversation.icon || 'fas fa-landmark'}></i>
+                    ) : (
+                      currentConversation.studentName.charAt(0).toUpperCase()
+                    )}
                   </div>
                   <div className="min-w-0">
-                    <h3 className="font-semibold text-gray-900 truncate text-xs sm:text-sm">{currentConversation.studentName}</h3>
-                    <p className="text-[11px] sm:text-xs text-gray-500 truncate">{currentConversation.studentEmail}</p>
-                    <p className="text-[10px] text-gray-500">
-                      Status: <span className="font-semibold">{getStudentStatus(currentConversation.studentEmail, currentConversation.studentName, currentConversation.lastMessage?.studentStatus)}</span>
+                    <h3 className="font-bold text-gray-900 truncate text-xs sm:text-sm">{currentConversation.studentName}</h3>
+                    <p className="text-[11px] sm:text-xs text-gray-500 truncate">
+                      {currentConversation.isAdminRoom
+                        ? 'Official Admin Communication Channel'
+                        : (currentConversation.studentEmail || `Status: ${getStudentStatus(currentConversation.applicant_no, currentConversation.studentName)}`)}
                     </p>
                   </div>
                 </div>
-                <button type="button" onClick={() => setViewMessage(null)} className="text-xs sm:text-sm text-gray-600 hover:text-[#800020] flex-shrink-0 hidden md:block">
-                  Back
-                </button>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 bg-white">
@@ -5817,6 +5928,14 @@ export default function ScholarshipDashboard({
       </div>
     </div>
   );
+
+  if (standaloneInbox) {
+    return (
+      <div className="w-full flex-1 flex flex-col min-h-0">
+        {renderInbox()}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex bg-gradient-to-br from-gray-50 to-blue-50/30 pt-16 sm:pt-20 fixed-sidebar-layout">

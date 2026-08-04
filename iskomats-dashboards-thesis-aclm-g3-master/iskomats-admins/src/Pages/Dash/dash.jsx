@@ -747,11 +747,12 @@ export default function Dash() {
             ) : (
               <>
                 {activeTab === 'inbox' && (
-                  <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-2 sm:p-4 flex-1">
+                  <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-2 sm:p-4 flex-1 flex flex-col min-h-0">
                     <ScholarshipDashboard
                       providerKey="system"
                       providerName="Super Admin"
                       dashboardTitle="Super Admin & Admin Inbox"
+                      standaloneInbox={true}
                     />
                   </div>
                 )}
