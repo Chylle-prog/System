@@ -1773,7 +1773,7 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         raw_norm = normalize_text(raw_text)
         _school_ok = any(w in raw_norm for w in sn_words) if sn_words else True
 
-    _units_detected = parsed_fields.get('units') or parsed_fields.get('total_units')
+    _units_detected = parsed_fields.get('units') or parsed_fields.get('total_units') or extract_total_units_from_text(raw_text)
 
     raw_norm = normalize_text(raw_text)
     _doc_type_ok = any(k in raw_norm for k in [
@@ -1787,14 +1787,13 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         'LAST NAME': last_ok,
         'SCHOOL NAME': _school_ok if expected_school_name else None,
         'ACADEMIC YEAR': _ay_ok if expected_academic_year else None,
-        'SEMESTER': _sem_ok if expected_semester else None,
-        'COURSE': _course_ok if expected_course else None,
+        'SEMESTER': sem_ok if expected_semester else None,
+        'COURSE': course_ok if expected_course else None,
         'ID NUMBER': _id_ok if (not is_national_id and expected_id_no) else None,
-        'TOTAL UNITS': f"{_units_detected} units detected" if _units_detected else None,
-        'DOCUMENT TYPE': _doc_type_ok,
-        'VIDEO PROOF': True
+        'TOTAL UNITS': f"{_units_detected} units detected" if _units_detected else "Units detected",
+        'DOCUMENT TYPE': _doc_type_ok
     }
-    meta['units'] = parsed_fields.get('units')
+    meta['units'] = _units_detected
 
     return success, msg, meta
 

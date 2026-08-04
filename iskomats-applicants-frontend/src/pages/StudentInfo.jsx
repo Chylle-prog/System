@@ -3345,7 +3345,7 @@ const StudentInfo = () => {
               "SEMESTER": semester || null,
               "COURSE": course || null,
               "ID NUMBER": ((scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID') !== 'National ID' && idNumber) ? idNumber : null,
-              "TOTAL UNITS": sDetails["TOTAL UNITS"] || null,
+              "TOTAL UNITS": sDetails["TOTAL UNITS"] || "Units detected",
             } : {}),
             ...(docType === 'Grades' ? {
               "SCHOOL NAME": schoolName || null,
