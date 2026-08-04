@@ -997,8 +997,14 @@ function academic_year_matches_expected(text, expectedYear) {
   // Strip YYYY-MM-DD / YYYY.MM.DD timestamps so birthdates or issue dates don't interfere
   const textWithoutDates = normText.replace(/20\d{2}\s*[\-\/\.]\s*(?:0[1-9]|1[0-2])\s*[\-\/\.]\s*(?:[0-2][0-9]|3[01])/g, '');
 
+  // Format concatenated 8-digit and 4-digit year tokens e.g. "20252026" -> "2025-2026", "2526" -> "25-26"
+  const formattedText = textWithoutDates
+    .replace(/\b(20\d{2})\s*(20\d{2})\b/g, '$1-$2')
+    .replace(/\b(20\d{2})[\s_]?([2-9]\d)\b/g, '$1-20$2')
+    .replace(/\b([2-9]\d)(2[0-9])\b/g, '$1-$2');
+
   // 2. Check 4-digit pair matches e.g. "2025-2026", "2025/2026", "2026.2027", "2026-2027"
-  const pairMatches4D = [...textWithoutDates.matchAll(/\b(20\d{2})\s*[\-\/\.\:\+]\s*(20[0-9a-zA-Z]{2})\b/g)];
+  const pairMatches4D = [...formattedText.matchAll(/\b(20\d{2})\s*[\-\/\.\:\+]\s*(20[0-9a-zA-Z]{2})\b/g)];
   if (pairMatches4D.length > 0) {
     const hasMatchingPair = pairMatches4D.some(m => {
       const pStart = parseInt(m[1], 10);
@@ -1013,7 +1019,7 @@ function academic_year_matches_expected(text, expectedYear) {
   }
 
   // 3. Check 2-digit pair matches e.g. "25-26", "25/26", "sy 25-26"
-  const pairMatches2D = [...textWithoutDates.matchAll(/\b([2-9]\d)\s*[\-\/\.\:\+]\s*([2-9]\d)\b/g)];
+  const pairMatches2D = [...formattedText.matchAll(/\b([2-9]\d)\s*[\-\/\.\:\+]\s*([2-9]\d)\b/g)];
   if (pairMatches2D.length > 0) {
     const hasMatching2DPair = pairMatches2D.some(m => {
       const y1 = m[1];
@@ -1025,20 +1031,20 @@ function academic_year_matches_expected(text, expectedYear) {
   }
 
   // 4. Check "VALID UNTIL" / "SY" / "AY" single year match e.g. "VALID UNTIL SY 2025-2026", "VALID UNTIL 2026", "SY 2025"
-  if (/(?:valid\s*until|sy|s\.?y\.?|ay|a\.?y\.?|school\s*year|academic\s*year)/i.test(textWithoutDates)) {
+  if (/(?:valid\s*until|sy|s\.?y\.?|ay|a\.?y\.?|school\s*year|academic\s*year)/i.test(formattedText)) {
     if (
-      textWithoutDates.includes(String(expStart)) ||
-      textWithoutDates.includes(String(expEnd)) ||
-      textWithoutDates.includes(`sy ${expStart2D}`) ||
-      textWithoutDates.includes(`sy ${expEnd2D}`) ||
-      new RegExp(`\\b${expStart2D}-${expEnd2D}\\b`).test(textWithoutDates)
+      formattedText.includes(String(expStart)) ||
+      formattedText.includes(String(expEnd)) ||
+      formattedText.includes(`sy ${expStart2D}`) ||
+      formattedText.includes(`sy ${expEnd2D}`) ||
+      new RegExp(`\\b${expStart2D}-${expEnd2D}\\b`).test(formattedText)
     ) {
       return true;
     }
   }
 
   // 5. Fallback check for single 4-digit years in text
-  const found4DigitYears = textWithoutDates.match(/\b20\d{2}\b/g) || [];
+  const found4DigitYears = formattedText.match(/\b20\d{2}\b/g) || [];
   if (found4DigitYears.includes(String(expStart)) || found4DigitYears.includes(String(expEnd))) {
     return true;
   }

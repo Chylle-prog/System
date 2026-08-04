@@ -1477,9 +1477,11 @@ def verify_academic_year_strict(expected_academic_year, found_ay_text, raw_text)
             ay_lines.append(line)
 
     search_pool = " ".join(ay_lines) if ay_lines else str(raw_text or '')
+    search_pool = re.sub(r'\b(20\d{2})\s*(20\d{2})\b', r'\1-\2', search_pool)
+    search_pool = re.sub(r'\b(20\d{2})[\s_]?([2-9]\d)\b', r'\1-20\2', search_pool)
 
-    # Extract explicit year pairs from search pool like '2025-2026', '2025-2028', '2025/2026'
-    year_pairs = re.findall(r'(20\d{2})\s*[\-\/]\s*(20[0-9a-zA-Z]{2})', search_pool)
+    # Extract explicit year pairs from search pool like '2025-2026', '20252026', '2025/2026'
+    year_pairs = re.findall(r'(20\d{2})\s*[\-\/]?\s*(20[0-9a-zA-Z]{2})', search_pool)
     
     if len(exp_years) >= 2:
         exp_start = int(exp_years[0])
