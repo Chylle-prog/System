@@ -3651,16 +3651,19 @@ const StudentInfo = () => {
             }
           }
 
-          // Tri-stream 1600px parallel cropping (Primary, 1.5x Header, 1.4x Table & Total Units)
+          const isIndigency = stepName.includes('Indigency') || docType === 'Indigency';
+          const downscaleDim = isIndigency ? 1400 : 1600;
+
+          // Parallel cropping streams (skip table crop stream for Indigency documents)
           const [fastImgUrl, headerBlobUrl, tableBlobUrl] = await Promise.all([
-            downscaleImageForFastOcr(scanInput, 1600).catch(() => null),
+            downscaleImageForFastOcr(scanInput, downscaleDim).catch(() => null),
             createHeaderRegionCropBlob(scanInput).catch(() => null),
-            createTableRegionCropBlob(scanInput).catch(() => null)
+            isIndigency ? Promise.resolve(null) : createTableRegionCropBlob(scanInput).catch(() => null)
           ]);
 
           const scanSource = fastImgUrl || scanInput;
 
-          // Run Primary Pass, Header Pass, AND Table Pass CONCURRENTLY (completes in ~0.6s!)
+          // Run Primary Pass, Header Pass, AND Table Pass CONCURRENTLY
           const [primaryRes, headerRes, tableRes] = await Promise.all([
             worker.recognize(scanSource).catch((e) => { console.warn(`[OCR Engine] Primary pass note:`, e); return null; }),
             headerBlobUrl ? worker.recognize(headerBlobUrl).catch((e) => { console.warn(`[OCR Engine] Header crop pass note:`, e); return null; }) : Promise.resolve(null),
@@ -3684,9 +3687,14 @@ const StudentInfo = () => {
           const hasLastName = userLastName && lowerBase.includes(userLastName);
           const hasFirstName = userFirstName && lowerBase.includes(userFirstName);
           const hasIdNum = idNumber && lowerBase.includes(String(idNumber).toLowerCase());
+          const hasIndigencyKeyword = isIndigency && (
+            lowerBase.includes('indigency') || lowerBase.includes('residency') ||
+            lowerBase.includes('barangay') || lowerBase.includes('kawalang') ||
+            lowerBase.includes('katibayan') || lowerBase.includes('resident')
+          );
 
-          // ⚡ Fast Tri-Stream Exit: Return immediately in ~0.6s if Name, ID Number, or Full Text extracted!
-          if ((hasLastName || hasFirstName) && (hasIdNum || baseText.length > 180)) {
+          // ⚡ Fast Exit: Return immediately in ~0.5s if Name, ID Number, Indigency Keyword, or Full Text extracted!
+          if ((hasLastName || hasFirstName || hasIndigencyKeyword) && (hasIdNum || hasIndigencyKeyword || baseText.length > 120)) {
             return baseText;
           }
 

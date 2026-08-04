@@ -1763,11 +1763,12 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
     middle_name = middle_name or ""
     last_name = last_name or ""
 
-    raw_text = extract_document_text(image_bytes, psm=3)
+    doc_type_upper = str(doc_type or '').strip().upper()
+    max_w = 1400 if 'INDIGENCY' in doc_type_upper else None
+
+    raw_text = extract_document_text(image_bytes, psm=3, max_width=max_w)
     if not raw_text.strip():
         return False, "Unable to extract readable text from document.", "", {}
-
-    doc_type_upper = str(doc_type or '').strip().upper()
 
     if 'GRADES' in doc_type_upper or 'TRANSCRIPT' in doc_type_upper or 'TOR' in doc_type_upper:
         parsed_fields = parse_grades_document(raw_text)
