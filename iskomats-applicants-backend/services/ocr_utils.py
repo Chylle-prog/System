@@ -1358,16 +1358,17 @@ def extract_total_units_from_text(raw_text):
     for i, line in enumerate(lines):
         line_clean = line.strip()
         if re.search(r'total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit', line_clean, re.IGNORECASE):
-            # Check current line (e.g. 'TOTAL UNITS : 12' or 'TOTAL UNITS : a2”' or 'TOTAL UNITS 27')
-            m_same = re.search(r'(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit)[^\d]*([a-zA-Z0-9\.\"\”\‘\’\-]+)', line_clean, re.IGNORECASE)
+            # Check current line after colon/equals/dash
+            m_same = re.search(r'(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit)\s*[:=\-]?\s*([a-zA-Z0-9\.\"\”\‘\’\-]+)', line_clean, re.IGNORECASE)
             if m_same:
-                raw_val = m_same.group(1).strip()
+                raw_val = m_same.group(1).strip().lstrip(':=\t\r\n-_ ')
                 digits_only = re.sub(r'[^0-9]', '', raw_val)
                 if digits_only and 3 <= int(digits_only) <= 45:
                     return int(digits_only)
-                conf_mapped = raw_val.lower().replace('a2', '27').replace('z', '7').replace('i', '1').replace('l', '1').replace('o', '0').replace('s', '5').replace('b', '6').replace('”', '').replace('"', '').strip()
+                
+                conf_mapped = raw_val.lower().replace('a2', '27').replace('z7', '27').replace('s12', '12').replace('s13', '12').replace('”', '').replace('"', '').strip()
                 m_num = re.search(r'\b([1-4][0-9]|[3-9])\b', conf_mapped)
-                if m_num:
+                if m_num and (digits_only or any(c in conf_mapped for c in ['a2', 'z7', 's12', 's13'])):
                     v = int(m_num.group(1))
                     if 3 <= v <= 45:
                         return v
@@ -1379,55 +1380,37 @@ def extract_total_units_from_text(raw_text):
                     break
                 if re.match(r'^[\-\=\_\s\|]+$', next_line):
                     continue
-                # Match standalone 1-2 digit number on unit total line (e.g. '12' or '27' or '12.00')
                 digits_next = re.sub(r'[^0-9]', '', next_line)
                 if digits_next and 3 <= int(digits_next) <= 45:
                     return int(digits_next)
 
-    # 2. Subject Table Units Summing & Row Counting
-    in_subject_table = False
-    subject_rows = 0
-    units_sum = 0
-
+    # 2. Subject Table Units Summing & Row Counting (Header-Independent)
     def _is_metadata_line(l):
-        return bool(re.search(r'^\s*(?:course|name|student\s*(?:no|id)?|year\s*level|scholarship|pay\s*type|reg\s*no|tran\s*date|college)\s*[:=\-]', l, re.I) or
-                    re.search(r'bachelor\s*of|bachelor\s*in|master\s*of|doctor\s*of', l, re.I))
+        return bool(re.search(r'^\s*(?:course|name|student\s*(?:no|id)?|year\s*level|scholarship|pay\s*type|reg\s*no|tran\s*date|college|school\s*year|ay\s*20\d{2}|semester)\s*[:=\+\-]', l, re.I) or
+                    re.search(r'tran\s*date|reg\s*no|ref\s*no|student\s*no|student\s*id|pay\s*type|scholarship|bachelor\s*of|bachelor\s*in|master\s*of|doctor\s*of|official\s*certificate|certificate\s*of|de\s*la\s*salle|batangas\s*state|university', l, re.I))
+
+    def _is_subject_line(l):
+        if _is_metadata_line(l):
+            return False
+        if re.search(r'assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition|outstanding|downpayment|refunds', l, re.I):
+            return False
+        if re.search(r'\b[a-zA-Z]{2,8}\d{1,3}\b', l):
+            return True
+        if re.search(r'\b(?:capstone|project|elective|social|professional|issues|life|works|rizal|filipino|literature|technopreneurship|fieldtrips|seminars|integration|architecture|networking|disiplina|system|maintenance|administration|laboratory|lecture|thesis|practicum)\b', l, re.I):
+            return True
+        if re.search(r'\b(?:it4b|it3b|it2b|it1b|mb\s*\d+|mo\s*\d+|m612|mb|mo|jrf|mw|tth|sat|sun)\b', l, re.I) and re.search(r'\b\d{1,2}:\d{2}\b|\bam\b|\bpm\b', l, re.I):
+            return True
+        return False
+
+    subject_rows = 0
 
     for line in lines:
         lower = line.lower()
+        if re.search(r'total\s*(?:no\.?\s*of\s*)?units?|otl\s*uns|assessed\s*fees|schedule\s*of\s*pay|total\s*assessment', lower):
+            break
 
-        if not in_subject_table:
-            if not _is_metadata_line(lower):
-                if re.search(r'^\s*(?:subj(?:ect)?|sugect|suject|spect|course\s*code)\b', lower) or \
-                   (('subject' in lower or 'sugect' in lower or 'suject' in lower or 'spect' in lower) and any(k in lower for k in ['sec', 'section', 'faculty', 'room', 'days', 'time', 'bldg', 'units'])) or \
-                   ('units' in lower and any(k in lower for k in ['sec', 'section', 'faculty', 'room', 'days', 'time', 'bldg'])):
-                    in_subject_table = True
-                    continue
-
-        if in_subject_table:
-            if re.search(r'total\s*(?:no\.?\s*of\s*)?units?|otl\s*uns|assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|review\s*your\s*assessment|refunds\s*and\s*other|official\s*certificate\s*of\s*registration', lower):
-                break
-
-            if re.match(r'^[\-\=\_\*\#\s\|]+$', line) or len(line) < 4:
-                continue
-            if _is_metadata_line(lower):
-                continue
-
-            # Look for unit column digit (1-6) right before section or room/days/time
-            m_u = re.search(r'\b([1-6](?:\.0)?)\s+(?:it\d[a-z\d]?|[a-z]{1,4}\d{1,2}|mb|jrf|nr|tf|m|t|w|th|f|s)\b', lower)
-            if m_u:
-                try:
-                    u = int(float(m_u.group(1)))
-                    if 1 <= u <= 6:
-                        units_sum += u
-                        subject_rows += 1
-                except ValueError:
-                    pass
-            elif len(line) >= 8 and not any(k in lower for k in ['assessed', 'tuition', 'fee', 'total']):
-                subject_rows += 1
-
-    if 3 <= units_sum <= 45:
-        return units_sum
+        if _is_subject_line(lower):
+            subject_rows += 1
 
     if subject_rows >= 1:
         estimated = subject_rows * 3

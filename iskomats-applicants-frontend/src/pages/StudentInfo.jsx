@@ -1370,123 +1370,73 @@ function extractTotalUnitsFromText(text) {
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i].trim();
     if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
-      const cleanedLine = line
-        .replace(/a2/gi, '27')
-        .replace(/S13/g, '12')
-        .replace(/S12/g, '12')
-        .replace(/S(?=\d{2})/g, '')
-        .replace(/[”"]/g, '');
-
-      const currentMatch = cleanedLine.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)[^\d]*\b([1-4]?[0-9])\b/i);
+      const currentMatch = line.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit)\s*[:=\-]?\s*([a-zA-Z0-9\.\"\”\‘\’\-]+)/i);
       if (currentMatch) {
-        const val = parseInt(currentMatch[1], 10);
-        if (!isNaN(val) && val >= 3 && val <= 48) return val;
+        const rawVal = currentMatch[1].trim().replace(/^[:=\t\r\n\-_ ]+/, '');
+        const digitsOnly = rawVal.replace(/[^0-9]/g, '');
+        if (digitsOnly && parseInt(digitsOnly, 10) >= 3 && parseInt(digitsOnly, 10) <= 45) {
+          return parseInt(digitsOnly, 10);
+        }
+
+        const confMapped = rawVal.toLowerCase()
+          .replace(/a2/g, '27')
+          .replace(/z7/g, '27')
+          .replace(/s12/g, '12')
+          .replace(/s13/g, '12')
+          .replace(/[”"]/g, '')
+          .trim();
+        const mNum = confMapped.match(/\b([1-4][0-9]|[3-9])\b/);
+        if (mNum && (digitsOnly || ['a2', 'z7', 's12', 's13'].some(c => confMapped.includes(c)))) {
+          const v = parseInt(mNum[1], 10);
+          if (!isNaN(v) && v >= 3 && v <= 45) return v;
+        }
+      }
+
+      for (let j = i + 1; j < Math.min(rawLines.length, i + 4); j++) {
+        const nextLine = rawLines[j].trim();
+        if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|outstanding|tuition/i.test(nextLine)) break;
+        if (/^[\-\=\_\s\|]+$/.test(nextLine)) continue;
+        const digitsNext = nextLine.replace(/[^0-9]/g, '');
+        if (digitsNext && parseInt(digitsNext, 10) >= 3 && parseInt(digitsNext, 10) <= 45) {
+          return parseInt(digitsNext, 10);
+        }
       }
     }
   }
 
   // 2. Secondary Strategy: Subject Line Signature Matching (Header-Independent)
   const isMetadataLine = (l) => {
-    return /^\s*(?:course|name|student\s*(?:no|id)?|year\s*level|scholarship|pay\s*type|reg\s*no|tran\s*date|college)\s*[:=\-]/i.test(l) ||
-           /bachelor\s*of|bachelor\s*in|master\s*of|doctor\s*of/i.test(l);
+    return /^\s*(?:course|name|student\s*(?:no|id)?|year\s*level|scholarship|pay\s*type|reg\s*no|tran\s*date|college|school\s*year|ay\s*20\d{2}|semester)\s*[:=\+\-]/i.test(l) ||
+           /tran\s*date|reg\s*no|ref\s*no|student\s*no|student\s*id|pay\s*type|scholarship|bachelor\s*of|bachelor\s*in|master\s*of|doctor\s*of|official\s*certificate|certificate\s*of|de\s*la\s*salle|batangas\s*state|university/i.test(l);
+  };
+
+  const isSubjectLine = (l) => {
+    if (isMetadataLine(l)) return false;
+    if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition|outstanding|downpayment|refunds/i.test(l)) return false;
+    if (/\b[a-zA-Z]{2,8}\d{1,3}\b/i.test(l)) return true;
+    if (/\b(?:capstone|project|elective|social|professional|issues|life|works|rizal|filipino|literature|technopreneurship|fieldtrips|seminars|integration|architecture|networking|disiplina|system|maintenance|administration|laboratory|lecture|thesis|practicum)\b/i.test(l)) return true;
+    if (/\b(?:it4b|it3b|it2b|it1b|mb\s*\d+|mo\s*\d+|m612|mb|mo|jrf|mw|tth|sat|sun)\b/i.test(l) && /\b\d{1,2}:\d{2}\b|\bam\b|\bpm\b/i.test(l)) return true;
+    return false;
   };
 
   let subjectRowCount = 0;
-  let explicitUnitsSum = 0;
 
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i].trim();
     const lower = line.toLowerCase();
 
-    if (
-      /assessed\s*fees/i.test(lower) ||
-      /schedule\s*of\s*pay/i.test(lower) ||
-      /schedule\s*of\s*path/i.test(lower) ||
-      /total\s*assessment/i.test(lower) ||
-      /tuition\s*fee/i.test(lower)
-    ) {
+    if (/total\s*(?:no\.?\s*of\s*)?units?|otl\s*uns|assessed\s*fees|schedule\s*of\s*pay|total\s*assessment/i.test(lower)) {
       break;
     }
 
-    if (isMetadataLine(lower)) continue;
-
-    const isSubjectRow =
-      /(?:IT4B|IT3B|IT2B|IT1B|MB\s*\d+|MO\s*\d+|M61|MB|MO|JRF|Caproj|Capstone|Elective|Social|Professional|Issues|Life|Works|Rizal|Liferiz|Itsocpro|Itelect|ITCaproj|Systadm|Wordlit|Disifil|Techpre|Itfisem|Sysiarc|Itnetw|Filipino|Literature|Networking|Technopreneurship|Seminars|Architecture|\d{1,2}:\d{2}|AM|PM|MM|\bMW\b|\bTTH\b|\bSAT\b|\bSUN\b|\bTh\b|\bW\b|\bT\b|\bF\b|\bM\b|\bS\b)/i.test(line) &&
-      !/(?:official|certificate|registration|enrolled|run\s*date|user|school\s*year|student\s*no|page\s*\d|assessed|schedule)/i.test(lower);
-
-    if (isSubjectRow) {
+    if (isSubjectLine(lower)) {
       subjectRowCount++;
-
-      const unitMatch = line.match(/\b([1-6])\b\s+(?:IT|IT4B|IT3B|IT2B|IT1B|MB|JRF|[A-Z]{2,4}\b)/i) || line.match(/\b([1-6](?:\.0)?)\b/);
-      if (unitMatch) {
-        const u = parseFloat(unitMatch[1]);
-        if (!isNaN(u) && u >= 1 && u <= 6) {
-          explicitUnitsSum += u;
-        }
-      }
     }
   }
 
-  if (explicitUnitsSum >= 6 && explicitUnitsSum <= 48) {
-    return Math.round(explicitUnitsSum);
-  }
-
-  if (subjectRowCount >= 2) {
+  if (subjectRowCount >= 1) {
     const estimatedUnits = subjectRowCount * 3;
-    if (estimatedUnits >= 6 && estimatedUnits <= 48) {
-      return estimatedUnits;
-    }
-  }
-
-  // 3. Fallback: Fraction pattern or line below TOTAL UNITS
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i].trim();
-    if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
-      for (let j = i + 1; j < Math.min(rawLines.length, i + 3); j++) {
-        const checkLine = rawLines[j].trim();
-        if (/assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(checkLine)) break;
-        const fracMatch = checkLine.match(/\d+\s*[\/\\]\s*(\d{1,2})\b/);
-        if (fracMatch) {
-          const v = parseInt(fracMatch[1], 10);
-          if (!isNaN(v) && v >= 6 && v <= 48) return v;
-        }
-        const m = checkLine.match(/\b([1-4]?[0-9])\b/);
-        if (m) {
-          const v = parseInt(m[1], 10);
-          if (!isNaN(v) && v >= 6 && v <= 48) return v;
-        }
-      }
-    }
-  }
-
-  // 3. Fallback: Scan lines between metadata and fee headers if Subject header was missed
-  let fallbackSubjectCount = 0;
-  let insideBody = false;
-
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i].trim();
-    const lower = line.toLowerCase();
-
-    if (/year\s*level|student\s*(?:no|id)|ay\s*20\d{2}|semester/i.test(lower)) {
-      insideBody = true;
-      continue;
-    }
-
-    if (insideBody) {
-      if (/total\s*units|otl\s*uns|assessed\s*fees|schedule\s*of\s*pay|schedule\s*of\s*path|total\s*assessment/i.test(lower)) {
-        break;
-      }
-      if (/^[\-\=\_\*\#\s\|]+$/.test(line) || line.length < 3) continue;
-      if (isMetadataLine(lower)) continue;
-      if (/official|certificate|registration|enrollment|de\s*la\s*salle|batangas|university|student|page/i.test(lower)) continue;
-
-      fallbackSubjectCount++;
-    }
-  }
-
-  if (fallbackSubjectCount >= 2) {
-    const estimatedUnits = fallbackSubjectCount * 3;
-    if (estimatedUnits >= 6 && estimatedUnits <= 48) {
+    if (estimatedUnits >= 3 && estimatedUnits <= 45) {
       return estimatedUnits;
     }
   }
