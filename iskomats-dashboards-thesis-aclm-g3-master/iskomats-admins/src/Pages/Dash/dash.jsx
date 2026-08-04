@@ -11,6 +11,7 @@ import {
   FaFileCsv,
   FaFileExcel,
   FaFilePdf,
+  FaInbox,
   FaKey,
   FaLock,
   FaPlus,
@@ -31,6 +32,7 @@ import {
 import * as XLSX from 'xlsx';
 import { adminAPI, scholarshipAPI } from '../../services/api';
 import socketService from '../../services/socket';
+import ScholarshipDashboard from './scholarship-dashboard';
 
 const ACTION_EVENT_OPTIONS = [
   { label: 'Password / Security', value: 'Password' },
@@ -664,6 +666,10 @@ export default function Dash() {
               <FaUsersCog className="flex-shrink-0" />
               {(!sidebarCollapsed || mobileMenuOpen) && <span>Manage Accounts</span>}
             </button>
+            <button onClick={() => setActiveTab('inbox')} className={`w-full flex items-center gap-3 rounded-xl transition-all ${activeTab === 'inbox' ? 'bg-white/20' : 'hover:bg-white/10'} ${(sidebarCollapsed && !mobileMenuOpen) ? 'justify-center p-3' : 'px-4 py-3'}`}>
+              <FaInbox className="flex-shrink-0" />
+              {(!sidebarCollapsed || mobileMenuOpen) && <span>Admin Inbox</span>}
+            </button>
 
             <div className="space-y-1">
               <button onClick={() => toggleSubmenu('reports')} className={`w-full flex items-center justify-between rounded-xl hover:bg-white/10 transition-all ${(sidebarCollapsed && !mobileMenuOpen) ? 'justify-center p-3' : 'px-4 py-3'}`}>
@@ -688,7 +694,6 @@ export default function Dash() {
             {(!sidebarCollapsed || mobileMenuOpen) && <span className="whitespace-nowrap">Generate Report</span>}
           </button>
           <button onClick={() => loadDashboardData(false)} className={`w-full py-3 bg-white/10 text-white font-black rounded-xl hover:bg-white/15 transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2 ${(sidebarCollapsed && !mobileMenuOpen) ? 'p-3' : 'px-4'}`}>
-            <span className="flex-shrink-0">•••••••••••</span>
             {(!sidebarCollapsed || mobileMenuOpen) && <span className="whitespace-nowrap">Refresh Data</span>}
           </button>
         </div>
@@ -741,6 +746,16 @@ export default function Dash() {
               </div>
             ) : (
               <>
+                {activeTab === 'inbox' && (
+                  <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-2 sm:p-4 flex-1">
+                    <ScholarshipDashboard
+                      providerKey="system"
+                      providerName="Super Admin"
+                      dashboardTitle="Super Admin & Admin Inbox"
+                    />
+                  </div>
+                )}
+
                 {activeTab === 'dashboard' && (
                   <div className="space-y-8">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

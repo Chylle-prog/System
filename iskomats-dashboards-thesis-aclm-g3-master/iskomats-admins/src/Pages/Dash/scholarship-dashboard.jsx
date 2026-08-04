@@ -2668,6 +2668,8 @@ export default function ScholarshipDashboard({
 
   const groupMessagesByStudent = (messages) => {
     const grouped = {};
+    const userRole = (localStorage.getItem('userRole') || '').toLowerCase();
+    const isSuperAdmin = (userRole === 'admin' || userRole === 'superadmin' || userRole === 'super_admin');
 
     // Seed with all known applicants so rooms show up even if no messages exist yet
     const allKnownApplicants = [
@@ -2701,34 +2703,81 @@ export default function ScholarshipDashboard({
       };
     });
 
+    // Seed Super Admin Support conversation channel for provider admins
+    if (!isSuperAdmin) {
+      const superAdminRoom = `superadmin_room_${currentUserId || activeProviderNo || 1}`;
+      const superAdminKey = 'superadmin_channel';
+      grouped[superAdminKey] = {
+        studentName: 'Super Admin Support',
+        studentEmail: 'superadmin@iskomats.ph',
+        studentPhone: 'System Administrator',
+        applicant_no: superAdminKey,
+        room: superAdminRoom,
+        messages: [],
+        unreadCount: 0,
+        lastMessage: {
+          timestamp: new Date(0).toISOString(),
+          message: "No messages yet with Super Admin",
+          studentStatus: 'Admin Support',
+          subject: 'Super Admin Support Channel',
+          room: superAdminRoom
+        }
+      };
+    }
+
     sortMessages(messages).forEach((m) => {
-      // Resolve the applicant_no safely
-      let resolvedApplicantNo = m.applicant_no ? m.applicant_no.toString() : '';
+      let key = '';
 
-      if (!resolvedApplicantNo && m.room) {
-        // If room is e.g. "2006+1", first part is the applicant number
-        const parts = m.room.split('+');
-        if (parts.length > 0 && parts[0]) {
-          resolvedApplicantNo = parts[0].toString();
+      // Check if message belongs to a superadmin room
+      if (m.room && (m.room.startsWith('superadmin_room_') || m.room.startsWith('superadmin_'))) {
+        if (!isSuperAdmin) {
+          key = 'superadmin_channel';
+        } else {
+          const targetId = m.room.replace('superadmin_room_', '').replace('superadmin_', '');
+          key = `superadmin_${targetId}`;
+          if (!grouped[key]) {
+            const adminName = (m.username && m.username !== 'Super Admin' && m.username !== 'Admin')
+              ? m.username
+              : `Admin Account #${targetId}`;
+            grouped[key] = {
+              studentName: adminName,
+              studentEmail: `admin_${targetId}@iskomats.ph`,
+              studentPhone: 'Administrator Channel',
+              applicant_no: key,
+              room: m.room,
+              messages: [],
+              unreadCount: 0,
+              lastMessage: null
+            };
+          }
         }
+      } else {
+        // Standard applicant room "app_no+pro_no"
+        let resolvedApplicantNo = m.applicant_no ? m.applicant_no.toString() : '';
+
+        if (!resolvedApplicantNo && m.room) {
+          const parts = m.room.split('+');
+          if (parts.length > 0 && parts[0]) {
+            resolvedApplicantNo = parts[0].toString();
+          }
+        }
+
+        if (!resolvedApplicantNo) {
+          const match = allKnownApplicants.find(a =>
+            (m.studentEmail && (a.email === m.studentEmail || a.emailAddress === m.studentEmail)) ||
+            (m.studentName && a.name?.toLowerCase() === m.studentName.toLowerCase())
+          );
+          if (match) {
+            resolvedApplicantNo = (match.applicant_no || match.id || '').toString();
+          }
+        }
+
+        key = resolvedApplicantNo || (m.studentEmail || m.studentName || m.room || '').toString();
       }
 
-      if (!resolvedApplicantNo) {
-        // Find in allKnownApplicants by email or name
-        const match = allKnownApplicants.find(a =>
-          (m.studentEmail && (a.email === m.studentEmail || a.emailAddress === m.studentEmail)) ||
-          (m.studentName && a.name?.toLowerCase() === m.studentName.toLowerCase())
-        );
-        if (match) {
-          resolvedApplicantNo = (match.applicant_no || match.id || '').toString();
-        }
-      }
-
-      const key = resolvedApplicantNo || (m.studentEmail || m.studentName || m.room || '').toString();
       if (!key) return;
 
       if (!grouped[key]) {
-        // Find actual applicant name for this ID from local data state if not already seeded
         const applicant = allKnownApplicants.find(a =>
           (a.applicant_no || a.id || '').toString() === key
         );
@@ -2745,6 +2794,7 @@ export default function ScholarshipDashboard({
           studentEmail: m.studentEmail || (applicant?.email || applicant?.emailAddress),
           studentPhone: m.studentPhone || (applicant?.mobileNumber || applicant?.phone),
           applicant_no: key,
+          room: m.room,
           messages: [],
           unreadCount: 0,
           lastMessage: null,
