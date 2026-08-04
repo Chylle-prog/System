@@ -1966,17 +1966,23 @@ def detect_document_tampering(image_bytes, doc_type=None, **kwargs):
             c_start, c_end = int(cols * 0.05), int(cols * 0.95)
 
             # 2a. Solid Whiteout / Blackout Overlay (#FFFFFF / #000000)
-            # Threshold raised to 8 patches (128px) to avoid false positives on paper form margins / underline areas.
+            # Requires a 2×2 cluster of pure-white/pure-black patches to avoid false positives
+            # on paper form margins and single underline pixels.
             overlay_patches = ((means >= 252) & (stds < 0.35)) | ((means <= 5) & (stds < 0.35))
-            pure_count = int(np.sum(overlay_patches[r_start:r_end, c_start:c_end]))
-            if pure_count >= 8:
-                return True, f"Digital edit / solid overlay block detected on document ({pure_count} artificial overlay patches found). Please upload an authentic, unedited document.", pure_count
+            ovl = overlay_patches[r_start:r_end, c_start:c_end].astype(np.uint8)
+            # Erode to find 2×2 clusters: a patch is "clustered" if itself AND right AND below AND diagonal are all overlay
+            ovl_cluster = (
+                ovl[:-1, :-1] & ovl[:-1, 1:] & ovl[1:, :-1] & ovl[1:, 1:]
+            )
+            pure_cluster_count = int(np.sum(ovl_cluster))
+            if pure_cluster_count >= 4:
+                return True, f"Digital edit / solid overlay block detected on document ({pure_cluster_count} clustered artificial overlay patches found). Please upload an authentic, unedited document.", pure_cluster_count
 
-            # 2b. Camera Photo / Shadowed Scan + Pure Digital White Edit Box Check
-            # Only triggers when background is darker than a pure white scan (photo taken of printed document).
-            # A genuine fill-in form will have long white lines that span the full usable document width;
-            # a digital whiteout overlay will be a localized island that does NOT span the full width.
-            # Thresholds raised to avoid false positives on pre-printed forms (e.g., indigency certificates).
+            # 2b. Camera Photo / Shadowed Scan + 2D White Edit Block Check
+            # KEY FIX: pre-printed form fill-in underlines are 1 patch (16px) tall × many patches wide.
+            # A real digital whiteout/edit overlay is a RECTANGLE — multiple rows tall × multiple cols wide.
+            # By requiring a minimum 2-row height for any detected white block, we ignore thin form underlines
+            # while still catching real rectangular edit boxes that cover typed text.
             light_pixels = gray[gray >= 120]
             if len(light_pixels) > 0:
                 doc_bg_median = float(np.median(light_pixels))
@@ -1984,40 +1990,71 @@ def detect_document_tampering(image_bytes, doc_type=None, **kwargs):
                     white_pixel_counts = np.sum(patches >= 240, axis=(2, 3))
                     white_patch_mask = (white_pixel_counts >= 20)
 
-                    max_photo_white_run = 0
-                    usable_cols = c_end - c_start
-                    for r in range(r_start, r_end):
-                        run = 0
-                        for c in range(c_start, c_end):
-                            if white_patch_mask[r, c]:
-                                run += 1
-                                if run > max_photo_white_run: max_photo_white_run = run
-                            else:
-                                run = 0
+                    # Find the largest contiguous 2D white block (rows × cols) using a sliding window.
+                    # A genuine form underline = 1 row tall; a real edit overlay = ≥2 rows tall.
+                    wpm = white_patch_mask[r_start:r_end, c_start:c_end]
+                    max_block_area = 0
+                    max_block_w = 0
+                    max_block_h = 0
+                    # Check all 2-row or taller windows for horizontal extent ≥ 4 patches (64px)
+                    for block_h in range(2, min(8, wpm.shape[0])):
+                        for r in range(wpm.shape[0] - block_h + 1):
+                            # Column mask: all rows in window are white
+                            col_all_white = np.all(wpm[r:r + block_h, :], axis=0)
+                            # Find longest horizontal run of all-white columns
+                            run = 0
+                            for c_idx in range(len(col_all_white)):
+                                if col_all_white[c_idx]:
+                                    run += 1
+                                    area = block_h * run
+                                    if area > max_block_area:
+                                        max_block_area = area
+                                        max_block_w = run
+                                        max_block_h = block_h
+                                else:
+                                    run = 0
 
-                    photo_white_patches = int(np.sum(white_patch_mask[r_start:r_end, c_start:c_end]))
-                    # Skip if the white run spans nearly the full document width —
-                    # that is a normal fill-in line on a pre-printed form, not a whiteout overlay.
-                    run_spans_full_width = usable_cols > 0 and (max_photo_white_run / usable_cols) >= 0.75
-                    # Require BOTH a long run AND many patches (AND logic); raised thresholds to reduce false positives.
-                    if not run_spans_full_width and max_photo_white_run >= 8 and photo_white_patches >= 20:
-                        return True, f"Digital edit / text patch overlay detected on document (contiguous white edit block of length {max_photo_white_run * 16}px found around text region). Please upload an authentic, unedited document.", max_photo_white_run
+                    # Only flag if block is at least 2 rows (32px) tall AND 6 cols (96px) wide.
+                    # Raising min width from 4→6 patches to avoid triggering on small inter-line whitespace.
+                    # This filters out 1-row-tall form underlines entirely.
+                    if max_block_h >= 2 and max_block_w >= 6:
+                        block_px_w = max_block_w * grid_w
+                        block_px_h = max_block_h * grid_h
+                        return True, (
+                            f"Digital edit / text patch overlay detected on document "
+                            f"(white edit block of {block_px_w}×{block_px_h}px found on document — "
+                            f"indicates digital whiteout or text replacement). "
+                            f"Please upload an authentic, unedited document."
+                        ), max_block_area
 
-            # 2c. Off-White Smooth Text Overlay (for bright scans with flat background noise)
+            # 2c. Off-White Smooth Overlay — requires a 2D block (not a thin horizontal line)
+            # Smooth near-white patches (mean ≥ 235, std < 1.6) that form a rectangle ≥ 2 rows × 8 cols.
             smooth_edit_patches = (means >= 235) & (stds < 1.6)
-            max_h_run = 0
-            for r in range(r_start, r_end):
-                run = 0
-                for c in range(c_start, c_end):
-                    if smooth_edit_patches[r, c]:
-                        run += 1
-                        if run > max_h_run: max_h_run = run
-                    else:
-                        run = 0
+            spm = smooth_edit_patches[r_start:r_end, c_start:c_end]
+            max_smooth_block_w = 0
+            max_smooth_block_h = 0
+            for block_h in range(2, min(6, spm.shape[0])):
+                for r in range(spm.shape[0] - block_h + 1):
+                    col_all_smooth = np.all(spm[r:r + block_h, :], axis=0)
+                    run = 0
+                    for c_idx in range(len(col_all_smooth)):
+                        if col_all_smooth[c_idx]:
+                            run += 1
+                            if run > max_smooth_block_w or (run == max_smooth_block_w and block_h > max_smooth_block_h):
+                                max_smooth_block_w = run
+                                max_smooth_block_h = block_h
+                        else:
+                            run = 0
 
-            # Threshold raised from 7 → 14 patches (224px): paper form backgrounds naturally produce long smooth regions.
-            if max_h_run >= 14:
-                return True, f"Digital edit / text patch overlay detected on document (contiguous edited text block overlay of length {max_h_run * 16}px found around name/text region). Please upload an authentic, unedited document.", max_h_run
+            if max_smooth_block_h >= 2 and max_smooth_block_w >= 8:
+                block_px_w = max_smooth_block_w * grid_w
+                block_px_h = max_smooth_block_h * grid_h
+                return True, (
+                    f"Digital edit / text patch overlay detected on document "
+                    f"(smooth off-white edit block of {block_px_w}×{block_px_h}px detected — "
+                    f"indicates digital text replacement or whitewash). "
+                    f"Please upload an authentic, unedited document."
+                ), max_smooth_block_w
 
         # Layer 3: Error Level Analysis (ELA)
         ela_tampered, ela_msg, ela_score = perform_error_level_analysis(img)
