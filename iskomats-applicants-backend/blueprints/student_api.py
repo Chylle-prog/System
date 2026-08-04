@@ -3637,6 +3637,25 @@ def ocr_check():
         if video_param:
             video_bytes = resolve_verification_image_bytes(video_param)
 
+        if not video_bytes and getattr(request, 'user_no', None):
+            try:
+                vid_col_map = {
+                    'Enrollment': 'enrollment_certificate_vid_url',
+                    'Grades': 'grades_vid_url',
+                    'Indigency': 'indigency_vid_url',
+                    'SchoolID': 'schoolid_front_vid_url'
+                }
+                target_vid_col = vid_col_map.get(doc_type)
+                if target_vid_col:
+                    with get_db() as conn:
+                        cur = conn.cursor()
+                        from services.applicant_document_service import fetch_applicant_document_values
+                        v_row = fetch_applicant_document_values(cur, request.user_no, [target_vid_col])
+                        if v_row and v_row.get(target_vid_col):
+                            video_bytes = resolve_verification_image_bytes(v_row.get(target_vid_col))
+            except Exception as vid_fetch_err:
+                print(f"[OCR ENGINE] Video proof fallback lookup note: {vid_fetch_err}", flush=True)
+
         video_hash = _hash_verification_source(video_bytes) if video_bytes else 'novideo'
         doc_hash = _hash_verification_source(doc_bytes)
         cache_key = f"verif:{request.user_no}:{doc_type}:{doc_hash}:{video_hash}:{first_name}:{last_name}:{town_city}:{barangay}:{skip_tamper_check}"
@@ -3653,6 +3672,7 @@ def ocr_check():
             expected_address=expected_addr_to_check,
             target_barangay=barangay,
             town_city=town_city,
+            expected_units=data.get('expected_units') or data.get('units') or data.get('requiredUnits'),
             expected_id_no=data.get('idNumber'),
             expected_school_name=data.get('schoolName'),
             expected_gpa=data.get('gpa'),
@@ -3715,17 +3735,21 @@ def ocr_check():
         else:
             detected_text = base_detected_text
 
+        units_val = (meta or {}).get('units')
         response_payload = {
             'verified': verified,
             'message': message,
             'detected_text': detected_text,
+            'units': units_val,
             'score_details': score_details,
+            'meta': meta or {},
             'results': [{
                 'doc': doc_type,
                 'verified': verified,
                 'message': message,
                 'score_details': score_details,
-                'detected_text': detected_text
+                'detected_text': detected_text,
+                'units': units_val
             }]
         }
 

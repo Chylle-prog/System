@@ -1371,14 +1371,16 @@ function extractTotalUnitsFromText(text) {
     const line = rawLines[i].trim();
     if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
       const cleanedLine = line
+        .replace(/a2/gi, '27')
         .replace(/S13/g, '12')
         .replace(/S12/g, '12')
-        .replace(/S(?=\d{2})/g, '');
+        .replace(/S(?=\d{2})/g, '')
+        .replace(/[”"]/g, '');
 
       const currentMatch = cleanedLine.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)[^\d]*\b([1-4]?[0-9])\b/i);
       if (currentMatch) {
         const val = parseInt(currentMatch[1], 10);
-        if (!isNaN(val) && val >= 6 && val <= 48) return val;
+        if (!isNaN(val) && val >= 3 && val <= 48) return val;
       }
     }
   }
@@ -1796,6 +1798,7 @@ const StudentInfo = () => {
       const video = document.createElement('video');
       video.muted = true;
       video.playsInline = true;
+      video.crossOrigin = 'anonymous';
       video.style.position = 'fixed';
       video.style.top = '-9999px';
       video.style.left = '-9999px';
@@ -1883,9 +1886,6 @@ const StudentInfo = () => {
               canvas.width = targetW;
               canvas.height = targetH;
               const ctx = canvas.getContext('2d');
-              if ('filter' in ctx) {
-                ctx.filter = "contrast(130%) brightness(95%) grayscale(100%)";
-              }
               ctx.drawImage(video, 0, 0, targetW, targetH);
 
               const worker = await getTesseractWorker();
@@ -3225,6 +3225,15 @@ const StudentInfo = () => {
         if (course) formDataPayload.append('course', course);
         if (academicYear) formDataPayload.append('academicYear', academicYear);
         if (semester) formDataPayload.append('semester', semester);
+        const requiredUnitsForPayload = (scholarshipDetails?.units && !isNaN(parseInt(scholarshipDetails.units)) && parseInt(scholarshipDetails.units) > 0)
+          ? parseInt(scholarshipDetails.units)
+          : (scholarshipDetails?.requiredUnits && !isNaN(parseInt(scholarshipDetails.requiredUnits)) && parseInt(scholarshipDetails.requiredUnits) > 0
+            ? parseInt(scholarshipDetails.requiredUnits)
+            : null);
+        if (requiredUnitsForPayload !== null) {
+          formDataPayload.append('expected_units', requiredUnitsForPayload);
+          formDataPayload.append('units', requiredUnitsForPayload);
+        }
         const _idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
         formDataPayload.append('idType', _idType);
 
@@ -3309,6 +3318,31 @@ const StudentInfo = () => {
 
           let combinedDetectedText = backendResult.detected_text || msg;
 
+          const requiredUnits = requiredUnitsForPayload;
+          const rawDetectedUnits = backendResult.units ?? backendResult.meta?.units ?? (sDetails.units ? parseInt(sDetails.units) : null) ?? extractTotalUnitsFromText(combinedDetectedText) ?? extractTotalUnitsFromText(backendResult.detected_text);
+          const detectedUnits = (rawDetectedUnits !== null && !isNaN(parseInt(rawDetectedUnits))) ? parseInt(rawDetectedUnits) : null;
+
+          if (detectedUnits !== null && detectedUnits > 0) {
+            setFormData(prev => ({ ...prev, units: detectedUnits }));
+          }
+
+          const unitsOk = requiredUnits !== null
+            ? (detectedUnits !== null && detectedUnits === requiredUnits)
+            : (detectedUnits !== null && detectedUnits > 0);
+
+          if (docType === 'Enrollment') {
+            sDetails["TOTAL UNITS"] = unitsOk;
+            if (!unitsOk) {
+              isVerified = false;
+              const unitErrMsg = requiredUnits
+                ? `Units requirement mismatch: document shows ${detectedUnits ?? 0} units, scholarship requires exactly ${requiredUnits} units.`
+                : `Total units not detected in Certificate of Enrollment.`;
+              if (!msg.includes('Units') && !msg.includes('units')) {
+                msg = msg ? `${msg}; ${unitErrMsg}` : unitErrMsg;
+              }
+            }
+          }
+
           if (sDetails["VIDEO PROOF"] === false) {
             isVerified = false;
           }
@@ -3333,6 +3367,12 @@ const StudentInfo = () => {
           setVerified(isVerified ? 'success' : 'failed');
           setStatus(msg);
 
+          const displayUnitsText = detectedUnits !== null
+            ? (requiredUnits !== null
+                ? (detectedUnits === requiredUnits ? `${detectedUnits} Units` : `${detectedUnits} Units (Req: ${requiredUnits})`)
+                : `${detectedUnits} Units`)
+            : (requiredUnits !== null ? `Not detected (Req: ${requiredUnits})` : "Not detected");
+
           const reqValues = {
             "FIRST NAME": firstName || 'Extracted Name',
             "LAST NAME": lastName || 'Extracted Name',
@@ -3346,7 +3386,7 @@ const StudentInfo = () => {
               "SEMESTER": semester || null,
               "COURSE": course || null,
               "ID NUMBER": ((scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID') !== 'National ID' && idNumber) ? idNumber : null,
-              "TOTAL UNITS": sDetails["TOTAL UNITS"] || "Units detected",
+              "TOTAL UNITS": displayUnitsText,
             } : {}),
             ...(docType === 'Grades' ? {
               "SCHOOL NAME": schoolName || null,
@@ -3903,21 +3943,21 @@ const StudentInfo = () => {
               ? parseInt(scholarshipDetails.requiredUnits)
               : null);
 
-          const unitsOk = requiredUnits !== null ? (detectedUnits !== null && detectedUnits === requiredUnits) : true;
+          const unitsOk = requiredUnits !== null ? (detectedUnits !== null && detectedUnits === requiredUnits) : (detectedUnits !== null && detectedUnits > 0);
 
           isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && videoOk && coeTypeOk && unitsOk;
           scoreDetails = {
-            "First Name": nameCheck.details.first_ok,
-            "Middle Name": middleName ? nameCheck.details.middle_ok : null,
-            "Last Name": nameCheck.details.last_ok,
-            "School Name": schoolName ? schoolOk : null,
-            "Course / Track": course ? courseOk : null,
-            "Academic Year": academicYear ? ayOk : null,
-            "Semester": (semester || reqSemester) ? semOk : null,
-            "ID Number": isNationalId ? null : (idNumber ? idOk : null),
-            "Document Type": coeTypeOk,
-            "Units Requirement": requiredUnits ? (unitsOk ? `Met (${detectedUnits}/${requiredUnits} units)` : `Failed (${detectedUnits || 0}/${requiredUnits} units)`) : (detectedUnits ? `${detectedUnits} units` : null),
-            "Video Proof": videoOk
+            "FIRST NAME": nameCheck.details.first_ok,
+            "LAST NAME": nameCheck.details.last_ok,
+            "SCHOOL NAME": schoolName ? schoolOk : null,
+            "COURSE": course ? courseOk : null,
+            "ACADEMIC YEAR": academicYear ? ayOk : null,
+            "SEMESTER": (semester || reqSemester) ? semOk : null,
+            "ID NUMBER": isNationalId ? null : (idNumber ? idOk : null),
+            "DOCUMENT TYPE": coeTypeOk,
+            "TOTAL UNITS": unitsOk,
+            "Units Requirement": unitsOk,
+            "VIDEO PROOF": videoOk
           };
           finalMessage = isSuccess
             ? "Enrollment verified successfully client-side!"

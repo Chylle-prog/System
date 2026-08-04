@@ -1772,7 +1772,28 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         raw_norm = normalize_text(raw_text)
         _school_ok = any(w in raw_norm for w in sn_words) if sn_words else True
 
+    expected_units = kwargs.get('expected_units') or kwargs.get('units') or kwargs.get('required_units') or kwargs.get('requiredUnits')
     _units_detected = parsed_fields.get('units') or parsed_fields.get('total_units') or extract_total_units_from_text(raw_text)
+
+    _units_ok = True
+    if expected_units is not None and str(expected_units).strip():
+        try:
+            exp_u = int(expected_units)
+            _units_ok = (_units_detected is not None and int(_units_detected) == exp_u)
+            if not _units_ok:
+                failures.append(f"Units requirement mismatch (Expected: {exp_u} units, Found in COR: {_units_detected or 0} units)")
+        except (ValueError, TypeError):
+            _units_ok = (_units_detected is not None and int(_units_detected) > 0)
+            if not _units_ok:
+                failures.append("Total units not detected in COR document")
+    else:
+        _units_ok = (_units_detected is not None and int(_units_detected) > 0)
+        if not _units_ok:
+            failures.append("Total units not detected in COR document")
+
+    if not _units_ok:
+        success = False
+        msg = "COR Verification Failed: " + "; ".join(failures)
 
     raw_norm = normalize_text(raw_text)
     _doc_type_ok = any(k in raw_norm for k in [
@@ -1789,7 +1810,7 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         'SEMESTER': sem_ok if expected_semester else None,
         'COURSE': course_ok if expected_course else None,
         'ID NUMBER': _id_ok if (not is_national_id and expected_id_no) else None,
-        'TOTAL UNITS': f"{_units_detected} units detected" if _units_detected else "Units detected",
+        'TOTAL UNITS': _units_ok,
         'DOCUMENT TYPE': _doc_type_ok
     }
     meta['units'] = _units_detected
@@ -2864,10 +2885,10 @@ def verify_video_content(
         except Exception as video_err:
             print(f"[VIDEO OCR] Frame processing note: {video_err}", flush=True)
 
-    for frame in frames:
+    for idx, frame in enumerate(frames):
         frame_text = _run_tesseract_on_image(frame, psm=3)
         if frame_text and len(frame_text.strip()) > 3:
-            extracted_text_list.append(frame_text.strip())
+            extracted_text_list.append(f'[Frame {idx + 1}]: "{frame_text.strip()}"')
         else:
             try:
                 gray_f = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
@@ -2875,11 +2896,11 @@ def verify_video_content(
                 sharp_f = cv2.filter2D(gray_f, -1, kernel)
                 alt_text = _run_tesseract_on_image(sharp_f, psm=3)
                 if alt_text and len(alt_text.strip()) > 3:
-                    extracted_text_list.append(alt_text.strip())
+                    extracted_text_list.append(f'[Frame {idx + 1}]: "{alt_text.strip()}"')
             except Exception:
                 pass
 
-    combined_video_text = "\n".join(extracted_text_list).strip()
+    combined_video_text = "\n\n".join(extracted_text_list).strip()
     video_search_pool = normalize_text(combined_video_text)
 
     is_school_id_video = ('SCHOOLID' in doc_type_upper or 'SCHOOL_ID' in doc_type_upper or doc_type_upper == 'ID')
