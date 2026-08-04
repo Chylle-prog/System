@@ -2377,18 +2377,14 @@ def verify_video_content(
     if is_id_video:
         if found_name or found_addr or len(found_keywords) >= 1:
             return True, "Video proof verified: ID details (name, address, or ID header) detected in video frames.", combined_video_text or "Video stream validated."
-        elif not video_search_pool.strip() and has_video_input:
-            return True, "Video proof uploaded and verified.", (doc_ocr_text[:300] if doc_ocr_text else "Video stream validated.")
         else:
             return False, "Video proof verification failed: Required ID details (name, address, or ID header) were not detected in video proof frames.", combined_video_text or "No matching ID details in video frames."
 
     if not video_search_pool.strip():
-        if has_video_input:
-            return True, "Video proof uploaded and verified.", (doc_ocr_text[:300] if doc_ocr_text else "Video stream validated.")
-        return False, "Video proof verification failed: Required document keywords were not detected in video proof frames.", "No readable text extracted from video frames."
+        return False, "Video proof verification failed: Required document keywords or applicant name were not detected in video proof frames.", "No readable text extracted from video frames."
 
-    if len(found_keywords) >= 1 or found_name or found_addr or has_video_input:
-        return True, "Video proof verified: Document video proof validated.", (combined_video_text or doc_ocr_text or "Video stream validated.")
+    if len(found_keywords) >= 1 or found_name or found_addr:
+        return True, "Video proof verified: Document video proof validated.", (combined_video_text or "Video stream validated.")
     else:
         missing_kw = ", ".join(target_keywords[:3])
-        return False, f"Video proof invalid: Required document keywords ({missing_kw}) not detected in video frames.", combined_video_text or "No matching keywords found in video frames."
+        return False, f"Video proof invalid: Required document keywords ({missing_kw}) or applicant details not detected in video frames.", combined_video_text or "No matching keywords found in video frames."

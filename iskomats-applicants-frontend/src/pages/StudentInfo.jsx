@@ -1885,7 +1885,7 @@ const StudentInfo = () => {
       }
 
       if (!srcUrl) {
-        return { valid: true, reason: "Uploaded & Validated", detectedText: "Proof video attached for manual review." };
+        return { valid: false, isMatched: false, reason: "No video proof source provided.", detectedText: "No video file provided for verification." };
       }
 
       return await new Promise((resolve) => {
@@ -1973,9 +1973,8 @@ const StudentInfo = () => {
           const hasNameMatch = allNameWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
           const hasAddressMatch = targetBarangay ? (cleanText.includes(targetBarangay.toLowerCase()) || rawCombined.includes(targetBarangay.toLowerCase())) : false;
           const hasKeywordMatch = targetKeywords.some(k => cleanText.includes(k) || rawCombined.includes(k));
-          const hasExtractedVideoText = Array.isArray(textLogs) && textLogs.some(log => log && log.length >= 10);
 
-          if (hasNameMatch || hasAddressMatch || hasKeywordMatch || hasExtractedVideoText) {
+          if (hasNameMatch || hasAddressMatch || hasKeywordMatch) {
             return {
               valid: true,
               isMatched: true,
@@ -1985,10 +1984,10 @@ const StudentInfo = () => {
           }
 
           return {
-            valid: true,
-            isMatched: true,
-            reason: "Proof video attached for manual review.",
-            detectedText: (textLogs || []).join("\n\n") || "Proof video attached for manual review."
+            valid: false,
+            isMatched: false,
+            reason: "Video proof verification failed: could not detect required document text, applicant name, or address in video.",
+            detectedText: (textLogs || []).join("\n\n") || "No valid text recognized in video frames."
           };
         };
 
@@ -2013,7 +2012,7 @@ const StudentInfo = () => {
           if (!w || !h) {
             clearTimeout(timeout);
             cleanup();
-            resolve({ valid: true, reason: "Uploaded & Validated", detectedText: "Proof video attached for manual review." });
+            resolve({ valid: false, isMatched: false, reason: "Video proof frame capture failed: invalid video dimensions.", detectedText: "Could not read video dimensions." });
             return;
           }
 
@@ -2196,9 +2195,10 @@ const StudentInfo = () => {
           clearTimeout(timeout);
           cleanup();
           resolve({
-            valid: true,
-            reason: "Uploaded & Validated (Manual Review Required)",
-            detectedText: "Video playback/decoding restricted in background browser worker. Proof video attached for manual review."
+            valid: false,
+            isMatched: false,
+            reason: "Video proof decoding error: video file could not be played or processed.",
+            detectedText: "Video playback/decoding error during frame capture."
           });
         };
 
@@ -2208,7 +2208,7 @@ const StudentInfo = () => {
       });
     } catch (err) {
       if (createdBlobUrl) URL.revokeObjectURL(createdBlobUrl);
-      return { valid: true };
+      return { valid: false, isMatched: false, reason: "Video proof error: " + (err.message || "Failed to process video.") };
     }
   };
 
@@ -4028,8 +4028,10 @@ const StudentInfo = () => {
             ? ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
             : ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang'];
 
-          // Video PROOF passes if it contains required keywords (or fallback message if decoding restricted)
-          const videoHasKeyword = _requiredDocKeywords.some(k => vidText.includes(k)) || vidText.includes('proof') || vidText.includes('attached') || vidText.includes('manual review');
+          // Video PROOF passes only if it contains required document keywords or applicant name
+          const userFirstStr = (firstName || '').toLowerCase();
+          const userLastStr = (lastName || '').toLowerCase();
+          const videoHasKeyword = videoOk && (_requiredDocKeywords.some(k => vidText.includes(k)) || (userFirstStr && vidText.includes(userFirstStr)) || (userLastStr && vidText.includes(userLastStr)));
 
           const docTypeOk = imageHasKeyword && videoHasKeyword;
           const effectiveVideoOk = videoOk && videoHasKeyword;
