@@ -3681,7 +3681,10 @@ def ocr_check():
 
         # Video OCR verification
         v_text = None
-        if video_bytes and len(video_bytes) > 500:
+        v_frame_files = request.files.getlist('video_frames') or request.files.getlist(f"{doc_type}_video_frames")
+        v_frame_bytes_list = [f.read() for f in v_frame_files if f and f.filename] if v_frame_files else []
+
+        if (video_bytes and len(video_bytes) > 500) or v_frame_bytes_list:
             from services.ocr_utils import verify_video_content
             keywords_map = {
                 'Indigency': ['indigency', 'indigent', 'kawalang', 'kapos', 'residency', 'resident', 'naninirahan', 'barangay', 'katibayan'],
@@ -3696,7 +3699,8 @@ def ocr_check():
                 expected_name=f"{first_name} {last_name}".strip(),
                 expected_id=data.get('idNumber'),
                 doc_ocr_text=raw_text,
-                doc_type=doc_type
+                doc_type=doc_type,
+                frame_bytes_list=v_frame_bytes_list
             )
             score_details['VIDEO PROOF'] = v_ok
             if not v_ok:

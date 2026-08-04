@@ -2814,18 +2814,20 @@ def verify_video_content(
     expected_name=None,
     expected_id=None,
     doc_ocr_text=None,
-    sample_positions=[0.15, 0.35, 0.55, 0.75, 0.90],
+    sample_positions=[0.15, 0.40, 0.70, 0.90],
     max_width=1280,
     allow_alt_pass=True,
     fallback_text_length=10,
-    doc_type='Indigency'
+    doc_type='Indigency',
+    frame_bytes_list=None
 ):
     """
     Validates uploaded video content by running OCR on sampled frames and performing:
     1. Mandatory Document Type Keyword Check
     2. Video OCR Text Extraction and Verification against static image text.
     """
-    if not video_bytes or len(video_bytes) == 0:
+    has_video_input = (video_bytes and len(video_bytes) > 500) or (frame_bytes_list and len(frame_bytes_list) > 0)
+    if not has_video_input:
         return False, "Mandatory video proof is missing.", "No video stream data found."
 
     # Standard keyword dictionary per document type
@@ -2844,27 +2846,39 @@ def verify_video_content(
     is_indigency_video = 'INDIGEN' in doc_type_upper
     video_sample_positions = [0.15, 0.40, 0.70, 0.90] if is_indigency_video else sample_positions
     extracted_text_list = []
-    if isinstance(video_bytes, (bytes, bytearray)) and len(video_bytes) > 500:
+
+    frames = []
+    if frame_bytes_list:
+        for f_b in frame_bytes_list:
+            if f_b and len(f_b) > 100:
+                try:
+                    nparr = np.frombuffer(f_b, np.uint8)
+                    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    if img is not None and img.size > 0:
+                        frames.append(img)
+                except Exception:
+                    pass
+
+    if not frames and isinstance(video_bytes, (bytes, bytearray)) and len(video_bytes) > 500:
         try:
             frames = extract_frames_from_video_bytes(video_bytes, sample_positions=video_sample_positions, max_width=max_width)
-            for frame in frames:
-                # Primary Auto Layout OCR (psm=3) on video frame
-                frame_text = _run_tesseract_on_image(frame, psm=3)
-                if frame_text and len(frame_text.strip()) > 3:
-                    extracted_text_list.append(frame_text.strip())
-                else:
-                    # High contrast / sharpened fallback pass for camera recordings
-                    try:
-                        gray_f = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
-                        kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=np.float32)
-                        sharp_f = cv2.filter2D(gray_f, -1, kernel)
-                        alt_text = _run_tesseract_on_image(sharp_f, psm=3)
-                        if alt_text and len(alt_text.strip()) > 3:
-                            extracted_text_list.append(alt_text.strip())
-                    except Exception:
-                        pass
         except Exception as video_err:
             print(f"[VIDEO OCR] Frame processing note: {video_err}", flush=True)
+
+    for frame in frames:
+        frame_text = _run_tesseract_on_image(frame, psm=3)
+        if frame_text and len(frame_text.strip()) > 3:
+            extracted_text_list.append(frame_text.strip())
+        else:
+            try:
+                gray_f = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+                kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=np.float32)
+                sharp_f = cv2.filter2D(gray_f, -1, kernel)
+                alt_text = _run_tesseract_on_image(sharp_f, psm=3)
+                if alt_text and len(alt_text.strip()) > 3:
+                    extracted_text_list.append(alt_text.strip())
+            except Exception:
+                pass
 
     combined_video_text = "\n".join(extracted_text_list).strip()
     video_search_pool = normalize_text(combined_video_text)
