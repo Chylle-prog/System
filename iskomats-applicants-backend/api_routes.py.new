@@ -1925,17 +1925,23 @@ def init_socketio(socketio):
             cursor.execute(query, tuple(params))
             messages = cursor.fetchall()
             
+            formatted_list = []
             for msg in messages:
-                emit('message', {
+                formatted_list.append({
                     'm_id': msg['m_id'],
                     'username': msg['username'],
                     'sender_id': msg['sender_id'],
                     'is_student_sender': msg['is_student_sender'],
                     'message': msg['message'],
-                    'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
+                    'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(msg['timestamp'], 'strftime') else str(msg['timestamp']),
                     'room': room,
                     'student_status': msg['student_status']
                 })
+            
+            emit('history', {
+                'room': room,
+                'messages': formatted_list
+            })
             cursor.close()
             conn.close()
         except Exception as e:

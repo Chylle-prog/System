@@ -1941,51 +1941,64 @@ def init_socketio(socketio):
             return
 
         try:
-            # Parse IDs from room format "app_no+pro_no"
-            app_no, pro_no = map(int, room.split('+'))
-            
             with get_db() as conn:
                 cursor = conn.cursor()
-            
-                # Fetch message history JOINED with current applicant status and applicant info
-                query = """
-                    SELECT m.m_id, 
-                           CASE 
-                               WHEN m.username = (a.first_name || ' ' || a.last_name) OR m.username = a.first_name THEN a.first_name 
-                               ELSE m.username 
-                           END as username,
-                           m.message, m.timestamp,
-                           m.sender_id, m.is_student_sender,
-                           CASE 
-                               WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
-                               WHEN s.is_accepted = 'Rejected' THEN 'Rejected'
-                               WHEN s.is_accepted = 'Cancelled' THEN 'Cancelled'
-                               ELSE 'Pending'
-                           END as student_status
-                    FROM message m
-                    LEFT JOIN applicant_status s ON m.applicant_no = s.applicant_no
-                    LEFT JOIN applicants a ON m.applicant_no = a.applicant_no
-                    WHERE m.applicant_no = %s AND m.pro_no = %s
-                """
-                params = [app_no, pro_no]
-
-                # If the user is a student, we filter the history so they only see 
-                # messages from their CURRENT application sessions.
-                user_role = session.get('role')
-                if user_role == 'student':
-                    # Get the oldest creation date among active applications for this provider
-                    cursor.execute("""
-                        SELECT MIN(created_at) as session_start
-                        FROM applicant_status ast
-                        JOIN scholarships sch ON ast.scholarship_no = sch.req_no
-                        WHERE ast.applicant_no = %s AND sch.pro_no = %s
-                    """, (app_no, pro_no))
-                    row = cursor.fetchone()
-                    session_start = row.get('session_start') if row else None
                 
-                    if session_start:
-                        query += " AND m.timestamp >= %s"
-                        params.append(session_start)
+                # Check if room follows app_no+pro_no format
+                if '+' in room:
+                    try:
+                        app_no, pro_no = map(int, room.split('+'))
+                        query = """
+                            SELECT m.m_id, 
+                                   CASE 
+                                       WHEN m.username = (a.first_name || ' ' || a.last_name) OR m.username = a.first_name THEN a.first_name 
+                                       ELSE m.username 
+                                   END as username,
+                                   m.message, m.timestamp,
+                                   m.sender_id, m.is_student_sender,
+                                   CASE 
+                                       WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
+                                       WHEN s.is_accepted = 'Rejected' THEN 'Rejected'
+                                       WHEN s.is_accepted = 'Cancelled' THEN 'Cancelled'
+                                       ELSE 'Pending'
+                                   END as student_status
+                            FROM message m
+                            LEFT JOIN applicant_status s ON m.applicant_no = s.applicant_no
+                            LEFT JOIN applicants a ON m.applicant_no = a.applicant_no
+                            WHERE m.applicant_no = %s AND m.pro_no = %s
+                        """
+                        params = [app_no, pro_no]
+
+                        user_role = session.get('role')
+                        if user_role == 'student':
+                            cursor.execute("""
+                                SELECT MIN(created_at) as session_start
+                                FROM applicant_status ast
+                                JOIN scholarships sch ON ast.scholarship_no = sch.req_no
+                                WHERE ast.applicant_no = %s AND sch.pro_no = %s
+                            """, (app_no, pro_no))
+                            row = cursor.fetchone()
+                            session_start = row.get('session_start') if row else None
+                        
+                            if session_start:
+                                query += " AND m.timestamp >= %s"
+                                params.append(session_start)
+                    except Exception:
+                        query = """
+                            SELECT m.m_id, m.username, m.message, m.timestamp,
+                                   m.sender_id, m.is_student_sender, 'Pending' as student_status
+                            FROM message m
+                            WHERE m.room = %s
+                        """
+                        params = [room]
+                else:
+                    query = """
+                        SELECT m.m_id, m.username, m.message, m.timestamp,
+                               m.sender_id, m.is_student_sender, 'Pending' as student_status
+                        FROM message m
+                        WHERE m.room = %s
+                    """
+                    params = [room]
             
                 query += " ORDER BY m.timestamp ASC LIMIT 200"
                 cursor.execute(query, tuple(params))
@@ -2001,10 +2014,9 @@ def init_socketio(socketio):
                         'message': msg['message'],
                         'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(msg['timestamp'], 'strftime') else str(msg['timestamp']),
                         'room': room,
-                        'student_status': msg['student_status']
+                        'student_status': msg.get('student_status', 'Pending')
                     }
                     formatted_list.append(fmt)
-                    emit('message', fmt)
 
                 emit('history', {
                     'room': room,
@@ -2025,27 +2037,35 @@ def init_socketio(socketio):
             return
 
         try:
-            # Parse IDs from room format "app_no+pro_no"
-            app_no, pro_no = map(int, room.split('+'))
-            if not sender_id:
+            app_no = None
+            pro_no = None
+            if '+' in room:
+                try:
+                    parts = room.split('+')
+                    app_no = int(parts[0])
+                    pro_no = int(parts[1])
+                except Exception:
+                    pass
+
+            if not sender_id and app_no:
                 sender_id = app_no
             
             with get_db() as conn:
                 cursor = conn.cursor()
                 sender_role = (session.get('role') or '').lower()
-                is_student_sender = (sender_role == 'student') or (str(sender_id) == str(app_no))
+                is_student_sender = (sender_role == 'student') or (app_no is not None and str(sender_id) == str(app_no))
             
                 # Determine the sender's actual name from the database
                 actual_username = username
             
-                if is_student_sender:
+                if is_student_sender and sender_id:
                     cursor.execute("SELECT first_name FROM applicants WHERE applicant_no = %s", (sender_id,))
                     applicant_sender = cursor.fetchone()
                     if applicant_sender and applicant_sender.get('first_name'):
                         actual_username = applicant_sender['first_name']
                     else:
                         actual_username = username or f"Applicant {sender_id}"
-                else:
+                elif sender_id:
                     cursor.execute("""
                         SELECT COALESCE(sp.provider_name, u.user_name) AS sender_name
                         FROM users u
@@ -2059,9 +2079,11 @@ def init_socketio(socketio):
                     elif username:
                         actual_username = username
                     else:
-                        actual_username = f"Provider {pro_no}"
+                        actual_username = f"Admin {sender_id}"
+                else:
+                    actual_username = username or "Admin"
             
-                # Insert message with explicit IDs and correct username
+                # Insert message into DB
                 cursor.execute("""
                     INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender)
                     VALUES (%s, %s, %s, %s, %s, NOW(), %s, %s)
@@ -2071,35 +2093,39 @@ def init_socketio(socketio):
                 m_id = row['m_id']
                 timestamp = row['timestamp']
             
-                # Fetch current status of the applicant to include in the payload
-                cursor.execute("""
-                    SELECT CASE 
-                        WHEN is_accepted = 'Accepted' THEN 'Accepted'
-                        WHEN is_accepted = 'Rejected' THEN 'Rejected'
-                        WHEN is_accepted = 'Cancelled' THEN 'Cancelled'
-                        ELSE 'Pending'
-                    END as student_status
-                    FROM applicant_status 
-                    WHERE applicant_no = %s
-                """, (app_no,))
-                status_row = cursor.fetchone()
-                student_status = status_row['student_status'] if status_row else 'Pending'
+                student_status = 'Pending'
+                if app_no:
+                    cursor.execute("""
+                        SELECT CASE 
+                            WHEN is_accepted = 'Accepted' THEN 'Accepted'
+                            WHEN is_accepted = 'Rejected' THEN 'Rejected'
+                            WHEN is_accepted = 'Cancelled' THEN 'Cancelled'
+                            ELSE 'Pending'
+                        END as student_status
+                        FROM applicant_status 
+                        WHERE applicant_no = %s
+                    """, (app_no,))
+                    status_row = cursor.fetchone()
+                    if status_row:
+                        student_status = status_row['student_status']
             
                 conn.commit()
 
-                emit('message', {
+                msg_payload = {
                     'm_id': m_id,
                     'username': actual_username,
                     'sender_id': sender_id,
                     'is_student_sender': is_student_sender,
                     'message': message_text,
                     'room': room,
-                    'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                    'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S') if hasattr(timestamp, 'strftime') else str(timestamp),
                     'student_status': student_status
-                }, to=room)
+                }
+
+                emit('message', msg_payload, to=room)
             
-                # Trigger applicant notification and email only for admin/provider-originated messages.
-                if not is_student_sender:
+                # Trigger applicant notification and email only for admin/provider-originated student messages.
+                if not is_student_sender and app_no:
                     try:
                         notification_result = create_notification(
                             user_no=app_no,
@@ -4967,6 +4993,127 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
     finally:
         if conn:
             conn.close()
+
+# ===== ADMIN / SUPERADMIN MESSAGES REST API =====
+
+@api_bp.route('/messages/superadmin/<admin_id>', methods=['GET'])
+@api_bp.route('/messages/superadmin/<int:admin_id>', methods=['GET'])
+def get_superadmin_messages_by_admin_id(admin_id):
+    """REST endpoint to fetch messages for superadmin_room_<admin_id>."""
+    try:
+        room = f"superadmin_room_{admin_id}"
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT m_id, room, username, message, timestamp, sender_id, is_student_sender
+                FROM message
+                WHERE room = %s OR room = %s
+                ORDER BY timestamp ASC
+            """, (room, f"superadmin_{admin_id}"))
+            rows = cursor.fetchall()
+            messages = []
+            for r in rows:
+                messages.append({
+                    'm_id': r['m_id'],
+                    'room': r['room'],
+                    'username': r['username'],
+                    'message': r['message'],
+                    'timestamp': r['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(r['timestamp'], 'strftime') else str(r['timestamp']),
+                    'sender_id': r['sender_id'],
+                    'is_student_sender': r['is_student_sender']
+                })
+            return jsonify({'success': True, 'messages': messages}), 200
+    except Exception as e:
+        print(f"[REST MESSAGES ERROR] {e}", flush=True)
+        return jsonify({'success': False, 'error': str(e), 'messages': []}), 200
+
+@api_bp.route('/messages/superadmin', methods=['GET', 'POST'])
+def handle_superadmin_messages_endpoint():
+    """REST endpoint to post or get superadmin messages."""
+    if request.method == 'POST':
+        data = request.json or {}
+        sender_id = data.get('sender_id') or 1
+        room = data.get('room') or f"superadmin_room_{sender_id}"
+        message_text = data.get('message')
+        username = data.get('username') or 'Admin'
+        
+        if not message_text:
+            return jsonify({'success': False, 'message': 'Message text is required'}), 400
+            
+        try:
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO message (room, username, message, timestamp, sender_id, is_student_sender)
+                    VALUES (%s, %s, %s, NOW(), %s, FALSE)
+                    RETURNING m_id, timestamp
+                """, (room, username, message_text, sender_id))
+                row = cursor.fetchone()
+                conn.commit()
+                
+                msg_payload = {
+                    'm_id': row['m_id'],
+                    'room': room,
+                    'username': username,
+                    'message': message_text,
+                    'timestamp': row['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(row['timestamp'], 'strftime') else str(row['timestamp']),
+                    'sender_id': sender_id,
+                    'is_student_sender': False
+                }
+                safe_emit('message', msg_payload, to=room)
+                return jsonify({'success': True, 'message': msg_payload}), 200
+        except Exception as e:
+            print(f"[REST POST MESSAGE ERROR] {e}", flush=True)
+            return jsonify({'success': False, 'error': str(e)}), 500
+    else:
+        try:
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT m_id, room, username, message, timestamp, sender_id, is_student_sender
+                    FROM message
+                    WHERE room LIKE 'superadmin%'
+                    ORDER BY timestamp ASC
+                """)
+                rows = cursor.fetchall()
+                messages = [{
+                    'm_id': r['m_id'],
+                    'room': r['room'],
+                    'username': r['username'],
+                    'message': r['message'],
+                    'timestamp': r['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(r['timestamp'], 'strftime') else str(r['timestamp']),
+                    'sender_id': r['sender_id'],
+                    'is_student_sender': r['is_student_sender']
+                } for r in rows]
+                return jsonify({'success': True, 'messages': messages}), 200
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e), 'messages': []}), 200
+
+@api_bp.route('/messages/<path:room_id>', methods=['GET'])
+def get_room_messages_rest(room_id):
+    """REST endpoint to fetch messages for any room."""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT m_id, room, username, message, timestamp, sender_id, is_student_sender
+                FROM message
+                WHERE room = %s
+                ORDER BY timestamp ASC
+            """, (room_id,))
+            rows = cursor.fetchall()
+            messages = [{
+                'm_id': r['m_id'],
+                'room': r['room'],
+                'username': r['username'],
+                'message': r['message'],
+                'timestamp': r['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(r['timestamp'], 'strftime') else str(r['timestamp']),
+                'sender_id': r['sender_id'],
+                'is_student_sender': r['is_student_sender']
+            } for r in rows]
+            return jsonify({'success': True, 'messages': messages}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e), 'messages': []}), 200
 
 # ===== ERROR HANDLERS =====
 

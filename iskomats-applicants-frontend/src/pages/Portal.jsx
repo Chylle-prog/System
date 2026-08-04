@@ -304,10 +304,10 @@ const Portal = () => {
         setChatMessages(prev => {
           const roomMsgs = prev[msg.room] || [];
           const isDuplicate = roomMsgs.some((m) => {
-            if (msg.m_id && m.m_id) return m.m_id === msg.m_id;
+            if (msg.m_id && m.m_id) return String(m.m_id) === String(msg.m_id);
             return m.message === msg.message && (m.type === 'sent' || isStudentSender);
           });
-
+ 
           if (isDuplicate) {
             return {
               ...prev,
@@ -319,7 +319,7 @@ const Portal = () => {
               }))
             };
           }
-
+ 
           const nextMessage = {
             id: msg.m_id || `${msg.room}-${msg.timestamp}-${msg.username}`,
             m_id: msg.m_id,
@@ -328,30 +328,30 @@ const Portal = () => {
             time: msg.timestamp || new Date().toISOString(),
             type: isStudentSender ? 'sent' : 'received'
           };
-
+ 
           return {
             ...prev,
             [msg.room]: sortChatMessages([...roomMsgs, nextMessage])
           };
         });
-
+ 
         setScholarships(prev => prev.map((s) => {
           if (s.id !== msg.room) return s;
           const nextUnread = isActiveRoom ? 0 : ((s.unread || 0) + (isStudentSender ? 0 : 1));
           return { ...s, lastMessage: msg.message, time: 'Just now', unread: nextUnread };
         }));
       });
-
+ 
       unsubHistory = socketService.subscribe('history', (data) => {
         const roomId = data.room;
         const historyMsgs = data.messages || [];
         const currentAppNo = localStorage.getItem('applicantNo');
         const firstName = (userProfile?.first_name || currentUser?.first_name || '').toLowerCase();
-
+ 
         setChatMessages(prev => {
           const roomMsgs = prev[roomId] || [];
           const merged = [...roomMsgs];
-
+ 
           historyMsgs.forEach(msg => {
             const msgUsername = String(msg.username || '').toLowerCase();
             const isStudentSender = (
@@ -360,8 +360,8 @@ const Portal = () => {
               (firstName && msgUsername === firstName) ||
               msg.is_student_sender === true
             );
-
-            const exists = merged.some(m => (msg.m_id && m.m_id === msg.m_id) || (m.message === msg.message && (m.type === 'sent' || isStudentSender)));
+ 
+            const exists = merged.some(m => (msg.m_id && m.m_id && String(m.m_id) === String(msg.m_id)) || (m.message === msg.message && (m.type === 'sent' || isStudentSender)));
             if (!exists) {
               merged.push({
                 id: msg.m_id || `${roomId}-${msg.timestamp}-${msg.username}`,

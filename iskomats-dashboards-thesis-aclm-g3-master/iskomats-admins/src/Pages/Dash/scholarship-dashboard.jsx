@@ -519,9 +519,13 @@ export default function ScholarshipDashboard({
   proNo,
   logo,
 }) {
-  // Get user name from localStorage
+  // Get user name and ID from localStorage / token
   const userName = localStorage.getItem('userName') || 'Admin';
   const userFirstName = localStorage.getItem('userFirstName') || 'Admin';
+  const currentUserId = useMemo(() => {
+    const payload = decodeTokenPayload(localStorage.getItem('authToken'));
+    return payload?.user_id || payload?.id || payload?.user_no || socketService.userId || null;
+  }, []);
   const authenticatedProviderNo = useMemo(() => {
     const payload = decodeTokenPayload(localStorage.getItem('authToken'));
     const parsedProviderNo = Number(payload?.pro_no);
@@ -1050,14 +1054,14 @@ export default function ScholarshipDashboard({
       const myRooms = new Set();
 
       const unsubMsg = socketService.subscribe('message', (msg) => {
-        // Only accept messages for rooms this admin is authorized for
-        if (!myRooms.has(msg.room)) return;
+        // Track room if valid
+        if (msg.room) myRooms.add(msg.room);
 
         setData(prev => {
           // Check if message already exists
           const roomMsgs = prev.inbox.filter(m => m.room === msg.room);
           const isDuplicate = roomMsgs.some(m => {
-            if (msg.m_id && m.m_id) return m.m_id === msg.m_id;
+            if (msg.m_id && m.m_id) return String(m.m_id) === String(msg.m_id);
             return (
               m.message === msg.message &&
               m.username === msg.username &&
@@ -1102,8 +1106,8 @@ export default function ScholarshipDashboard({
 
           const nextMsgs = [...roomMsgs];
           messages.forEach(msg => {
-            const isDuplicate = roomMsgs.some(m => {
-              if (msg.m_id && m.m_id) return m.m_id === msg.m_id;
+            const isDuplicate = nextMsgs.some(m => {
+              if (msg.m_id && m.m_id) return String(m.m_id) === String(msg.m_id);
               return m.message === msg.message && m.username === msg.username && m.timestamp === msg.timestamp;
             });
 
@@ -5668,7 +5672,23 @@ export default function ScholarshipDashboard({
               <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 bg-white">
                 {currentConversationMessages.length > 0 ? (
                   currentConversationMessages.map((msg) => {
-                    const isFromMe = msg.is_student_sender === false || adminSenderAliases.has(normalizeProviderIdentity(msg.username || msg.studentName));
+                    let isFromMe = false;
+                    if (msg.sender_id && currentUserId) {
+                      isFromMe = String(msg.sender_id) === String(currentUserId);
+                    } else {
+                      const normMsgSender = normalizeProviderIdentity(msg.username || msg.studentName || '');
+                      const normMyName = normalizeProviderIdentity(userName);
+                      const normMyFirstName = normalizeProviderIdentity(userFirstName);
+
+                      if (normMsgSender && (normMsgSender === normMyName || normMsgSender === normMyFirstName)) {
+                        isFromMe = true;
+                      } else if (msg.is_student_sender === true) {
+                        isFromMe = false;
+                      } else if (msg.is_student_sender === false && currentConversation?.applicant_no) {
+                        isFromMe = true;
+                      }
+                    }
+
                     return (
                       <div key={msg.id} className={`flex ${isFromMe ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[90%] sm:max-w-[80%] rounded-2xl p-3 sm:p-4 shadow-sm border ${isFromMe
