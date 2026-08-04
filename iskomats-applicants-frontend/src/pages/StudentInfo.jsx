@@ -1219,33 +1219,42 @@ function extractGpaFromText(text, expectedGpa = null) {
     .replace(/35o/gi, '3.50')
     .replace(/32s/gi, '3.25');
 
+  // Filter out top header address lines (e.g. "1962 4.7 Laurel Nall" misreading J.P. Laurel Highway)
+  const cleanedLines = cleaned.split(/[\r\n]+/).filter(l => !/laurel|highway|telefax|1962|lipa\s*city|national\s*h|j\.?p\.?/i.test(l));
+  const cleanedBodyText = cleanedLines.join('\n');
+
   // Helper: round to nearest hundredth (e.g. 3.3889 -> "3.39", 3.4375 -> "3.44")
   const toTwoDecimals = (val) => (Math.round(val * 100) / 100).toFixed(2);
 
-  // 1. Primary Strategy: High-precision 4-decimal place term GPA on full text (e.g. 3.3889, 3.4375, 1.7525)
-  const precisionMatch = cleaned.match(/\b([1-5]\.[0-9]{3,4})\b/);
+  // 1. Explicit keyword match (supports "GPA: 3.5481", "GPA: 35481", "GPA: 3.55", "GPA: 355", "GPA 35481")
+  for (const rawLine of cleanedLines) {
+    if (/(?:GPA|GWA|CWA|QPI|WEIGHTED\s*AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*AVERAGE)/i.test(rawLine)) {
+      const kwMatch = rawLine.match(/(?:GPA|GWA|CWA|QPI|WEIGHTED\s*AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*AVERAGE)[^\d]*?([1-5](?:[\.,][0-9]{1,4}|[0-9]{2,5}))\b/i);
+      if (kwMatch && kwMatch[1]) {
+        const rawVal = kwMatch[1].replace(',', '.');
+        if (rawVal.includes('.')) {
+          const val = parseFloat(rawVal);
+          if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
+        } else if (rawVal.length >= 3 && rawVal.length <= 5) {
+          const val = parseFloat(rawVal[0] + '.' + rawVal.slice(1));
+          if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
+        }
+      }
+    }
+  }
+
+  // 2. High-precision 4-decimal place term GPA on body text (e.g. 3.5481)
+  const precisionMatch = cleanedBodyText.match(/\b([1-5]\.[0-9]{3,4})\b/);
   if (precisionMatch && precisionMatch[1]) {
     const val = parseFloat(precisionMatch[1]);
     if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
   }
 
-  // 2. Line-bounded explicit keyword pattern on full text (e.g. "GPA: 3.3889", "GPA: 3.44", "GWA = 1.75")
-  for (const rawLine of cleaned.split(/[\r\n]+/)) {
-    if (/^\s*(?:STUDENT'S\s*FINAL\s*GRADES|GRADE\s+UNITS|SECTION\s+SUBJECT)/i.test(rawLine)) continue;
-
-    if (/(?:GPA|GWA|CWA|QPI|WEIGHTED\s*AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*AVERAGE)/i.test(rawLine)) {
-      const kwMatch = rawLine.match(/(?:GPA|GWA|CWA|QPI|WEIGHTED\s*AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*AVERAGE)[^\d]*?([1-5]\.[0-9]{1,4})\b/i);
-      if (kwMatch && kwMatch[1]) {
-        const val = parseFloat(kwMatch[1]);
-        if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
-      }
-    }
-  }
-
-  // 3. Value immediately before "Total Units" table footer
-  const pUnits = cleaned.match(/([1-5]\.[0-9]{1,4})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)/i);
+  // 3. Value immediately before "Total Units" table footer (supports both decimal "3.5481" and integer "35481")
+  const pUnits = cleanedBodyText.match(/([1-5](?:\.[0-9]{1,4}|[0-9]{2,4}))\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)/i);
   if (pUnits && pUnits[1]) {
-    const val = parseFloat(pUnits[1]);
+    const rawVal = pUnits[1];
+    const val = rawVal.includes('.') ? parseFloat(rawVal) : parseFloat(rawVal[0] + '.' + rawVal.slice(1));
     if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
   }
 

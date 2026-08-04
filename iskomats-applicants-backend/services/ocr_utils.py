@@ -1852,12 +1852,10 @@ def parse_grades_document(raw_text):
             if '.' in raw_digits:
                 val = float(raw_digits)
             else:
-                if len(raw_digits) in (4, 5):
+                if len(raw_digits) in (3, 4, 5):
                     val = float(raw_digits[0] + '.' + raw_digits[1:])
-                elif len(raw_digits) == 3:
-                    val = float(raw_digits) / 100.0
                 elif len(raw_digits) == 2:
-                    val = float(raw_digits) / 10.0
+                    val = float(raw_digits[0] + '.' + raw_digits[1])
                 else:
                     val = float(raw_digits)
             if 1.0 <= val <= 5.0:
