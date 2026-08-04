@@ -38,7 +38,7 @@ import {
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { adminAPI, scholarshipAPI, announcementService, warmBackendConnection } from '../../services/api';
-import { decryptUrl } from '../../services/CryptoService';
+import { decryptUrl, preloadMediaUrls } from '../../services/CryptoService';
 import socketService from '../../services/socket';
 import iskomatsLogo from '../../assets/logo.png';
 
@@ -49,30 +49,37 @@ Chart.register(...registerables);
  */
 const DecryptedMedia = ({ src, type, className, controls = false, onClick = null, alt = "Document" }) => {
   const [decryptedSrc, setDecryptedSrc] = useState(src);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(Boolean(src && typeof src === 'string' && src.startsWith('http')));
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    let objectUrl = null;
+    let isMounted = true;
     setHasError(false);
-    const load = async () => {
-      if (src && typeof src === 'string' && src.startsWith('http')) {
-        const decrypted = await decryptUrl(src, type);
+
+    if (!src || typeof src !== 'string' || !src.startsWith('http')) {
+      setDecryptedSrc(src);
+      setIsLoading(false);
+      return;
+    }
+
+    decryptUrl(src, type)
+      .then((decrypted) => {
+        if (!isMounted) return;
         if (!decrypted) {
           setHasError(true);
+        } else {
+          setDecryptedSrc(decrypted);
         }
-        setDecryptedSrc(decrypted);
-        if (decrypted && typeof decrypted === 'string' && decrypted.startsWith('blob:')) {
-          objectUrl = decrypted;
-        }
-      } else {
-        setDecryptedSrc(src);
-      }
-      setIsLoading(false);
-    };
-    load();
+        setIsLoading(false);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setHasError(true);
+        setIsLoading(false);
+      });
+
     return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      isMounted = false;
     };
   }, [src, type]);
 
@@ -5218,6 +5225,19 @@ export default function ScholarshipDashboard({
     const isPending = listType === 'all' || listType === 'pending';
     const dispatchKey = getApplicantDispatchKey(a);
     const docTypes = getApplicantDocTypes(a);
+
+    useEffect(() => {
+      if (!a) return;
+      const mediaUrls = [
+        a.profile_picture,
+        a.signature,
+        ...(a.coeFiles || []).map(f => f.src),
+        ...(a.indigencyFiles || []).map(f => f.src),
+        ...(a.gradesFiles || []).map(f => f.src),
+        ...(a.idFiles || []).map(f => f.src),
+      ].filter(Boolean);
+      preloadMediaUrls(mediaUrls);
+    }, [a?.applicant_no, a?.id]);
 
     // Normalize family data for display
     const familyData = {

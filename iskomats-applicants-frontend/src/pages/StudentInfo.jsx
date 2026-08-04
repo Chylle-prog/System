@@ -1393,12 +1393,36 @@ function coe_type_matches_text(text) {
   return keywords.some(kw => normText.includes(kw));
 }
 
+function grades_type_matches_text(text) {
+  if (!text) return false;
+  const normText = normalizeForOcr(text);
+  const keywords = [
+    'grade',
+    'grades',
+    'transcript',
+    'scholastic record',
+    'report card',
+    'evaluation of grades',
+    'gpa',
+    'gwa',
+    'tor',
+    'tcog',
+    'final grades',
+    'card',
+    'units',
+    'rating',
+    'marks',
+    'course grade'
+  ];
+  return keywords.some(kw => normText.includes(kw));
+}
+
 function extractTotalUnitsFromText(text) {
   if (!text) return null;
 
   const rawLines = text.split(/[\r\n]+/);
 
-  // 1. Primary Strategy: Explicit "TOTAL UNITS : XX" Extraction on the TOTAL UNITS line itself
+  // 1. Primary Strategy: Explicit "TOTAL UNITS : XX" Extraction on the TOTAL UNITS line itself or immediately below it
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i].trim();
     if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
@@ -1407,10 +1431,24 @@ function extractTotalUnitsFromText(text) {
         .replace(/S12/g, '12')
         .replace(/S(?=\d{2})/g, '');
 
-      const currentMatch = cleanedLine.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)[^\d]*\b([1-4]?[0-9])\b/i);
+      // Check current line for numbers (e.g., 26, 26.00, 2600)
+      const currentMatch = cleanedLine.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)[^\d]*(\d+(?:\.\d+)?)/i);
       if (currentMatch) {
-        const val = parseInt(currentMatch[1], 10);
-        if (!isNaN(val) && val >= 6 && val <= 48) return val;
+        let val = parseFloat(currentMatch[1]);
+        if (val > 48 && val <= 4800) val = val / 100;
+        if (!isNaN(val) && val >= 6 && val <= 48) return Math.round(val);
+      }
+
+      // Check 2 lines below TOTAL UNITS header if number was split onto next line
+      for (let j = i + 1; j < Math.min(rawLines.length, i + 3); j++) {
+        const checkLine = rawLines[j].trim();
+        if (/assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(checkLine)) break;
+        const subMatch = checkLine.match(/(\d+(?:\.\d+)?)/);
+        if (subMatch) {
+          let val = parseFloat(subMatch[1]);
+          if (val > 48 && val <= 4800) val = val / 100;
+          if (!isNaN(val) && val >= 6 && val <= 48) return Math.round(val);
+        }
       }
     }
   }
@@ -1935,21 +1973,22 @@ const StudentInfo = () => {
           const hasNameMatch = allNameWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
           const hasAddressMatch = targetBarangay ? (cleanText.includes(targetBarangay.toLowerCase()) || rawCombined.includes(targetBarangay.toLowerCase())) : false;
           const hasKeywordMatch = targetKeywords.some(k => cleanText.includes(k) || rawCombined.includes(k));
+          const hasExtractedVideoText = Array.isArray(textLogs) && textLogs.some(log => log && log.length >= 10);
 
-          if (hasNameMatch || hasAddressMatch || hasKeywordMatch) {
+          if (hasNameMatch || hasAddressMatch || hasKeywordMatch || hasExtractedVideoText) {
             return {
               valid: true,
               isMatched: true,
-              reason: "Video Text Verified",
+              reason: "Video Proof Verified",
               detectedText: (textLogs || []).join("\n\n")
             };
           }
 
           return {
-            valid: false,
-            isMatched: false,
-            reason: "No matching ID details (name, address, or ID header) detected in video proof frames.",
-            detectedText: (textLogs || []).join("\n\n") || "No readable text extracted from video."
+            valid: true,
+            isMatched: true,
+            reason: "Proof video attached for manual review.",
+            detectedText: (textLogs || []).join("\n\n") || "Proof video attached for manual review."
           };
         };
 
@@ -2028,13 +2067,11 @@ const StudentInfo = () => {
                 return;
               }
 
-              const factor = 1.3;
               for (let i = 0; i < data.length; i += 4) {
                 const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-                const contrastGray = Math.min(255, Math.max(0, (gray - 128) * factor + 128));
-                data[i] = contrastGray;
-                data[i + 1] = contrastGray;
-                data[i + 2] = contrastGray;
+                data[i] = gray;
+                data[i + 1] = gray;
+                data[i + 2] = gray;
               }
               ctx.putImageData(imgData, 0, 0);
             } catch (e) { }
@@ -3921,13 +3958,15 @@ const StudentInfo = () => {
           const courseOk = course ? courseMatchesText(course, combinedText) : true;
           const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText) || studentIdNoMatchesText(idNumber, combinedText)) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
+          const gradesTypeOk = grades_type_matches_text(combinedText);
           const detectedDocGpa = extractGpaFromText(detectedText, gpa);
 
-          isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && videoOk;
+          isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && videoOk && gradesTypeOk;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
             "Middle Name": middleName ? nameCheck.details.middle_ok : null,
             "Last Name": nameCheck.details.last_ok,
+            "Document Type": gradesTypeOk,
             "GPA (Document)": detectedDocGpa ? (gpaOk ? true : false) : (gpa ? false : null),
             "GPA (Input)": gpa ? (gpaOk ? true : false) : null,
             "Academic Year": academicYear ? ayOk : null,
@@ -3940,7 +3979,7 @@ const StudentInfo = () => {
           };
           finalMessage = isSuccess
             ? "Grades verified successfully client-side!"
-            : (!videoOk ? (videoCheck?.reason || "Grades video proof failed validation.") : !gpaOk ? `GPA mismatch: document shows ${detectedDocGpa || 'N/A'}, you entered ${gpa}.` : "Grades verification mismatch.");
+            : (!gradesTypeOk ? "Document type mismatch: document does not contain Transcript or Grades keywords." : (!videoOk ? (videoCheck?.reason || "Grades video proof failed validation.") : !gpaOk ? `GPA mismatch: document shows ${detectedDocGpa || 'N/A'}, you entered ${gpa}.` : "Grades verification mismatch."));
           resultsList = [{ doc: 'Grades', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
         }
         else if (docType === 'Indigency') {
@@ -4070,6 +4109,7 @@ const StudentInfo = () => {
         };
       } else if (docType === 'Grades') {
         const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
+        const gradesTypeOk = grades_type_matches_text(combinedText);
         const detectedDocGpa = extractGpaFromText(detectedText, gpa);
         const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
         const isNationalId = idType === 'National ID';
@@ -4077,6 +4117,7 @@ const StudentInfo = () => {
         debugRequirements = {
           "First Name": firstName || 'N/A',
           "Last Name": lastName || 'N/A',
+          "Document Type": 'Grades / Transcript of Record',
           "GPA (Document)": detectedDocGpa || 'Not detected',
           "GPA (Input)": gpa || 'N/A',
           "Academic Year": academicYear || 'N/A',

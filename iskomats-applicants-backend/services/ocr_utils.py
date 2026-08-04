@@ -1278,10 +1278,13 @@ def extract_total_units_from_text(raw_text):
         line_clean = line.strip()
         if re.search(r'total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit', line_clean, re.IGNORECASE):
             # Check current line
-            m = re.search(r'(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit)[^\d]*\b([1-4]?[0-9])\b', line_clean, re.IGNORECASE)
+            m = re.search(r'(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit)[^\d]*(\d+(?:\.\d+)?)', line_clean, re.IGNORECASE)
             if m:
                 try:
-                    val = int(m.group(1))
+                    val = float(m.group(1))
+                    if 48 < val <= 4800:
+                        val = val / 100.0
+                    val = int(round(val))
                     if 6 <= val <= 48:
                         return val
                 except ValueError:
@@ -1294,10 +1297,13 @@ def extract_total_units_from_text(raw_text):
                     break
                 if re.match(r'^[\-\=\_\s\|]+$', next_line):
                     continue
-                digits = re.findall(r'\b([1-4]?[0-9])\b', next_line)
+                digits = re.findall(r'(\d+(?:\.\d+)?)', next_line)
                 for d in digits:
                     try:
-                        v = int(d)
+                        v = float(d)
+                        if 48 < v <= 4800:
+                            v = v / 100.0
+                        v = int(round(v))
                         if 6 <= v <= 60:
                             return v
                     except ValueError:
