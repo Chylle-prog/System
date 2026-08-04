@@ -3259,6 +3259,12 @@ const StudentInfo = () => {
           videoVal = (documentVideos && documentVideos.schoolIdFront_video) || (documentFiles && documentFiles.schoolIdFront_video) || formData.schoolIdFront_video;
         }
 
+        const vFieldName = docType === 'Indigency' ? 'mayorIndigency_video' : (docType === 'Enrollment' ? 'mayorCOE_video' : (docType === 'Grades' ? 'mayorGrades_video' : 'schoolIdFront_video'));
+
+        if (videoVal) {
+          formDataPayload.append(vFieldName, videoVal);
+        }
+
         let videoOcrPromise = Promise.resolve(null);
         if (videoVal) {
           const vFieldName = docType === 'Indigency' ? 'mayorIndigency_video' : (docType === 'Enrollment' ? 'mayorCOE_video' : (docType === 'Grades' ? 'mayorGrades_video' : 'schoolIdFront_video'));
