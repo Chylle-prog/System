@@ -1814,6 +1814,13 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
     _units_detected = parsed_fields.get('units') or parsed_fields.get('total_units')
 
+    raw_norm = normalize_text(raw_text)
+    _doc_type_ok = any(k in raw_norm for k in [
+        'registration', 'registered', 'enrollment', 'enrolled', 'certificate of registration',
+        'certificate of enrollment', 'cor', 'coe', 'subject', 'units', 'assessment', 'tuition',
+        'schedule', 'official certificate'
+    ])
+
     meta['score_details'] = {
         'FIRST NAME': first_ok,
         'LAST NAME': last_ok,
@@ -1823,7 +1830,7 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         'COURSE': _course_ok if expected_course else None,
         'ID NUMBER': _id_ok if (not is_national_id and expected_id_no) else None,
         'TOTAL UNITS': f"{_units_detected} units detected" if _units_detected else None,
-        'DOCUMENT TYPE': success,
+        'DOCUMENT TYPE': _doc_type_ok,
         'VIDEO PROOF': True
     }
     meta['units'] = parsed_fields.get('units')
