@@ -3017,6 +3017,7 @@ const StudentInfo = () => {
             resolve({ edited: false, reason: "Authentic document" });
             return;
           }
+          const canvas = document.createElement('canvas');
           canvas.width = w;
           canvas.height = h;
           const ctx = canvas.getContext("2d");
@@ -3026,14 +3027,19 @@ const StudentInfo = () => {
           const data = imgData.data;
 
           // Grid patch variance analysis in text content area (ignore outer 10% page margins)
-          const gridW = 20;
-          const gridH = 15;
-          const marginX = Math.floor(w * 0.10);
-          const marginY = Math.floor(h * 0.10);
+          const gridW = 16;
+          const gridH = 16;
+          const marginX = Math.floor(w * 0.05);
+          const marginY = Math.floor(h * 0.08);
           const contentW = w - 2 * marginX;
           const contentH = h - 2 * marginY;
           const cols = Math.floor(contentW / gridW);
           const rows = Math.floor(contentH / gridH);
+
+          if (cols < 4 || rows < 4) {
+            resolve({ edited: false, reason: "Authentic document" });
+            return;
+          }
 
           let suspiciousPatches = 0;
           const smoothPatchesGrid = Array.from({ length: rows }, () => Array(cols).fill(false));
@@ -3081,42 +3087,12 @@ const StudentInfo = () => {
                 suspiciousPatches++;
               }
 
-              const inBody = r >= Math.floor(rows * 0.08) && r <= Math.floor(rows * 0.92) && c >= Math.floor(cols * 0.05) && c <= Math.floor(cols * 0.95);
-              if (isSmoothEditPatch && inBody) {
-                smoothPatchesGrid[r][c] = true;
-              }
-              if (isPureWhitePixelPatch && inBody) {
-                whitePixelPatchesGrid[r][c] = true;
-              }
+              smoothPatchesGrid[r][c] = isSmoothEditPatch;
+              whitePixelPatchesGrid[r][c] = isPureWhitePixelPatch;
             }
           }
 
-          let maxHRun = 0;
-          let maxWhiteRun = 0;
-          let totalWhitePatches = 0;
-
-          for (let r = 0; r < rows; r++) {
-            let run = 0;
-            let whiteRun = 0;
-            for (let c = 0; c < cols; c++) {
-              if (smoothPatchesGrid[r] && smoothPatchesGrid[r][c]) {
-                run++;
-                if (run > maxHRun) maxHRun = run;
-              } else {
-                run = 0;
-              }
-
-              if (whitePixelPatchesGrid[r] && whitePixelPatchesGrid[r][c]) {
-                whiteRun++;
-                totalWhitePatches++;
-                if (whiteRun > maxWhiteRun) maxWhiteRun = whiteRun;
-              } else {
-                whiteRun = 0;
-              }
-            }
-          }
-
-          if (suspiciousPatches >= 4) {
+          if (suspiciousPatches >= 8) {
             resolve({
               edited: true,
               reason: `Digital edit / solid overlay block detected on document (${suspiciousPatches} artificial overlay patches found). Please upload an authentic, unedited document.`,
@@ -3125,20 +3101,44 @@ const StudentInfo = () => {
             return;
           }
 
-          if (maxWhiteRun >= 4 || totalWhitePatches >= 6) {
-            resolve({
-              edited: true,
-              reason: `Digital edit / text patch overlay detected on document (contiguous white edit block of length ${maxWhiteRun * 16}px found around text region). Please upload an authentic, unedited document.`,
-              patchCount: maxWhiteRun
-            });
-            return;
+          // 2D Block Check (minimum 2 rows tall × 6 cols wide) to ignore 1-row-tall form underlines
+          let maxBlockArea = 0;
+          let maxBlockW = 0;
+          let maxBlockH = 0;
+
+          for (let blockH = 2; blockH < Math.min(8, rows); blockH++) {
+            for (let r = 0; r <= rows - blockH; r++) {
+              let run = 0;
+              for (let c = 0; c < cols; c++) {
+                let colAllWhite = true;
+                for (let bh = 0; bh < blockH; bh++) {
+                  if (!whitePixelPatchesGrid[r + bh][c]) {
+                    colAllWhite = false;
+                    break;
+                  }
+                }
+                if (colAllWhite) {
+                  run++;
+                  const area = blockH * run;
+                  if (area > maxBlockArea) {
+                    maxBlockArea = area;
+                    maxBlockW = run;
+                    maxBlockH = blockH;
+                  }
+                } else {
+                  run = 0;
+                }
+              }
+            }
           }
 
-          if (maxHRun >= 7) {
+          if (maxBlockH >= 2 && maxBlockW >= 6) {
+            const blockPxW = maxBlockW * gridW;
+            const blockPxH = maxBlockH * gridH;
             resolve({
               edited: true,
-              reason: `Digital edit / text patch overlay detected on document (contiguous edited text block overlay of length ${maxHRun * 16}px found around name/text region). Please upload an authentic, unedited document.`,
-              patchCount: maxHRun
+              reason: `Digital edit / text patch overlay detected on document (white edit block of ${blockPxW}×${blockPxH}px found around text region). Please upload an authentic, unedited document.`,
+              patchCount: maxBlockArea
             });
             return;
           }
@@ -3255,13 +3255,13 @@ const StudentInfo = () => {
         // Fall back to URL strings only when no blob is available (e.g. previously uploaded docs).
         const _blobs = documentVideoBlobsRef.current;
         if (docType === 'Indigency') {
-          videoVal = (_blobs && _blobs.mayorIndigency_video) || (documentFiles && documentFiles.mayorIndigency_video) || (documentVideos && documentVideos.mayorIndigency_video) || formData.mayorIndigency_video || formData.indigencyVideo || formData.indigency_vid_url;
+          videoVal = (_blobs && _blobs.mayorIndigency_video) || formData.mayorIndigency_video || formData.indigencyVideo || formData.indigency_vid_url;
         } else if (docType === 'Enrollment') {
-          videoVal = (_blobs && _blobs.mayorCOE_video) || (documentFiles && documentFiles.mayorCOE_video) || (documentVideos && documentVideos.mayorCOE_video) || formData.mayorCOE_video || formData.enrollmentVideo || formData.enrollment_certificate_vid_url;
+          videoVal = (_blobs && _blobs.mayorCOE_video) || formData.mayorCOE_video || formData.enrollmentVideo || formData.enrollment_certificate_vid_url;
         } else if (docType === 'Grades') {
-          videoVal = (_blobs && _blobs.mayorGrades_video) || (documentFiles && documentFiles.mayorGrades_video) || (documentVideos && documentVideos.mayorGrades_video) || formData.mayorGrades_video || formData.gradesVideo || formData.grades_vid_url;
+          videoVal = (_blobs && _blobs.mayorGrades_video) || formData.mayorGrades_video || formData.gradesVideo || formData.grades_vid_url;
         } else if (docType === 'SchoolID') {
-          videoVal = (_blobs && _blobs.schoolIdFront_video) || (documentFiles && documentFiles.schoolIdFront_video) || (documentVideos && documentVideos.schoolIdFront_video) || formData.schoolIdFront_video || formData.schoolid_front_vid_url;
+          videoVal = (_blobs && _blobs.schoolIdFront_video) || formData.schoolIdFront_video || formData.schoolid_front_vid_url;
         }
 
         const vFieldName = docType === 'Indigency' ? 'mayorIndigency_video' : (docType === 'Enrollment' ? 'mayorCOE_video' : (docType === 'Grades' ? 'mayorGrades_video' : 'schoolIdFront_video'));
@@ -4039,6 +4039,7 @@ const StudentInfo = () => {
           // Strictly distinguish between Certificate of Indigency and Certificate of Residency headers
           const hasExplicitIndigencyHeader = /certificate\s*of\s*indigency|katibayan\s*ng\s*kawalang|office\s*of.*indigency/i.test(imgDocText);
           const hasExplicitResidencyHeader = /certificate\s*of\s*residency|katibayan\s*ng\s*pagkapamayanan|office\s*of.*residency/i.test(imgDocText);
+          const isBarangayCertFormat = hasExplicitIndigencyHeader || hasExplicitResidencyHeader || /barangay|punong\s*barangay|office\s*of\s*the\s*punong|republic\s*of\s*the\s*philippines/i.test(imgDocText);
 
           let imageHasKeyword = false;
           let docTypeErrorMessage = null;
