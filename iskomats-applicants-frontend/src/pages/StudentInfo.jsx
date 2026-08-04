@@ -3795,7 +3795,7 @@ const StudentInfo = () => {
           const courseOk = course ? courseMatchesText(course, combinedText) : true;
           const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
           const semOk = semesterMatchesText(combinedText, semester || formData.semester, reqSemester);
-          const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, detectedText) || studentIdNoMatchesText(idNumber, combinedText)) : true);
+          const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText) || studentIdNoMatchesText(idNumber, combinedText)) : true;
           const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
           const coeTypeOk = coe_type_matches_text(combinedText);
@@ -3823,7 +3823,7 @@ const StudentInfo = () => {
             "Academic Year": academicYear ? ayOk : null,
             "Year Level": yearLevel ? yrOk : null,
             "Semester": (semester || reqSemester) ? semOk : null,
-            "ID Number": isNationalId ? null : (idNumber ? idOk : null),
+            "ID Number": idNumber ? idOk : null,
             "Document Type": coeTypeOk,
             "Units Requirement": requiredUnits ? (unitsOk ? `Met (${detectedUnits}/${requiredUnits} units)` : `Failed (${detectedUnits || 0}/${requiredUnits} units)`) : (detectedUnits ? `${detectedUnits} units` : null),
             "Video Proof": videoOk
@@ -3845,7 +3845,7 @@ const StudentInfo = () => {
           const semOk = semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
           const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
           const courseOk = course ? courseMatchesText(course, combinedText) : true;
-          const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, detectedText) || studentIdNoMatchesText(idNumber, combinedText)) : true);
+          const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText) || studentIdNoMatchesText(idNumber, combinedText)) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
           const detectedDocGpa = extractGpaFromText(detectedText, gpa);
 
@@ -3861,7 +3861,7 @@ const StudentInfo = () => {
             "Semester": semester ? semOk : null,
             "School Name": schoolName ? schoolOk : null,
             "Course / Track": course ? courseOk : null,
-            "ID Number": isNationalId ? null : (idNumber ? idOk : null),
+            "ID Number": idNumber ? idOk : null,
             "Video Proof": videoOk
           };
           finalMessage = isSuccess
@@ -3989,7 +3989,7 @@ const StudentInfo = () => {
           "Academic Year": academicYear || 'N/A',
           "Year Level": yearLevel || 'N/A',
           "Semester": semester || 'N/A',
-          "ID Number": isNationalId ? null : (idNumber || 'N/A'),
+          "ID Number": idNumber || 'N/A',
           "Units Requirement": requiredUnits ? `${detectedUnits !== null ? detectedUnits : 0} / ${requiredUnits} units` : (detectedUnits !== null ? `${detectedUnits} units` : 'N/A'),
           "Document Type": 'Certificate of Registration/Enrollment',
           "Video Proof": videoOk ? 'Uploaded & Validated' : (videoCheck?.reason || 'No Text Detected in Video')
@@ -4009,7 +4009,7 @@ const StudentInfo = () => {
           "Semester": semester || 'N/A',
           "School Name": schoolName || 'N/A',
           "Course / Track": course || 'N/A',
-          "ID Number": isNationalId ? null : (idNumber || 'N/A'),
+          "ID Number": idNumber || 'N/A',
           "Video Proof": videoOk ? 'Uploaded & Validated' : (videoCheck?.reason || 'No Text Detected in Video')
         };
       } else if (docType === 'Indigency') {
@@ -4206,8 +4206,8 @@ const StudentInfo = () => {
       showPromptMessage('Please record and upload the COE video first.');
       return;
     }
-    if (!schoolName || (!isNationalId && !idNumber) || !yearLevel || !course) {
-      showPromptMessage(isNationalId ? 'Please complete School Name, Year Level, and Course first.' : 'Please complete School Name, ID, Year Level, and Course first.');
+    if (!schoolName || !idNumber || !yearLevel || !course) {
+      showPromptMessage('Please complete School Name, ID, Year Level, and Course first.');
       return;
     }
 
@@ -4267,8 +4267,8 @@ const StudentInfo = () => {
       showPromptMessage('Please record and upload the Grades video first.');
       return;
     }
-    if (!schoolName || (!isNationalId && !idNumber) || !yearLevel || !gpa) {
-      showPromptMessage(isNationalId ? 'Please complete School Name, Year Level, and GPA first.' : 'Please complete School Name, School ID Number, Year Level, and GPA first.');
+    if (!schoolName || !idNumber || !yearLevel || !gpa) {
+      showPromptMessage('Please complete School Name, School ID Number, Year Level, and GPA first.');
       return;
     }
 
@@ -7355,32 +7355,24 @@ const StudentInfo = () => {
                 </div>
 
 
-                {(() => {
-                  const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
-                  const isNationalId = idType === 'National ID';
-                  return (
-                    <div className="form-row">
-                      {!isNationalId && (
-                        <div className="form-group">
-                          <label>School ID Number <span style={{ color: '#e74c3c' }}>*</span></label>
-                          <input type="text" name="schoolIdNumber" value={formData.schoolIdNumber} onChange={handleInputChange} placeholder="ID Number" required={currentStep === 3 && !isNationalId} />
-                        </div>
-                      )}
-                      <div className="form-group">
-                        <label>Name of School <span style={{ color: '#e74c3c' }}>*</span></label>
-                        <input
-                          type="text"
-                          name="schoolName"
-                          value={formData.schoolName}
-                          readOnly
-                          style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
-                          placeholder="School Name"
-                          required={currentStep === 3}
-                        />
-                      </div>
-                    </div>
-                  );
-                })()}
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>School ID Number <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input type="text" name="schoolIdNumber" value={formData.schoolIdNumber} onChange={handleInputChange} placeholder="ID Number" required={currentStep === 3} />
+                  </div>
+                  <div className="form-group">
+                    <label>Name of School <span style={{ color: '#e74c3c' }}>*</span></label>
+                    <input
+                      type="text"
+                      name="schoolName"
+                      value={formData.schoolName}
+                      readOnly
+                      style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
+                      placeholder="School Name"
+                      required={currentStep === 3}
+                    />
+                  </div>
+                </div>
 
                 <div className="form-group">
                   <label>School Address <span style={{ color: '#e74c3c' }}>*</span></label>
