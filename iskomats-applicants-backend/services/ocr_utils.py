@@ -1256,8 +1256,6 @@ def _run_tesseract_on_image(img, psm=3, fast_mode=False):
         except Exception as preprocess_err:
             print(f"[OCR] Line removal pass note: {preprocess_err}", flush=True)
 
-        return text.strip()
-
         # Pass 3: Otsu fallback only if insufficient text found so far
         if not text or len(text.strip()) < 20:
             _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -1693,14 +1691,15 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
         sem_ok = False
         if exp_num is not None and found_num is not None:
             sem_ok = (exp_num == found_num)
-        elif exp_num is not None:
-            found_sem_clean = normalize_text(found_sy_sem or raw_text)
-            if exp_num == 1:
-                sem_ok = any(k in found_sem_clean for k in ['1st', 'first', 'sem 1', 'semester 1'])
-            elif exp_num == 2:
-                sem_ok = any(k in found_sem_clean for k in ['2nd', 'second', 'sem 2', 'semester 2'])
-            elif exp_num == 3:
-                sem_ok = any(k in found_sem_clean for k in ['3rd', 'third', 'summer', 'midyear'])
+
+        if not sem_ok and exp_num is not None:
+            raw_clean = normalize_text(f"{found_sy_sem}\n{raw_text}")
+            if exp_num == 1 and any(k in raw_clean for k in ['1st', 'first', 'sem 1', 'semester 1', '1st sem', '1st semester']):
+                sem_ok = True
+            elif exp_num == 2 and any(k in raw_clean for k in ['2nd', 'second', 'sem 2', 'semester 2', '2nd sem', '2nd semester']):
+                sem_ok = True
+            elif exp_num == 3 and any(k in raw_clean for k in ['3rd', 'third', 'summer', 'midyear', '3rd sem', '3rd semester']):
+                sem_ok = True
 
         if not sem_ok:
             found_desc = f"{found_num}nd Sem" if found_num == 2 else (f"{found_num}st Sem" if found_num == 1 else (f"{found_num}rd Sem" if found_num == 3 else (found_sy_sem if (found_sy_sem and len(found_sy_sem) <= 30) else "Not found in document header")))
