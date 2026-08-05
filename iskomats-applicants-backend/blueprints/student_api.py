@@ -1031,6 +1031,20 @@ def get_scholarship_restriction(scope, scholarship_no):
             'blocking_application': same_scholarship_row,
         }
 
+    same_scholarship_rejected_row = next(
+        (row for row in self_related_rows if str(row.get('is_accepted')).strip().title() in ('Rejected', 'Declined')),
+        None
+    )
+    if same_scholarship_rejected_row:
+        return {
+            'already_applied': True,
+            'blocked': True,
+            'message': f"{subject} was previously rejected for this scholarship and cannot re-apply.",
+            'reason': 'identity-rejected-same-scholarship',
+            'auto_reject': False,
+            'blocking_application': same_scholarship_rejected_row,
+        }
+
     active_accepted_row = next((row for row in active_accepted_rows), None)
     if active_accepted_row:
         scholarship_name = active_accepted_row.get('scholarship_name') or 'another scholarship'

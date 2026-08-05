@@ -114,6 +114,7 @@ const Portal = () => {
   const [selectedAnnouncementImage, setSelectedAnnouncementImage] = useState(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedAppForView, setSelectedAppForView] = useState(null);
+  const [viewModalTab, setViewModalTab] = useState('summary');
 
   // Custom Modal States for Cancellation
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -760,6 +761,7 @@ const Portal = () => {
 
   const handleViewApplication = (app) => {
     setSelectedAppForView(app);
+    setViewModalTab('summary');
     setShowViewModal(true);
   };
 
@@ -3370,158 +3372,7 @@ const Portal = () => {
         </div>
       )}
 
-      {/* Application Detail Modal */}
-      {showViewModal && selectedAppForView && (
-        <div
-          className="announcement-modal-overlay"
-          onClick={closeViewModal}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 10000,
-            background: 'rgba(0, 0, 0, 0.55)',
-            backdropFilter: 'blur(5px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '1.5rem'
-          }}
-        >
-          <div
-            className="announcement-modal"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: 'white',
-              borderRadius: '24px',
-              maxWidth: '650px',
-              width: '100%',
-              padding: '2.2rem',
-              boxShadow: 'var(--shadow-lg)',
-              position: 'relative',
-              maxHeight: '85vh',
-              overflowY: 'auto'
-            }}
-          >
-            <button
-              onClick={closeViewModal}
-              style={{
-                position: 'absolute',
-                top: '1.5rem',
-                right: '1.5rem',
-                background: 'var(--gray-1)',
-                border: 'none',
-                width: '38px',
-                height: '38px',
-                borderRadius: '50%',
-                cursor: 'pointer',
-                fontSize: '1rem',
-                color: 'var(--text-soft)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <i className="fas fa-times"></i>
-            </button>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', marginBottom: '1rem' }}>
-              <span className={`status-badge ${selectedAppForView.status === 'Approved' || selectedAppForView.status === 'Accepted'
-                  ? 'status-approved'
-                  : selectedAppForView.status === 'Rejected'
-                    ? 'status-rejected'
-                    : 'status-pending'
-                }`}>
-                {selectedAppForView.status}
-              </span>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-soft)', fontWeight: 600 }}>
-                Application #{selectedAppForView.scholarship_no || selectedAppForView.req_no}
-              </span>
-            </div>
-
-            <h3 style={{ color: 'var(--primary)', fontSize: '1.6rem', fontWeight: '800', marginBottom: '0.4rem', lineHeight: '1.3' }}>
-              {selectedAppForView.name}
-            </h3>
-
-            <p style={{ color: 'var(--text-soft)', fontSize: '0.95rem', fontWeight: '600', marginBottom: '1.5rem' }}>
-              <i className="fas fa-building" style={{ marginRight: '8px', color: 'var(--primary)' }}></i>
-              {selectedAppForView.provider_name || selectedAppForView.sponsor || 'Scholarship Provider'}
-            </p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem', background: 'var(--gray-1)', padding: '1.2rem', borderRadius: '18px' }}>
-              <div>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-soft)', display: 'block', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>Financial Grant</span>
-                <span style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '1.1rem' }}>{selectedAppForView.amount || 'Standard Stipend'}</span>
-              </div>
-              <div>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-soft)', display: 'block', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>Date Applied</span>
-                <span style={{ fontWeight: 700, color: 'var(--text-dark)' }}>{selectedAppForView.applied_date || 'Recently'}</span>
-              </div>
-              <div>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-soft)', display: 'block', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>Deadline</span>
-                <span style={{ fontWeight: 700, color: 'var(--text-dark)' }}>{selectedAppForView.deadline || 'N/A'}</span>
-              </div>
-            </div>
-
-            {selectedAppForView.remarks && (
-              <div style={{
-                marginBottom: '1.5rem',
-                background: selectedAppForView.status === 'Accepted' || selectedAppForView.status === 'Approved' ? '#e1f7f0' : 'var(--warning-bg)',
-                padding: '1.2rem',
-                borderRadius: '16px',
-                borderLeft: selectedAppForView.status === 'Accepted' || selectedAppForView.status === 'Approved' ? '4px solid var(--success)' : '4px solid var(--warning)'
-              }}>
-                <h4 style={{
-                  color: selectedAppForView.status === 'Accepted' || selectedAppForView.status === 'Approved' ? 'var(--success)' : 'var(--warning)',
-                  fontSize: '0.95rem',
-                  fontWeight: 800,
-                  marginBottom: '0.4rem'
-                }}>
-                  <i className={selectedAppForView.status === 'Accepted' || selectedAppForView.status === 'Approved' ? 'fas fa-check-circle' : 'fas fa-info-circle'} style={{ marginRight: '6px' }}></i>
-                  Application Remarks & Status Updates
-                </h4>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-dark)', lineHeight: '1.6', margin: 0 }}>
-                  {selectedAppForView.remarks}
-                </p>
-              </div>
-            )}
-
-            {selectedAppForView.submitted_documents && selectedAppForView.submitted_documents.length > 0 && (
-              <div style={{ marginBottom: '1.5rem' }}>
-                <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-dark)', marginBottom: '0.6rem' }}>
-                  Submitted Documents & Requirements
-                </h4>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {selectedAppForView.submitted_documents.map((doc, idx) => (
-                    <li key={idx} style={{ background: 'var(--gray-1)', padding: '0.7rem 1rem', borderRadius: '12px', fontSize: '0.85rem', color: 'var(--text-dark)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <i className="fas fa-file-check" style={{ color: 'var(--success)' }}></i>
-                      {doc}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div style={{ textAlign: 'right', marginTop: '1.8rem' }}>
-              <button
-                onClick={closeViewModal}
-                style={{
-                  background: 'var(--primary)',
-                  color: 'white',
-                  border: 'none',
-                  padding: '0.7rem 1.8rem',
-                  borderRadius: '30px',
-                  fontWeight: 700,
-                  fontSize: '0.9rem',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(79,13,0,0.2)'
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Portal */}
       <section className="portal">
@@ -4158,8 +4009,8 @@ const Portal = () => {
         </div>
       )}
       {/* View Application Detail Modal */}
-      {showViewModal && (
-        <div className="view-modal-overlay" onClick={() => setShowViewModal(false)}>
+      {showViewModal && selectedAppForView && (
+        <div className="view-modal-overlay" onClick={closeViewModal}>
           <div className="view-modal" onClick={(e) => e.stopPropagation()}>
             <div className="view-modal-header">
               <div className="view-modal-title">
@@ -4168,145 +4019,284 @@ const Portal = () => {
                   For: <strong>{selectedAppForView?.name}</strong>
                 </p>
               </div>
-              <button className="view-modal-close" onClick={() => setShowViewModal(false)}>
+              <button className="view-modal-close" onClick={closeViewModal}>
                 <i className="fas fa-times"></i>
               </button>
             </div>
 
+            {/* Tab Navigation Buttons */}
+            <div style={{
+              display: 'flex',
+              gap: '0.5rem',
+              padding: '0.8rem 1.2rem 0',
+              borderBottom: '1px solid var(--gray-2)',
+              background: '#f8fafc'
+            }}>
+              <button
+                type="button"
+                onClick={() => setViewModalTab('summary')}
+                style={{
+                  flex: 1,
+                  padding: '0.65rem 1rem',
+                  border: 'none',
+                  borderBottom: viewModalTab === 'summary' ? '3px solid var(--primary)' : '3px solid transparent',
+                  background: viewModalTab === 'summary' ? 'white' : 'transparent',
+                  color: viewModalTab === 'summary' ? 'var(--primary)' : 'var(--text-soft)',
+                  fontWeight: viewModalTab === 'summary' ? 700 : 600,
+                  fontSize: '0.88rem',
+                  borderRadius: '8px 8px 0 0',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <i className="fas fa-file-alt"></i> Application Summary
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewModalTab('details')}
+                style={{
+                  flex: 1,
+                  padding: '0.65rem 1rem',
+                  border: 'none',
+                  borderBottom: viewModalTab === 'details' ? '3px solid var(--primary)' : '3px solid transparent',
+                  background: viewModalTab === 'details' ? 'white' : 'transparent',
+                  color: viewModalTab === 'details' ? 'var(--primary)' : 'var(--text-soft)',
+                  fontWeight: viewModalTab === 'details' ? 700 : 600,
+                  fontSize: '0.88rem',
+                  borderRadius: '8px 8px 0 0',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <i className="fas fa-user-check"></i> Student Profile & Documents
+              </button>
+            </div>
+
             <div className="view-modal-content">
-              {/* Applicant Details */}
-              <div className="view-section">
-                <div className="view-section-title">
-                  <i className="fas fa-user-circle"></i> Applicant Details
-                </div>
-                <div className="view-grid">
-                  <div className="view-item">
-                    <label>Full Name</label>
-                    <div className="value">{userProfile?.first_name} {userProfile?.middle_name} {userProfile?.last_name}</div>
+              {viewModalTab === 'summary' ? (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', marginBottom: '1.2rem' }}>
+                    <span className={`status-badge ${selectedAppForView.status === 'Approved' || selectedAppForView.status === 'Accepted'
+                        ? 'status-approved'
+                        : selectedAppForView.status === 'Rejected'
+                          ? 'status-rejected'
+                          : 'status-pending'
+                      }`}>
+                      {selectedAppForView.status}
+                    </span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-soft)', fontWeight: 600 }}>
+                      Application #{selectedAppForView.scholarship_no || selectedAppForView.req_no}
+                    </span>
                   </div>
-                  <div className="view-item">
-                    <label>Sex</label>
-                    <div className="value" style={{ textTransform: 'capitalize' }}>{userProfile?.sex}</div>
-                  </div>
-                  <div className="view-item">
-                    <label>Birth Date</label>
-                    <div className="value">{userProfile?.birthdate}</div>
-                  </div>
-                  <div className="view-item">
-                    <label>Mobile Number</label>
-                    <div className="value">{userProfile?.mobile_no}</div>
-                  </div>
-                  <div className="view-item" style={{ gridColumn: 'span 2' }}>
-                    <label>Home Address / Contact Location</label>
-                    <div className="value">
-                      {[
-                        userProfile?.street_brgy || userProfile?.streetBarangay || userProfile?.streetBrgy,
-                        userProfile?.town_city_municipality || userProfile?.townCity || userProfile?.municipality,
-                        userProfile?.province,
-                        userProfile?.zip_code || userProfile?.zipCode
-                      ].filter(Boolean).join(', ') || '—'}
-                    </div>
-                  </div>
-                </div>
-              </div>
 
-              {/* Academic Information */}
-              <div className="view-section">
-                <div className="view-section-title">
-                  <i className="fas fa-graduation-cap"></i> Academic Information
-                </div>
-                <div className="view-grid">
-                  <div className="view-item" style={{ gridColumn: 'span 2' }}>
-                    <label>School Name</label>
-                    <div className="value">{userProfile?.school}</div>
-                  </div>
-                  <div className="view-item">
-                    <label>School ID Number</label>
-                    <div className="value">{userProfile?.school_id_no}</div>
-                  </div>
-                  <div className="view-item">
-                    <label>Course / Program</label>
-                    <div className="value">{userProfile?.course}</div>
-                  </div>
-                  <div className="view-item">
-                    <label>Year Level</label>
-                    <div className="value">{userProfile?.year_lvl}</div>
-                  </div>
-                  <div className="view-item">
-                    <label>Overall GPA</label>
-                    <div className="value">{userProfile?.overall_gpa}</div>
-                  </div>
-                </div>
-              </div>
+                  <h3 style={{ color: 'var(--primary)', fontSize: '1.4rem', fontWeight: '800', marginBottom: '0.4rem', lineHeight: '1.3' }}>
+                    {selectedAppForView.name}
+                  </h3>
 
-              {/* Family Background */}
-              <div className="view-section">
-                <div className="view-section-title">
-                  <i className="fas fa-users"></i> Family Background
-                </div>
-                <div className="view-grid">
-                  <div className="view-item">
-                    <label>Father's Name</label>
-                    <div className="value">{userProfile?.father_name}</div>
-                  </div>
-                  <div className="view-item">
-                    <label>Mother's Name</label>
-                    <div className="value">{userProfile?.mother_name}</div>
-                  </div>
-                  <div className="view-item">
-                    <label>Parents' Gross Income</label>
-                    <div className="value">₱{Number(userProfile?.financial_income_of_parents || 0).toLocaleString()}</div>
-                  </div>
-                  <div className="view-item">
-                    <label>Number of Siblings</label>
-                    <div className="value">{userProfile?.sibling_no}</div>
-                  </div>
-                </div>
-              </div>
+                  <p style={{ color: 'var(--text-soft)', fontSize: '0.92rem', fontWeight: '600', marginBottom: '1.5rem' }}>
+                    <i className="fas fa-building" style={{ marginRight: '8px', color: 'var(--primary)' }}></i>
+                    {selectedAppForView.provider_name || selectedAppForView.sponsor || 'Scholarship Provider'}
+                  </p>
 
-              {/* Submitted Documents */}
-              <div className="view-section">
-                <div className="view-section-title">
-                  <i className="fas fa-file-contract"></i> Submitted Documents
-                </div>
-                <div className="doc-gallery">
-                  {userProfile?.profile_picture && (
-                    <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.profile_picture))}>
-                      <div className="doc-icon"><i className="fas fa-user-image"></i></div>
-                      <div className="doc-name">Profile Picture</div>
-                      <div className="doc-status available">View File</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '1rem', marginBottom: '1.5rem', background: 'var(--gray-1)', padding: '1.2rem', borderRadius: '18px' }}>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-soft)', display: 'block', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>Financial Grant</span>
+                      <span style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '1.05rem' }}>{selectedAppForView.amount || 'Standard Stipend'}</span>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-soft)', display: 'block', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>Date Applied</span>
+                      <span style={{ fontWeight: 700, color: 'var(--text-dark)' }}>{selectedAppForView.applied_date || 'Recently'}</span>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-soft)', display: 'block', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>Deadline</span>
+                      <span style={{ fontWeight: 700, color: 'var(--text-dark)' }}>{selectedAppForView.deadline || 'N/A'}</span>
+                    </div>
+                  </div>
+
+                  {selectedAppForView.remarks && (
+                    <div style={{
+                      marginBottom: '1.5rem',
+                      background: selectedAppForView.status === 'Accepted' || selectedAppForView.status === 'Approved' ? '#e1f7f0' : 'var(--warning-bg)',
+                      padding: '1.2rem',
+                      borderRadius: '16px',
+                      borderLeft: selectedAppForView.status === 'Accepted' || selectedAppForView.status === 'Approved' ? '4px solid var(--success)' : '4px solid var(--warning)'
+                    }}>
+                      <h4 style={{
+                        color: selectedAppForView.status === 'Accepted' || selectedAppForView.status === 'Approved' ? 'var(--success)' : 'var(--warning)',
+                        fontSize: '0.95rem',
+                        fontWeight: 800,
+                        marginBottom: '0.4rem'
+                      }}>
+                        <i className={selectedAppForView.status === 'Accepted' || selectedAppForView.status === 'Approved' ? 'fas fa-check-circle' : 'fas fa-info-circle'} style={{ marginRight: '6px' }}></i>
+                        Application Remarks & Status Updates
+                      </h4>
+                      <p style={{ fontSize: '0.9rem', color: 'var(--text-dark)', lineHeight: '1.6', margin: 0 }}>
+                        {selectedAppForView.remarks}
+                      </p>
                     </div>
                   )}
-                  {userProfile?.id_img_front && (
-                    <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.id_img_front))}>
-                      <div className="doc-icon"><i className="fas fa-id-card"></i></div>
-                      <div className="doc-name">School ID (Front)</div>
-                      <div className="doc-status available">View File</div>
+
+                  {selectedAppForView.submitted_documents && selectedAppForView.submitted_documents.length > 0 && (
+                    <div style={{ marginBottom: '1.5rem' }}>
+                      <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-dark)', marginBottom: '0.6rem' }}>
+                        Submitted Documents & Requirements
+                      </h4>
+                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {selectedAppForView.submitted_documents.map((doc, idx) => (
+                          <li key={idx} style={{ background: 'var(--gray-1)', padding: '0.7rem 1rem', borderRadius: '12px', fontSize: '0.85rem', color: 'var(--text-dark)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <i className="fas fa-file-check" style={{ color: 'var(--success)' }}></i>
+                            {doc}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
-                  {userProfile?.grades_doc && (
-                    <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.grades_doc))}>
-                      <div className="doc-icon"><i className="fas fa-file-invoice"></i></div>
-                      <div className="doc-name">Scholastic Record</div>
-                      <div className="doc-status available">View File</div>
+                </>
+              ) : (
+                <>
+                  {/* Applicant Details */}
+                  <div className="view-section">
+                    <div className="view-section-title">
+                      <i className="fas fa-user-circle"></i> Applicant Details
                     </div>
-                  )}
-                  {userProfile?.enrollment_certificate_doc && (
-                    <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.enrollment_certificate_doc))}>
-                      <div className="doc-icon"><i className="fas fa-certificate"></i></div>
-                      <div className="doc-name">Enrollment Certificate</div>
-                      <div className="doc-status available">View File</div>
+                    <div className="view-grid">
+                      <div className="view-item">
+                        <label>Full Name</label>
+                        <div className="value">{userProfile?.first_name} {userProfile?.middle_name} {userProfile?.last_name}</div>
+                      </div>
+                      <div className="view-item">
+                        <label>Sex</label>
+                        <div className="value" style={{ textTransform: 'capitalize' }}>{userProfile?.sex}</div>
+                      </div>
+                      <div className="view-item">
+                        <label>Birth Date</label>
+                        <div className="value">{userProfile?.birthdate}</div>
+                      </div>
+                      <div className="view-item">
+                        <label>Mobile Number</label>
+                        <div className="value">{userProfile?.mobile_no}</div>
+                      </div>
+                      <div className="view-item" style={{ gridColumn: 'span 2' }}>
+                        <label>Home Address / Contact Location</label>
+                        <div className="value">
+                          {[
+                            userProfile?.street_brgy || userProfile?.streetBarangay || userProfile?.streetBrgy,
+                            userProfile?.town_city_municipality || userProfile?.townCity || userProfile?.municipality,
+                            userProfile?.province,
+                            userProfile?.zip_code || userProfile?.zipCode
+                          ].filter(Boolean).join(', ') || '—'}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                  {userProfile?.indigency_doc && (
-                    <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.indigency_doc))}>
-                      <div className="doc-icon"><i className="fas fa-house-user"></i></div>
-                      <div className="doc-name">Certificate of Indigency</div>
-                      <div className="doc-status available">View File</div>
+                  </div>
+
+                  {/* Academic Information */}
+                  <div className="view-section">
+                    <div className="view-section-title">
+                      <i className="fas fa-graduation-cap"></i> Academic Information
                     </div>
-                  )}
-                </div>
-              </div>
+                    <div className="view-grid">
+                      <div className="view-item" style={{ gridColumn: 'span 2' }}>
+                        <label>School Name</label>
+                        <div className="value">{userProfile?.school}</div>
+                      </div>
+                      <div className="view-item">
+                        <label>School ID Number</label>
+                        <div className="value">{userProfile?.school_id_no}</div>
+                      </div>
+                      <div className="view-item">
+                        <label>Course / Program</label>
+                        <div className="value">{userProfile?.course}</div>
+                      </div>
+                      <div className="view-item">
+                        <label>Year Level</label>
+                        <div className="value">{userProfile?.year_lvl}</div>
+                      </div>
+                      <div className="view-item">
+                        <label>Overall GPA</label>
+                        <div className="value">{userProfile?.overall_gpa}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Family Background */}
+                  <div className="view-section">
+                    <div className="view-section-title">
+                      <i className="fas fa-users"></i> Family Background
+                    </div>
+                    <div className="view-grid">
+                      <div className="view-item">
+                        <label>Father's Name</label>
+                        <div className="value">{userProfile?.father_name}</div>
+                      </div>
+                      <div className="view-item">
+                        <label>Mother's Name</label>
+                        <div className="value">{userProfile?.mother_name}</div>
+                      </div>
+                      <div className="view-item">
+                        <label>Parents' Gross Income</label>
+                        <div className="value">₱{Number(userProfile?.financial_income_of_parents || 0).toLocaleString()}</div>
+                      </div>
+                      <div className="view-item">
+                        <label>Number of Siblings</label>
+                        <div className="value">{userProfile?.sibling_no}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Submitted Documents */}
+                  <div className="view-section">
+                    <div className="view-section-title">
+                      <i className="fas fa-file-contract"></i> Submitted Documents
+                    </div>
+                    <div className="doc-gallery">
+                      {userProfile?.profile_picture && (
+                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.profile_picture))}>
+                          <div className="doc-icon"><i className="fas fa-user-image"></i></div>
+                          <div className="doc-name">Profile Picture</div>
+                          <div className="doc-status available">View File</div>
+                        </div>
+                      )}
+                      {userProfile?.id_img_front && (
+                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.id_img_front))}>
+                          <div className="doc-icon"><i className="fas fa-id-card"></i></div>
+                          <div className="doc-name">School ID (Front)</div>
+                          <div className="doc-status available">View File</div>
+                        </div>
+                      )}
+                      {userProfile?.grades_doc && (
+                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.grades_doc))}>
+                          <div className="doc-icon"><i className="fas fa-file-invoice"></i></div>
+                          <div className="doc-name">Scholastic Record</div>
+                          <div className="doc-status available">View File</div>
+                        </div>
+                      )}
+                      {userProfile?.enrollment_certificate_doc && (
+                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.enrollment_certificate_doc))}>
+                          <div className="doc-icon"><i className="fas fa-certificate"></i></div>
+                          <div className="doc-name">Enrollment Certificate</div>
+                          <div className="doc-status available">View File</div>
+                        </div>
+                      )}
+                      {userProfile?.indigency_doc && (
+                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.indigency_doc))}>
+                          <div className="doc-icon"><i className="fas fa-house-user"></i></div>
+                          <div className="doc-name">Certificate of Indigency</div>
+                          <div className="doc-status available">View File</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
