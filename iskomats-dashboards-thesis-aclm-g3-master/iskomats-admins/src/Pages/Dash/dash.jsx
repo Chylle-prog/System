@@ -137,6 +137,17 @@ function matchesProgramFilter(scholarship, filterValue, providerName = '') {
     return true;
   }
 
+  // Provider keyword matching:
+  if (filterClean.includes('africa') && (schClean.includes('africa') || provClean.includes('africa'))) {
+    return true;
+  }
+  if (filterClean.includes('ched') && (schClean.includes('ched') || schClean.includes('tulong dunong') || provClean.includes('ched'))) {
+    return true;
+  }
+  if (filterClean.includes('vilma') && (schClean.includes('vilma') || provClean.includes('vilma'))) {
+    return true;
+  }
+
   // Token matching (e.g. "Africa" matching "AFRICA TEST SCHOLARSHIP TEST")
   const filterTokens = filterClean.split(/\s+/).filter(w => w.length > 2);
   if (filterTokens.length > 0) {
@@ -223,9 +234,10 @@ export default function Dash() {
 
   const availablePrograms = useMemo(() => {
     const providerNames = (providers || []).map(p => p.provider_name).filter(Boolean);
-    const accountScholarships = (accounts || []).map(a => a.scholarship).filter(s => s && !isNoScholarshipAssignment(s));
-    return Array.from(new Set([...providerNames, ...accountScholarships])).sort();
-  }, [providers, accounts]);
+    const mainProviders = ['Mayor Africa', 'CHED', 'Vilma'];
+    const merged = Array.from(new Set([...providerNames, ...mainProviders]));
+    return merged.sort();
+  }, [providers]);
 
   const providerStats = useMemo(() => {
     // Calculate users and applicants per provider

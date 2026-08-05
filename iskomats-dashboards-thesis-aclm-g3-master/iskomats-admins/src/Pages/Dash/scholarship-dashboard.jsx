@@ -597,6 +597,7 @@ export default function ScholarshipDashboard({
   const applicantsOnlyLabel = `${scholarshipLabel} Applicants Only`;
   const scholarshipPlaceholder = `e.g. ${scholarshipLabel} 2026`;
   const messengerTitle = `${scholarshipLabel} Messenger`;
+  const administratorTitle = `${scholarshipLabel} Administrator`;
   const userRole = (localStorage.getItem('userRole') || '').toLowerCase();
   const isSuperAdminUser = useMemo(() => {
     return (
@@ -1862,50 +1863,44 @@ export default function ScholarshipDashboard({
 
   const executeDeleteDirectly = async (type, id) => {
     if (type === 'scholarship') {
-      showActionOverlay('Deleting scholarship post', 'Please wait while the scholarship post is being removed.');
+      const previousPosts = data.scholarshipPosts;
+      // Instant optimistic UI update (0ms latency for user)
+      setData(prev => ({
+        ...prev,
+        scholarshipPosts: (prev.scholarshipPosts || []).filter(p => String(p.reqNo || p.id) !== String(id))
+      }));
+      if (editingPost && String(editingPost.reqNo || editingPost.id) === String(id)) {
+        resetForm();
+        setManageMode('list');
+      }
+
       try {
-        const response = await scholarshipAPI.deleteScholarship(id);
-        if (response.data && (response.data.success || response.status === 200)) {
-          setData(prev => ({
-            ...prev,
-            scholarshipPosts: (prev.scholarshipPosts || []).filter(p => String(p.reqNo || p.id) !== String(id))
-          }));
-          if (editingPost && String(editingPost.reqNo || editingPost.id) === String(id)) {
-            resetForm();
-            setManageMode('list');
-          }
-          hideActionOverlay();
-          loadScholarships(false);
-          return;
-        }
+        await scholarshipAPI.deleteScholarship(id);
       } catch (error) {
         console.error('Failed to delete scholarship:', error);
+        // Rollback state if delete failed
+        setData(prev => ({ ...prev, scholarshipPosts: previousPosts }));
         alert(getRequestErrorMessage(error, 'Error deleting scholarship'));
-      } finally {
-        hideActionOverlay();
       }
     } else if (type === 'announcement') {
-      showActionOverlay('Deleting announcement', 'Please wait while the announcement is being removed.');
+      const previousAnnouncements = data.announcements;
+      // Instant optimistic UI update (0ms latency for user)
+      setData(prev => ({
+        ...prev,
+        announcements: (prev.announcements || []).filter(a => String(a.ann_no || a.id) !== String(id))
+      }));
+      if (editingPost && String(editingPost.id || editingPost.ann_no) === String(id)) {
+        resetForm();
+        setManageMode('list');
+      }
+
       try {
-        const response = await announcementService.delete(id);
-        if (response.data && (response.data.success || response.status === 200)) {
-          setData(prev => ({
-            ...prev,
-            announcements: (prev.announcements || []).filter(a => String(a.ann_no || a.id) !== String(id))
-          }));
-          if (editingPost && String(editingPost.id || editingPost.ann_no) === String(id)) {
-            resetForm();
-            setManageMode('list');
-          }
-          hideActionOverlay();
-          loadAnnouncements();
-          return;
-        }
+        await announcementService.delete(id);
       } catch (error) {
         console.error('Failed to delete announcement:', error);
+        // Rollback state if delete failed
+        setData(prev => ({ ...prev, announcements: previousAnnouncements }));
         alert(getRequestErrorMessage(error, 'Error deleting announcement'));
-      } finally {
-        hideActionOverlay();
       }
     }
   };
