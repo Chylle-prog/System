@@ -566,7 +566,11 @@ function isSimilarWord(expected, actual) {
   const actConf = normalizeNameConfusions(actNorm);
   if (expConf && expConf === actConf) return true;
 
-  // Levenshtein edit distance fuzzy match
+  // Levenshtein edit distance fuzzy match — strictly NO truncation/prefix matches allowed.
+  // The actual word must be at least as long as the expected word, so that "mikael" (6) cannot
+  // match "mikaela" (7). OCR noise swaps/garbles characters but does NOT drop trailing letters.
+  if (actNorm.length < expNorm.length) return false;
+
   const dist = getLevenshteinDistance(expNorm, actNorm);
   if (expNorm.length >= 8 && dist <= 2) return true;
   if (expNorm.length >= 4 && dist <= 1) return true;
