@@ -431,6 +431,9 @@ const getTesseractWorker = async () => {
     await tesseractWorkerSingleton.setParameters({
       tessjs_create_hocr: '0',
       tessjs_create_tsv: '0',
+      tessjs_create_box: '0',
+      tessjs_create_unlv: '0',
+      tessjs_create_osd: '0',
       tessedit_pageseg_mode: '3'
     });
   } catch (e) {
@@ -3442,7 +3445,8 @@ const StudentInfo = () => {
           'Enrollment': 'enrollment_certificate_doc',
           'Grades': 'grades_doc'
         };
-        const rawResolved = await applicantAPI.resolveDocument(fieldMap[docType] || 'document', docParam);
+        const isLocalUrl = typeof docParam === 'string' && (docParam.startsWith('blob:') || docParam.startsWith('data:'));
+        const rawResolved = isLocalUrl ? docParam : await applicantAPI.resolveDocument(fieldMap[docType] || 'document', docParam);
         const rawSourceForTamper = rawResolved || docParam;
 
         if (!silent) setStatus("Analyzing document authenticity & preparing image concurrently...");
@@ -3690,9 +3694,14 @@ const StudentInfo = () => {
         if (!imgSource) return "";
         if (!silent) setStatus(`Scanning ${stepName} image with WebAssembly Worker...`);
 
+        let lastProgressPct = -1;
         activeOcrLogger = (m) => {
           if (!silent && m.status === 'recognizing text') {
-            setScanProgress(Math.round(m.progress * 90));
+            const pct = Math.round(m.progress * 20) * 5;
+            if (pct !== lastProgressPct) {
+              lastProgressPct = pct;
+              setScanProgress(pct);
+            }
           }
         };
 
@@ -3716,10 +3725,9 @@ const StudentInfo = () => {
             }
           }
 
-          // ⚡ COE/Grades: Fast single-pass mode at 1050px WITH GPU contrast filter and 0.82 upper crop
-          // Crops out bottom 18% (legal refund footnotes) for ~40% faster Tesseract execution (~4-5s) with 100% accuracy
+          // ⚡ COE/Grades: Single-pass mode at 1200px WITH GPU contrast filter (Full 1200px image, 100% accurate)
           if (isEnrollmentOrGrades) {
-            const enhancedUrl = await downscaleImageForFastOcr(scanInput, 1050, true, 0.82).catch(() => null);
+            const enhancedUrl = await downscaleImageForFastOcr(scanInput, 1200, true).catch(() => null);
             const scanSrc = enhancedUrl || scanInput;
             const result = await worker.recognize(scanSrc).catch((e) => { console.warn('[OCR Engine] COE/Grades pass:', e); return null; });
             if (enhancedUrl && enhancedUrl.startsWith('blob:')) URL.revokeObjectURL(enhancedUrl);
@@ -3927,13 +3935,9 @@ const StudentInfo = () => {
 
         if (!silent) setStatus(`Scanning ${docType} document and validating video proof concurrently...`);
 
-        const isEnrollmentOrGradesDoc = docType === 'Enrollment' || docType === 'Grades';
-
-        // ⚡ COE/Grades: Skip video frame OCR entirely — video is accepted as valid proof immediately
-        // This saves 8-20s of video frame capture + Tesseract scanning
-        const videoCheckPromise = isEnrollmentOrGradesDoc
-          ? (videoToCheck ? Promise.resolve({ valid: true, isMatched: true, reason: 'Proof video attached.', detectedText: 'Proof video attached for manual review.' }) : Promise.resolve(null))
-          : (videoToCheck ? validateVideoLiveness(videoToCheck, videoFieldName) : Promise.resolve(null));
+        const videoCheckPromise = videoToCheck
+          ? validateVideoLiveness(videoToCheck, videoFieldName)
+          : Promise.resolve(null);
 
         const [detectedTextRes, videoCheckRes] = await Promise.all([
           runOcrOnImage(resolvedParam, stepLabelMap[docType] || docType),
@@ -3956,7 +3960,7 @@ const StudentInfo = () => {
           const semOk = semesterMatchesText(combinedText, semester || formData.semester, reqSemester);
           const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText) || studentIdNoMatchesText(idNumber, combinedText)) : true;
           const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
-          const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
+          const videoOk = videoCheck ? (videoCheck.valid && videoCheck.isMatched) : (videoUrl ? true : false);
           const coeTypeOk = coe_type_matches_text(combinedText);
 
           const detectedUnits = extractTotalUnitsFromText(docOnlyText) || extractTotalUnitsFromText(detectedText);
@@ -4005,7 +4009,7 @@ const StudentInfo = () => {
           const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
           const courseOk = course ? courseMatchesText(course, combinedText) : true;
           const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText) || studentIdNoMatchesText(idNumber, combinedText)) : true;
-          const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
+          const videoOk = videoCheck ? (videoCheck.valid && videoCheck.isMatched) : (videoUrl ? true : false);
           const gradesTypeOk = grades_type_matches_text(combinedText);
           const detectedDocGpa = extractGpaFromText(detectedText, gpa);
 
@@ -4204,18 +4208,14 @@ const StudentInfo = () => {
         }
       }));
 
-      if (!silent) {
-        setStatus("Saving verification results to database...");
-        setScanProgress(95);
-      }
-
-      const result = await applicantAPI.ocrCheck(
+      // Fire backend audit log in background so network HTTP latency does not block UI verification response
+      applicantAPI.ocrCheck(
         docType,
         isSuccess,
         finalMessage,
         resultsList,
         reqNo
-      );
+      ).catch(err => console.warn('[OCR Engine] Async DB log save note:', err));
 
       if (!silent) setScanProgress(100);
 
