@@ -856,76 +856,58 @@ function sanitizeStudentIdCandidate(rawToken, targetId) {
 function studentIdNoMatchesText(targetId, text) {
   if (!targetId || !text) return true;
 
-  const normalizeId = (s) => String(s || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
   const digitsOnly = (s) => String(s || '').replace(/[^0-9]/g, '');
 
-  const tClean = normalizeId(targetId);
-  const tDigits = digitsOnly(targetId);
-  if (!tDigits || tDigits.length < 4) return true;
-
+  // OCR glyph-to-digit normalization (visual character substitutions only)
+  // This handles OCR misreads like O→0, l→1, etc. but does NOT expand the match window.
   const mapOcrToDigits = (s) => {
     return String(s || '').toLowerCase()
-      .replace(/[oOnN]/g, '0')
-      .replace(/[iIl|!jJ]/g, '1')
-      .replace(/[zZ]/g, '2')
-      .replace(/[eE]/g, '3')
-      .replace(/[aA]/g, '4')
-      .replace(/[sS]/g, '5')
-      .replace(/[gGqQ]/g, '6')
-      .replace(/[tT]/g, '7')
-      .replace(/[bB8]/g, '8')
+      .replace(/[o]/g, '0')          // O/o looks like 0
+      .replace(/[il|!]/g, '1')       // l, i, |, ! look like 1
+      .replace(/[z]/g, '2')          // z looks like 2
+      .replace(/[e]/g, '3')          // e can look like 3
+      .replace(/[a]/g, '4')          // a can look like 4
+      .replace(/[s]/g, '5')          // s can look like 5
+      .replace(/[g]/g, '6')          // g can look like 6
+      .replace(/[t]/g, '7')          // t can look like 7
+      .replace(/[b]/g, '8')          // b can look like 8
       .replace(/[^0-9]/g, '');
   };
 
-  const tSuffix6 = tDigits.length >= 6 ? tDigits.slice(-6) : tDigits;
-  const tSuffix5 = tDigits.length >= 5 ? tDigits.slice(-5) : tDigits;
-  const tPrefix6 = tDigits.length >= 6 ? tDigits.slice(0, 6) : tDigits;
+  const tDigits = digitsOnly(targetId);
+  if (!tDigits || tDigits.length < 4) return true; // too short to verify
 
-  // 1. Direct check against Key-Value extracted student ID field
+  // 1. Key-value extracted student ID field — EXACT match only
   const kv = extractOcrKeyValues(text);
   if (kv.studentId) {
-    const kvClean = normalizeId(kv.studentId);
-    const kvDigits = sanitizeStudentIdCandidate(kv.studentId, targetId);
+    const kvDigits = digitsOnly(kv.studentId);
     const kvMapped = mapOcrToDigits(kv.studentId);
-
-    if (
-      kvClean === tClean || kvDigits === tDigits || kvMapped === tDigits ||
-      (tSuffix5.length >= 5 && (kvDigits.includes(tSuffix5) || kvMapped.includes(tSuffix5))) ||
-      (getLevenshteinDistance(kvDigits, tDigits) <= 1)
-    ) {
-      return true;
-    }
+    if (kvDigits === tDigits || kvMapped === tDigits) return true;
   }
 
-  // 2. OCR token check (with Levenshtein <= 1 digit error and 5-digit suffix fallback)
+  // 2. Token scan — EXACT match only (after OCR glyph normalization)
+  // The OCR token must have the EXACT same digit length AND digit sequence as the target.
   const ocrTokens = String(text).match(/\b[0-9a-zA-Z\-]{4,25}\b/g) || [];
-
   for (const seq of ocrTokens) {
-    const seqClean = normalizeId(seq);
-    const seqDigits = sanitizeStudentIdCandidate(seq, targetId);
+    const seqDigits = digitsOnly(seq);
     const seqMapped = mapOcrToDigits(seq);
-
-    if (
-      seqClean === tClean || seqDigits === tDigits || seqMapped === tDigits ||
-      (tDigits.length >= 6 && seqDigits.length >= 6 && getLevenshteinDistance(seqDigits, tDigits) <= 1) ||
-      (tSuffix5.length >= 5 && (seqDigits.includes(tSuffix5) || seqMapped.includes(tSuffix5)))
-    ) {
+    // Require same length AND exact match — no Levenshtein, no suffix/prefix
+    if (seqDigits.length === tDigits.length && (seqDigits === tDigits || seqMapped === tDigits)) {
       return true;
     }
   }
 
-  // 3. Fallback: Full-text mapped digit sequence match (handles line breaks & 5-digit suffix)
+  // 3. Full-text mapped digit sequence — EXACT substring only (must be same length)
+  // Only applies when the full OCR text has the entire target digit string verbatim
   const fullTextMapped = mapOcrToDigits(text);
-  if (
-    (tDigits.length >= 6 && fullTextMapped.includes(tDigits)) ||
-    (tSuffix5.length >= 5 && fullTextMapped.includes(tSuffix5)) ||
-    (tPrefix6.length >= 6 && fullTextMapped.includes(tPrefix6))
-  ) {
-    return true;
-  }
+  const fullTextDigits = digitsOnly(text.replace(/\s+/g, '')); // collapse spaces, digits only
+  // Use word-boundary aware search: the target digits must appear as a standalone token
+  const rx = new RegExp('(?<![0-9])' + tDigits.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![0-9])');
+  if (rx.test(fullTextDigits) || rx.test(fullTextMapped)) return true;
 
   return false;
 }
+
 
 
 function schoolNameMatchesText(text, targetSchool) {
