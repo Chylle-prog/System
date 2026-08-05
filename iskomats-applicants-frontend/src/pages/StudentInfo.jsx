@@ -434,7 +434,7 @@ const getTesseractWorker = async () => {
       tessjs_create_box: '0',
       tessjs_create_unlv: '0',
       tessjs_create_osd: '0',
-      tessedit_pageseg_mode: '3'
+      tessedit_pageseg_mode: '6'
     });
   } catch (e) {
     console.log("Tesseract parameter set note:", e);

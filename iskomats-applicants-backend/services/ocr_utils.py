@@ -1179,21 +1179,80 @@ def extract_semester_from_ocr_text(text):
     return None
 
 
-def _run_tesseract_on_image(img, psm=3):
+def deskew_image(gray):
+    """Deskew (straighten) document image if tilted."""
+    try:
+        thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        coords = np.column_stack(np.where(thresh > 0))
+        if len(coords) < 100:
+            return gray
+        angle = cv2.minAreaRect(coords)[-1]
+        if angle < -45:
+            angle = -(90 + angle)
+        elif angle > 45:
+            angle = 90 - angle
+        else:
+            angle = -angle
+
+        if abs(angle) > 0.5 and abs(angle) < 15.0:
+            (h, w) = gray.shape[:2]
+            center = (w // 2, h // 2)
+            M = cv2.getRotationMatrix2D(center, angle, 1.0)
+            gray = cv2.warpAffine(gray, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    except Exception:
+        pass
+    return gray
+
+def preprocess_image_advanced(img, scale_factor=2.0, apply_clahe=True, sharpen=True):
+    """
+    10-Step OpenCV Preprocessing Pipeline:
+    1. Grayscale conversion
+    2. 2x Upscaling for small text
+    3. Deskewing / Straightening
+    4. CLAHE contrast enhancement
+    5. Gaussian Denoising & Sharpening
+    """
+    if img is None:
+        return None
+    try:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img.copy()
+        
+        h, w = gray.shape[:2]
+        target_w = max(1800, int(w * scale_factor)) if w < 1200 else int(w * 1.5)
+        if target_w > 3000:
+            target_w = 3000
+        scale = float(target_w) / float(w)
+        gray = cv2.resize(gray, (target_w, int(h * scale)), interpolation=cv2.INTER_CUBIC)
+
+        gray = deskew_image(gray)
+
+        if apply_clahe:
+            clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+            gray = clahe.apply(gray)
+
+        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+
+        if sharpen:
+            kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+            return cv2.filter2D(blurred, -1, kernel)
+
+        return blurred
+    except Exception as e:
+        print(f"[OCR PREPROCESS] Error: {e}", flush=True)
+        return img
+
+def _run_tesseract_on_image(img, psm=6):
     if img is None or pytesseract is None:
         return ""
     try:
         _init_tesseract()
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
-        h, w = gray.shape[:2]
-        if w < 1600:
-            scale = 1600.0 / w
-            gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
-        elif w > 2400:
-            scale = 2400.0 / w
-            gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        processed = preprocess_image_advanced(img, scale_factor=2.0)
+        if processed is None:
+            processed = img
 
-        text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1')
+        text = pytesseract.image_to_string(processed, config=f'--psm {psm} --oem 1')
+        if not text.strip() and psm != 3:
+            text = pytesseract.image_to_string(processed, config='--psm 3 --oem 1')
         return text.strip()
     except Exception as e:
         print(f"[OCR] Tesseract error: {e}", flush=True)
