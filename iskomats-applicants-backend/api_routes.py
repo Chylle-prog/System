@@ -4510,12 +4510,15 @@ def get_applicant_image(applicant_no, column_name):
                 return response
         
         try:
-            return send_file(
+            response = send_file(
                 BytesIO(data),
                 mimetype=mime_type,
                 as_attachment=False,
-                download_name=f'applicant_{applicant_no}_{column_name}.png'
+                download_name=f'applicant_{applicant_no}_{column_name}.png',
+                max_age=86400
             )
+            response.headers['Cache-Control'] = 'public, max-age=86400, immutable'
+            return response
         except Exception as e:
             print(f"[APPLICANT IMAGE] send_file failed: {e}")
             return jsonify({'message': f'Failed to serve image: {str(e)}'}), 500

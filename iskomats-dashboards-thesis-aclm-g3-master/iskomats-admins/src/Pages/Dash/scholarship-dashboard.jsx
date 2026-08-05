@@ -597,7 +597,18 @@ export default function ScholarshipDashboard({
   const applicantsOnlyLabel = `${scholarshipLabel} Applicants Only`;
   const scholarshipPlaceholder = `e.g. ${scholarshipLabel} 2026`;
   const messengerTitle = `${scholarshipLabel} Messenger`;
-  const administratorTitle = `${scholarshipLabel} Administrator`;
+  const userRole = (localStorage.getItem('userRole') || '').toLowerCase();
+  const isSuperAdminUser = useMemo(() => {
+    return (
+      standaloneInbox ||
+      providerKey === 'system' ||
+      userRole === 'admin' ||
+      userRole === 'superadmin' ||
+      userRole === 'super_admin' ||
+      !activeProviderNo ||
+      activeProviderNo === 0
+    );
+  }, [standaloneInbox, providerKey, activeProviderNo, userRole]);
 
   const [section, setSection] = useState(standaloneInbox ? 'inbox' : 'dashboard'); // dashboard | finder | manage | track | reports | inbox | view-applicant
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -615,7 +626,7 @@ export default function ScholarshipDashboard({
   const [viewApplicant, setViewApplicant] = useState(null); // { listType: 'all'|'accepted'|'declined', index }
   const [inboxSearch, setInboxSearch] = useState('');
   const [inboxFilter, setInboxFilter] = useState('all'); // all | pending | accepted
-  const [inboxMode, setInboxMode] = useState(standaloneInbox ? 'admin_rooms' : 'applicants'); // 'applicants' | 'admin_rooms'
+  const [inboxMode, setInboxMode] = useState(isSuperAdminUser ? 'admin_rooms' : 'applicants'); // 'applicants' | 'admin_rooms'
   const [viewMessage, setViewMessage] = useState(null); // { messageId }
   const [replyText, setReplyText] = useState('');
   const [recommendationModal, setRecommendationModal] = useState(false);
@@ -638,25 +649,6 @@ export default function ScholarshipDashboard({
   const [activeDropdown, setActiveDropdown] = useState(null);
   const [showTrackAdvancedSearch, setShowTrackAdvancedSearch] = useState(false);
   const [trackAdvancedSearch, setTrackAdvancedSearch] = useState({ ...EMPTY_ADVANCED_SEARCH });
-
-  const isSuperAdminUser = useMemo(() => {
-    const userRole = (localStorage.getItem('userRole') || '').toLowerCase();
-    return (
-      standaloneInbox ||
-      providerKey === 'system' ||
-      userRole === 'admin' ||
-      userRole === 'superadmin' ||
-      userRole === 'super_admin' ||
-      !activeProviderNo ||
-      activeProviderNo === 0
-    );
-  }, [standaloneInbox, providerKey, activeProviderNo]);
-
-  useEffect(() => {
-    if (isSuperAdminUser && inboxMode !== 'admin_rooms') {
-      setInboxMode('admin_rooms');
-    }
-  }, [isSuperAdminUser, inboxMode]);
 
   const trackActiveFilterCount = useMemo(() => {
     return Object.values(trackAdvancedSearch).filter((value) => String(value ?? '').trim() !== '').length;
@@ -5247,8 +5239,8 @@ export default function ScholarshipDashboard({
     const dispatchKey = getApplicantDispatchKey(a);
     const docTypes = getApplicantDocTypes(a);
 
-    useEffect(() => {
-      if (!a) return;
+    // Preload media URLs when applicant object is available
+    if (a) {
       const mediaUrls = [
         a.profile_picture,
         a.signature,
@@ -5258,7 +5250,7 @@ export default function ScholarshipDashboard({
         ...(a.idFiles || []).map(f => f.src),
       ].filter(Boolean);
       preloadMediaUrls(mediaUrls);
-    }, [a?.applicant_no, a?.id]);
+    }
 
     // Normalize family data for display
     const familyData = {
