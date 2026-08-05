@@ -3735,8 +3735,19 @@ const StudentInfo = () => {
             return (result?.data?.text || '').trim();
           }
 
-          // ⚡ COE/Grades: Use a smaller downscale dim for significantly faster Tesseract execution
-          const downscaleDim = isIndigency ? 1400 : 1600;
+          // ⚡ Indigency: Single-pass mode at 1000px WITH GPU contrast filter
+          // Large printed body text — no header crop, table crop, or enhanced fallback needed
+          if (isIndigency) {
+            const enhancedUrl = await downscaleImageForFastOcr(scanInput, 1000, true).catch(() => null);
+            const scanSrc = enhancedUrl || scanInput;
+            const result = await worker.recognize(scanSrc).catch((e) => { console.warn('[OCR Engine] Indigency pass:', e); return null; });
+            if (enhancedUrl && enhancedUrl.startsWith('blob:')) URL.revokeObjectURL(enhancedUrl);
+            if (realScanBlobUrl && realScanBlobUrl !== imgSource && realScanBlobUrl.startsWith('blob:')) URL.revokeObjectURL(realScanBlobUrl);
+            return (result?.data?.text || '').trim();
+          }
+
+          // ID/Other docs: Use a smaller downscale dim for faster Tesseract execution
+          const downscaleDim = 1600;
 
           // Parallel cropping streams
           const [fastImgUrl, headerBlobUrl, tableBlobUrl] = await Promise.all([
