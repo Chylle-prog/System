@@ -48,6 +48,14 @@ from services.notification_service import create_notification, fetch_google_acce
 from services.google_auth_service import verify_google_token
 from concurrent.futures import ThreadPoolExecutor
 
+def try_int(val):
+    if val is None:
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
+
 def normalize_semester_label(value):
     if not value: return None
     v = str(value).lower().strip()
@@ -972,31 +980,41 @@ def get_scholarship_restriction(scope, scholarship_no):
     today = scope.get('today') or datetime.now().date()
     applications = scope.get('applications') or []
     current_applicant_ids = set(scope.get('current_applicant_ids') or [])
+    try:
+        target_sch_no = int(scholarship_no)
+    except (ValueError, TypeError):
+        target_sch_no = scholarship_no
+
     self_related_rows = [
         row for row in applications
-        if row['scholarship_no'] == scholarship_no and row['applicant_no'] in current_applicant_ids
+        if (try_int(row.get('scholarship_no')) == target_sch_no or row.get('scholarship_no') == scholarship_no)
+        and (try_int(row.get('applicant_no')) in current_applicant_ids or row.get('applicant_no') in current_applicant_ids)
     ]
     active_accepted_rows = [
         row for row in applications
-        if row['applicant_no'] in current_applicant_ids and row['is_accepted'] == 'Accepted' and scholarship_is_active_record(row, today=today)
+        if (try_int(row.get('applicant_no')) in current_applicant_ids or row.get('applicant_no') in current_applicant_ids)
+        and str(row.get('is_accepted')).strip().title() == 'Accepted'
+        and scholarship_is_active_record(row, today=today)
     ]
     subject = describe_identity_subject(scope)
 
     family_other_rows = [
         row for row in applications
-        if row['scholarship_no'] == scholarship_no and row['applicant_no'] not in current_applicant_ids
+        if (try_int(row.get('scholarship_no')) == target_sch_no or row.get('scholarship_no') == scholarship_no)
+        and try_int(row.get('applicant_no')) not in current_applicant_ids
+        and row.get('applicant_no') not in current_applicant_ids
     ]
     if family_other_rows:
         prior_row = min(
             family_other_rows,
-            key=lambda row: (row.get('created_at') or datetime.max, row['applicant_no'])
+            key=lambda row: (row.get('created_at') or datetime.max, row.get('applicant_no') or 0)
         )
         status_label = 'applied for'
         reason = 'family-existing-same-scholarship'
-        if prior_row['is_accepted'] == 'Accepted':
+        if str(prior_row.get('is_accepted')).strip().title() == 'Accepted':
             status_label = 'already has an accepted application for'
             reason = 'family-accepted-same-scholarship'
-        elif prior_row['is_accepted'] == 'Pending' or prior_row['is_accepted'] is None:
+        elif str(prior_row.get('is_accepted')).strip().title() in ('Pending', 'None') or prior_row.get('is_accepted') is None:
             status_label = 'has already applied for'
             reason = 'family-pending-same-scholarship'
 
@@ -1009,7 +1027,7 @@ def get_scholarship_restriction(scope, scholarship_no):
             'blocking_application': prior_row,
         }
 
-    same_scholarship_row = next((row for row in self_related_rows if row['is_accepted'] == 'Accepted'), None)
+    same_scholarship_row = next((row for row in self_related_rows if str(row.get('is_accepted')).strip().title() == 'Accepted'), None)
     if same_scholarship_row:
         return {
             'already_applied': True,
@@ -1020,7 +1038,7 @@ def get_scholarship_restriction(scope, scholarship_no):
             'blocking_application': same_scholarship_row,
         }
 
-    same_scholarship_row = next((row for row in self_related_rows if row['is_accepted'] == 'Pending' or row['is_accepted'] is None), None)
+    same_scholarship_row = next((row for row in self_related_rows if str(row.get('is_accepted')).strip().title() in ('Pending', 'None') or row.get('is_accepted') is None), None)
     if same_scholarship_row:
         return {
             'already_applied': True,
@@ -2182,23 +2200,30 @@ def get_rankings():
                     if token.startswith('Bearer '):
                         token = token[7:]
                     decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-                    user_no = decoded.get('user_no')
-                except Exception:
-                    pass # Non-critical if token is invalid for just ranking
-            
+                    user_no = decoded.get('user_no') or decoded.get('user_id') or decoded.get('sub')
+                except Exception as err:
+                    print(f"[RANKINGS] JWT decode failed: {err}", flush=True)
+
+            if not user_no:
+                user_no = data.get('applicant_no') or data.get('user_no') or data.get('applicantNo')
+
             restriction_scope = None
             if user_no:
-                cur.execute(
-                    """
-                    SELECT applicant_no, first_name, middle_name, last_name, father_name, mother_name
-                    FROM applicants
-                    WHERE applicant_no = %s
-                    """,
-                    (user_no,),
-                )
-                applicant = cur.fetchone()
-                if applicant:
-                    restriction_scope = get_identity_restriction_scope(cur, applicant, today=today)
+                try:
+                    user_no = int(user_no)
+                    cur.execute(
+                        """
+                        SELECT applicant_no, first_name, middle_name, last_name, father_name, mother_name
+                        FROM applicants
+                        WHERE applicant_no = %s
+                        """,
+                        (user_no,),
+                    )
+                    applicant = cur.fetchone()
+                    if applicant:
+                        restriction_scope = get_identity_restriction_scope(cur, applicant, today=today)
+                except (ValueError, TypeError) as e:
+                    print(f"[RANKINGS] Invalid user_no {user_no}: {e}", flush=True)
             
             cur.execute("""
                 SELECT s.*, p.provider_name,

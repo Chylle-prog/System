@@ -266,6 +266,7 @@ const FindScholarship = () => {
       }
 
       // Step 2: Scholarship ranking
+      const applicantNo = localStorage.getItem('applicantNo');
       const response = await scholarshipAPI.getRankings({
         gpa,
         income,
@@ -273,6 +274,7 @@ const FindScholarship = () => {
         town_city_municipality: formData.town_city_municipality,
         province: formData.province,
         zip_code: formData.zip_code,
+        applicant_no: applicantNo
       });
 
       const { eligible = [], ineligible = [] } = response;
@@ -1270,7 +1272,11 @@ const FindScholarship = () => {
                     disabled={true}
                     style={{ backgroundColor: 'var(--gray-2)', color: 'var(--gray-3)', cursor: 'not-allowed' }}
                   >
-                    {match.alreadyApplied ? 'Already Applied' : 'Not Eligible to Apply'}
+                    {match.restrictionReason === 'identity-rejected-same-scholarship'
+                      ? 'Application Rejected'
+                      : match.alreadyApplied
+                        ? 'Already Applied'
+                        : 'Not Eligible to Apply'}
                   </button>
                 </div>
               ))
