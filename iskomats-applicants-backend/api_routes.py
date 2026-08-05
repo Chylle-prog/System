@@ -3446,10 +3446,6 @@ def analyze_merits_onthefly(merits_text):
     """
     Fast LRU-cached merits evaluator to ensure GET /applicants loads instantly (0ms lag).
     """
-    import os
-    import json
-    import requests
-
     if not merits_text or not merits_text.strip():
         return 0, "No merits or awards provided."
 
@@ -3471,24 +3467,6 @@ def analyze_merits_onthefly(merits_text):
     elif any(k in text_clean for k in ['top', 'award', 'certificate', 'contest', 'olympiad', 'contestant']):
         score = 8
         reason = "School level contest or participation award."
-
-    api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
-    if api_key:
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
-            prompt = f'Score 0-20 for academic merit: "{merits_text}". Return ONLY JSON: {{"score": <number>, "reason": "<short>"}}'
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"responseMimeType": "application/json"}
-            }
-            response = requests.post(url, json=payload, timeout=1.0)
-            if response.status_code == 200:
-                res_data = response.json()
-                t_val = res_data['candidates'][0]['content']['parts'][0]['text']
-                parsed = json.loads(t_val.strip())
-                return int(parsed.get('score', score)), str(parsed.get('reason', reason))
-        except Exception:
-            pass
 
     return score, reason
 

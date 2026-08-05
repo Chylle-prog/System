@@ -2198,11 +2198,12 @@ export default function ScholarshipDashboard({
         const availableSlots = slotLimit > 0 ? Math.max(slotLimit - acceptedCount, 0) : 0;
         const isFull = slotLimit > 0 && availableSlots <= 0;
         const eligibleApplicantIds = new Set(
-          allTrackedApplicants
-            .filter((applicant) => applicantMatchesScholarshipCriteria(applicant, post))
+          (data.accepted || [])
+            .filter((applicant) => matchesScholarshipSelection(applicant, scholarshipId))
             .map((applicant) => applicant.id || applicant.applicant_no)
             .filter(Boolean)
         );
+        const eligibleApplicantCount = hasLoadedApplicants ? eligibleApplicantIds.size : Number(post.acceptedCount || 0);
 
         return {
           ...post,
@@ -2212,7 +2213,7 @@ export default function ScholarshipDashboard({
           totalApplicants,
           availableSlots,
           isFull,
-          eligibleApplicantCount: eligibleApplicantIds.size,
+          eligibleApplicantCount,
         };
       })
       .filter((post) => {
@@ -3175,7 +3176,7 @@ export default function ScholarshipDashboard({
                       <p className="text-lg font-black text-red-700">{post.declinedCount}</p>
                     </div>
                     <div className="rounded-2xl bg-gray-100 px-3 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Eligible Pool</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Accepted</p>
                       <p className="text-lg font-black text-[#800020]">{post.eligibleApplicantCount}</p>
                     </div>
                   </div>
@@ -5658,36 +5659,34 @@ export default function ScholarshipDashboard({
 
   const renderInbox = () => (
     <div className={`flex flex-col ${standaloneInbox ? 'h-[calc(100vh-14rem)] min-h-[500px]' : 'h-[calc(100vh-6.5rem)] sm:h-[calc(100vh-8rem)]'} bg-gradient-to-br from-gray-50 to-blue-50/30 animate-in fade-in duration-300`}>
-        <div className="flex items-center gap-3 mb-3 flex-shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              setInboxMode('applicants');
-              setViewMessage(null);
-            }}
-            className={`px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2.5 ${
-              inboxMode === 'applicants'
-                ? 'bg-[#800020] text-white shadow-lg shadow-rose-900/20 ring-2 ring-[#800020]/30'
-                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
+      <div className="flex items-center gap-3 mb-3 flex-shrink-0">
+        <button
+          type="button"
+          onClick={() => {
+            setInboxMode('applicants');
+            setViewMessage(null);
+          }}
+          className={`px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2.5 ${inboxMode === 'applicants'
+              ? 'bg-[#800020] text-white shadow-lg shadow-rose-900/20 ring-2 ring-[#800020]/30'
+              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
             }`}
-          >
-            <FaUsers className="text-sm" /> Applicant Messages
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setInboxMode('admin_rooms');
-              setViewMessage(null);
-            }}
-            className={`px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2.5 ${
-              inboxMode === 'admin_rooms'
-                ? 'bg-[#800020] text-white shadow-lg shadow-rose-900/20 ring-2 ring-[#800020]/30'
-                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
+        >
+          <FaUsers className="text-sm" /> Applicant Messages
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setInboxMode('admin_rooms');
+            setViewMessage(null);
+          }}
+          className={`px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2.5 ${inboxMode === 'admin_rooms'
+              ? 'bg-[#800020] text-white shadow-lg shadow-rose-900/20 ring-2 ring-[#800020]/30'
+              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
             }`}
-          >
-            <FaInbox className="text-sm" /> Super Admin Chat
-          </button>
-        </div>
+        >
+          <FaInbox className="text-sm" /> Super Admin Chat
+        </button>
+      </div>
 
       <div className="flex-1 flex flex-col md:flex-row gap-3 sm:gap-4 overflow-hidden">
         <div className={`w-full md:w-80 flex-shrink-0 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col ${currentConversation ? 'hidden md:flex' : 'flex'}`}>
@@ -5706,25 +5705,22 @@ export default function ScholarshipDashboard({
               <div className="flex gap-1.5 sm:gap-2">
                 <button
                   onClick={() => setInboxFilter('all')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                    inboxFilter === 'all' ? 'bg-[#800020] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${inboxFilter === 'all' ? 'bg-[#800020] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
                 >
                   All
                 </button>
                 <button
                   onClick={() => setInboxFilter('pending')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                    inboxFilter === 'pending' ? 'bg-yellow-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${inboxFilter === 'pending' ? 'bg-yellow-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
                 >
                   Pending
                 </button>
                 <button
                   onClick={() => setInboxFilter('accepted')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                    inboxFilter === 'accepted' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${inboxFilter === 'accepted' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
                 >
                   Accepted
                 </button>
@@ -5789,15 +5785,14 @@ export default function ScholarshipDashboard({
                             )}
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold uppercase flex-shrink-0 ${
-                              conv.isAdminRoom
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold uppercase flex-shrink-0 ${conv.isAdminRoom
                                 ? 'bg-rose-50 text-[#800020] border border-rose-100'
                                 : status === 'Accepted'
-                                ? 'bg-green-100 text-green-700 border border-green-200'
-                                : status === 'Pending'
-                                ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
-                                : 'bg-gray-100 text-gray-700 border border-gray-200'
-                            }`}>
+                                  ? 'bg-green-100 text-green-700 border border-green-200'
+                                  : status === 'Pending'
+                                    ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                                    : 'bg-gray-100 text-gray-700 border border-gray-200'
+                              }`}>
                               {conv.isAdminRoom ? conv.badge : status}
                             </span>
                             <p className="text-xs text-gray-600 truncate flex-1">{conv.lastMessage?.message || ''}</p>

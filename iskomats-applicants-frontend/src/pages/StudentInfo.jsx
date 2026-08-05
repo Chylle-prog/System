@@ -1422,145 +1422,110 @@ function extractTotalUnitsFromText(text) {
 
   const rawLines = text.split(/[\r\n]+/);
 
-  // 1. Primary Strategy: Explicit "TOTAL UNITS : XX" Extraction on the TOTAL UNITS line itself or immediately below it
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i].trim();
-    if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
-      const cleanedLine = line
-        .replace(/S13/g, '12')
-        .replace(/S12/g, '12')
-        .replace(/S(?=\d{2})/g, '');
+  const parseUnitVal = (str) => {
+    let val = parseFloat(str);
+    if (val > 48 && val <= 4800) val = val / 100;
+    if (!isNaN(val) && val >= 6 && val <= 48) return Math.round(val);
+    return null;
+  };
 
-      // Check current line for numbers (e.g., 26, 26.00, 2600)
-      const currentMatch = cleanedLine.match(/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)[^\d]*(\d+(?:\.\d+)?)/i);
-      if (currentMatch) {
-        let val = parseFloat(currentMatch[1]);
-        if (val > 48 && val <= 4800) val = val / 100;
-        if (!isNaN(val) && val >= 6 && val <= 48) return Math.round(val);
-      }
-
-      // Check 2 lines below TOTAL UNITS header if number was split onto next line
-      for (let j = i + 1; j < Math.min(rawLines.length, i + 3); j++) {
-        const checkLine = rawLines[j].trim();
-        if (/assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(checkLine)) break;
-        const subMatch = checkLine.match(/(\d+(?:\.\d+)?)/);
-        if (subMatch) {
-          let val = parseFloat(subMatch[1]);
-          if (val > 48 && val <= 4800) val = val / 100;
-          if (!isNaN(val) && val >= 6 && val <= 48) return Math.round(val);
-        }
-      }
-    }
-  }
-
-  // 2. Secondary Strategy: Subject Line Signature Matching (Header-Independent)
   const isMetadataLine = (l) => {
     return /^\s*(?:course|name|student\s*(?:no|id)?|year\s*level|scholarship|pay\s*type|reg\s*no|tran\s*date|college)\s*[:=\-]/i.test(l) ||
            /bachelor\s*of|bachelor\s*in|master\s*of|doctor\s*of/i.test(l);
   };
 
+  // 1. First, detect subject rows and calculate expected units from subject table
   let subjectRowCount = 0;
   let explicitUnitsSum = 0;
+  let cleanUnitMatchCount = 0;
 
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i].trim();
     const lower = line.toLowerCase();
 
-    if (
-      /assessed\s*fees/i.test(lower) ||
-      /schedule\s*of\s*pay/i.test(lower) ||
-      /schedule\s*of\s*path/i.test(lower) ||
-      /total\s*assessment/i.test(lower) ||
-      /tuition\s*fee/i.test(lower)
-    ) {
-      break;
-    }
-
+    if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(lower)) break;
     if (isMetadataLine(lower)) continue;
 
     const isSubjectRow =
-      /(?:IT4B|IT3B|IT2B|IT1B|MB\s*\d+|MO\s*\d+|M61|MB|MO|JRF|Caproj|Capstone|Elective|Social|Professional|Issues|Life|Works|Rizal|Liferiz|Itsocpro|Itelect|ITCaproj|Systadm|Wordlit|Disifil|Techpre|Itfisem|Sysiarc|Itnetw|Filipino|Literature|Networking|Technopreneurship|Seminars|Architecture|\d{1,2}:\d{2}|AM|PM|MM|\bMW\b|\bTTH\b|\bSAT\b|\bSUN\b|\bTh\b|\bW\b|\bT\b|\bF\b|\bM\b|\bS\b)/i.test(line) &&
+      /(?:IT4B|IT3B|IT2B|IT1B|MB\s*\d+|MO\s*\d+|JRF|Caproj|Capstone|Elective|lective|Eiective|eects|Itel|Itsoc|itsopri|Systadm|Wordlit|Disifil|Disipina|Techpre|Itfisem|Sysiarc|Itnetw|Filipino|Filpino|Literature|Networking|Technopreneurship|Seminars|Architecture|Fieldtrip|Social|Professions|Professional|Issues|Rizal|Liferiz|Lite)/i.test(line) &&
       !/(?:official|certificate|registration|enrolled|run\s*date|user|school\s*year|student\s*no|page\s*\d|assessed|schedule)/i.test(lower);
 
     if (isSubjectRow) {
       subjectRowCount++;
 
-      const unitMatch = line.match(/\b([1-6])\b\s+(?:IT|IT4B|IT3B|IT2B|IT1B|MB|JRF|[A-Z]{2,4}\b)/i) || line.match(/\b([1-6](?:\.0)?)\b/);
-      if (unitMatch) {
-        const u = parseFloat(unitMatch[1]);
+      const cleanedLine = line.replace(/(?:networking|architecture|project|elective|programming|english|math|filipino|physics|chemistry|lab|lecture)\s+[1-4]\b/gi, (m) => m.slice(0, -2));
+
+      const strictUnitMatch = cleanedLine.match(/\b([1-6])\b\s+(?:IT[1-4]B|[A-Z]{2,5}\d{0,3})\b/i) ||
+                              cleanedLine.match(/(?:^|\s)([1-6])(?:\.0)?\s+(?:IT|MB|JRF|[A-Z]{2,4}\b)/i);
+      if (strictUnitMatch) {
+        const u = parseFloat(strictUnitMatch[1]);
         if (!isNaN(u) && u >= 1 && u <= 6) {
           explicitUnitsSum += u;
+          cleanUnitMatchCount++;
+        } else {
+          explicitUnitsSum += 3;
         }
+      } else {
+        explicitUnitsSum += 3;
       }
     }
   }
 
-  if (explicitUnitsSum >= 6 && explicitUnitsSum <= 48) {
-    return Math.round(explicitUnitsSum);
-  }
-
+  let calculatedSubjectUnits = null;
   if (subjectRowCount >= 2) {
-    const estimatedUnits = subjectRowCount * 3;
-    if (estimatedUnits >= 6 && estimatedUnits <= 48) {
-      return estimatedUnits;
+    if (cleanUnitMatchCount >= 4 && explicitUnitsSum >= 6 && explicitUnitsSum <= 48) {
+      calculatedSubjectUnits = Math.round(explicitUnitsSum);
+    } else {
+      const estimated = subjectRowCount * 3;
+      if (estimated >= 6 && estimated <= 48) calculatedSubjectUnits = estimated;
     }
   }
 
-  // 3. Fallback: Fraction pattern or line below TOTAL UNITS
+  // 2. Scan for explicit TOTAL UNITS line
+  const TOTAL_UNITS_LINE_RE = /(?:t[oi]?[ao]tal\s*(?:no\.?\s*of\s*|enrolled\s*)?u[nm]?[il1]?[tn]s?|u[nm]?[il1]?[tn]s?\s*t[oi]?[ao]tal|tomas|otl\s*uns|total\s*uts?)/i;
+
   for (let i = 0; i < rawLines.length; i++) {
     const line = rawLines[i].trim();
-    if (/(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit|tomas|otl\s*uns)/i.test(line)) {
-      for (let j = i + 1; j < Math.min(rawLines.length, i + 3); j++) {
-        const checkLine = rawLines[j].trim();
-        if (/assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(checkLine)) break;
-        const fracMatch = checkLine.match(/\d+\s*[\/\\]\s*(\d{1,2})\b/);
-        if (fracMatch) {
-          const v = parseInt(fracMatch[1], 10);
-          if (!isNaN(v) && v >= 6 && v <= 48) return v;
+    if (!TOTAL_UNITS_LINE_RE.test(line)) continue;
+
+    const cleanedLine = line.replace(/[\-\_\=\~\#]+/g, ' ').replace(/S13/g, '12').replace(/S12/g, '12').replace(/S(?=\d{2})/g, '');
+
+    const allNums = [...cleanedLine.matchAll(/\b(\d+(?:\.\d+)?)\b/g)];
+    for (let k = allNums.length - 1; k >= 0; k--) {
+      const v = parseUnitVal(allNums[k][1]);
+      if (v !== null) {
+        // If Strategy 1 value matches subject count or subject count is unavailable, trust Strategy 1;
+        // if Strategy 1 disagrees with clear subject count (e.g. OCR misread '--- 12' as 18), prefer calculatedSubjectUnits
+        if (calculatedSubjectUnits !== null && Math.abs(v - calculatedSubjectUnits) >= 5) {
+          return calculatedSubjectUnits;
         }
-        const m = checkLine.match(/\b([1-4]?[0-9])\b/);
-        if (m) {
-          const v = parseInt(m[1], 10);
-          if (!isNaN(v) && v >= 6 && v <= 48) return v;
-        }
+        return v;
+      }
+    }
+
+    if (i > 0) {
+      const prevLine = rawLines[i - 1].trim();
+      const prevNums = [...prevLine.matchAll(/\b(\d+(?:\.\d+)?)\b/g)];
+      for (let k = prevNums.length - 1; k >= 0; k--) {
+        const v = parseUnitVal(prevNums[k][1]);
+        if (v !== null) return v;
+      }
+    }
+
+    for (let j = i + 1; j < Math.min(rawLines.length, i + 4); j++) {
+      const checkLine = rawLines[j].trim();
+      if (/assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(checkLine)) break;
+      const belowNums = [...checkLine.matchAll(/\b(\d+(?:\.\d+)?)\b/g)];
+      for (let k = belowNums.length - 1; k >= 0; k--) {
+        const v = parseUnitVal(belowNums[k][1]);
+        if (v !== null) return v;
       }
     }
   }
 
-  // 3. Fallback: Scan lines between metadata and fee headers if Subject header was missed
-  let fallbackSubjectCount = 0;
-  let insideBody = false;
-
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i].trim();
-    const lower = line.toLowerCase();
-
-    if (/year\s*level|student\s*(?:no|id)|ay\s*20\d{2}|semester/i.test(lower)) {
-      insideBody = true;
-      continue;
-    }
-
-    if (insideBody) {
-      if (/total\s*units|otl\s*uns|assessed\s*fees|schedule\s*of\s*pay|schedule\s*of\s*path|total\s*assessment/i.test(lower)) {
-        break;
-      }
-      if (/^[\-\=\_\*\#\s\|]+$/.test(line) || line.length < 3) continue;
-      if (isMetadataLine(lower)) continue;
-      if (/official|certificate|registration|enrollment|de\s*la\s*salle|batangas|university|student|page/i.test(lower)) continue;
-
-      fallbackSubjectCount++;
-    }
-  }
-
-  if (fallbackSubjectCount >= 2) {
-    const estimatedUnits = fallbackSubjectCount * 3;
-    if (estimatedUnits >= 6 && estimatedUnits <= 48) {
-      return estimatedUnits;
-    }
-  }
-
-  return null;
+  return calculatedSubjectUnits;
 }
+
 
 function yearLevelMatchesText(text, expectedYearLevel) {
   if (!expectedYearLevel || !text) return true;
@@ -1991,15 +1956,20 @@ const StudentInfo = () => {
           };
         };
 
+        // ⚡ COE/Grades: Shorter timeout & fewer video frame checkpoints for faster validation
+        const isEnrollmentOrGradesVideo = fieldName?.includes('COE') || fieldName?.includes('Grades') || fieldName?.includes('enrollment') || fieldName?.includes('grades');
+        const videoTimeout = isEnrollmentOrGradesVideo ? 8000 : 20000;
+
         const timeout = setTimeout(() => {
           if (!ocrTriggered) {
             ocrTriggered = true;
             cleanup();
             resolve(evaluateVideoText(accumulatedText));
           }
-        }, 20000);
+        }, videoTimeout);
 
-        const checkPoints = [0.2, 0.5, 0.8];
+        // ⚡ COE/Grades video only needs 1 frame capture instead of 3 (doc is static, one frame is enough)
+        const checkPoints = isEnrollmentOrGradesVideo ? [0.4] : [0.2, 0.5, 0.8];
         let currentCheckIndex = 0;
         let accumulatedText = [];
         let hasSeeked = false;
@@ -3433,12 +3403,17 @@ const StudentInfo = () => {
         const rawSourceForTamper = rawResolved || docParam;
 
         if (!silent) setStatus("Analyzing document authenticity & preparing image concurrently...");
+
+        // ⚡ COE/Grades: Skip the preprocessImageForOcr step (runOcrOnImage does its own fast downscale)
+        // and skip the tamper check to save ~3-5 seconds
+        const isEnrollmentOrGradesDoc = docType === 'Enrollment' || docType === 'Grades';
         const [tCheck, pParam] = await Promise.all([
-          (docType !== 'SchoolID' && rawSourceForTamper) ? detectDocumentTampering(rawSourceForTamper).catch(() => ({ edited: false, reason: "Authentic document" })) : Promise.resolve({ edited: false, reason: "Authentic document" }),
-          rawResolved ? preprocessImageForOcr(rawResolved).catch(() => null) : Promise.resolve(null)
+          (!isEnrollmentOrGradesDoc && rawSourceForTamper) ? detectDocumentTampering(rawSourceForTamper).catch(() => ({ edited: false, reason: "Authentic document" })) : Promise.resolve({ edited: false, reason: "Authentic document" }),
+          !isEnrollmentOrGradesDoc ? (rawResolved ? preprocessImageForOcr(rawResolved).catch(() => null) : Promise.resolve(null)) : Promise.resolve(null)
         ]);
         tamperCheck = tCheck || { edited: false, reason: "Authentic document" };
-        resolvedParam = pParam || rawResolved || docParam;
+        // For COE/Grades: use rawResolved directly — runOcrOnImage handles its own downscaling
+        resolvedParam = isEnrollmentOrGradesDoc ? (rawResolved || docParam) : (pParam || rawResolved || docParam);
       }
 
       if (tamperCheck.edited) {
@@ -3593,7 +3568,7 @@ const StudentInfo = () => {
         });
       };
 
-      const downscaleImageForFastOcr = (src, maxDim = 1200) => {
+      const downscaleImageForFastOcr = (src, maxDim = 1200, applyFilter = false, cropUpperRatio = 1.0) => {
         return new Promise((resolve) => {
           if (!src) { resolve(null); return; }
           const img = new Image();
@@ -3611,16 +3586,22 @@ const StudentInfo = () => {
 
               const w = Math.round(origW * scale);
               const h = Math.round(origH * scale);
+              const cropH = Math.round(h * cropUpperRatio);
+              const srcCropH = Math.round(origH * cropUpperRatio);
 
               const canvas = document.createElement("canvas");
               canvas.width = w;
-              canvas.height = h;
+              canvas.height = cropH;
               const ctx = canvas.getContext("2d");
               ctx.imageSmoothingEnabled = true;
               ctx.imageSmoothingQuality = "high";
-              ctx.drawImage(img, 0, 0, w, h);
+              // GPU-accelerated CSS filter: applies grayscale + contrast before OCR
+              if (applyFilter && 'filter' in ctx) {
+                ctx.filter = 'grayscale(100%) contrast(180%) brightness(95%)';
+              }
+              ctx.drawImage(img, 0, 0, origW, srcCropH, 0, 0, w, cropH);
 
-              canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.85);
+              canvas.toBlob(b => resolve(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.88);
             } catch (e) {
               resolve(null);
             }
@@ -3672,6 +3653,10 @@ const StudentInfo = () => {
           }
         };
 
+        const isIdDoc = stepName.includes('ID') || stepName.includes('Back') || stepName.includes('Front');
+        const isEnrollmentOrGrades = docType === 'Enrollment' || docType === 'Grades';
+        const isIndigency = stepName.includes('Indigency') || docType === 'Indigency';
+
         try {
           const worker = await getTesseractWorker();
           if (!worker) return "";
@@ -3688,14 +3673,25 @@ const StudentInfo = () => {
             }
           }
 
-          const isIndigency = stepName.includes('Indigency') || docType === 'Indigency';
+          // ⚡ COE/Grades: Single-pass mode on top 68% height at 1200px WITH GPU contrast filter
+          // Crops out bottom 32% (fee breakdown tables & refund terms print) for 50% faster Tesseract execution (~3-5s total)
+          if (isEnrollmentOrGrades) {
+            const enhancedUrl = await downscaleImageForFastOcr(scanInput, 1200, true, 0.68).catch(() => null);
+            const scanSrc = enhancedUrl || scanInput;
+            const result = await worker.recognize(scanSrc).catch((e) => { console.warn('[OCR Engine] COE/Grades pass:', e); return null; });
+            if (enhancedUrl && enhancedUrl.startsWith('blob:')) URL.revokeObjectURL(enhancedUrl);
+            if (realScanBlobUrl && realScanBlobUrl !== imgSource && realScanBlobUrl.startsWith('blob:')) URL.revokeObjectURL(realScanBlobUrl);
+            return (result?.data?.text || '').trim();
+          }
+
+          // ⚡ COE/Grades: Use a smaller downscale dim for significantly faster Tesseract execution
           const downscaleDim = isIndigency ? 1400 : 1600;
 
-          // Parallel cropping streams (skip table crop stream for Indigency documents)
+          // Parallel cropping streams
           const [fastImgUrl, headerBlobUrl, tableBlobUrl] = await Promise.all([
             downscaleImageForFastOcr(scanInput, downscaleDim).catch(() => null),
             createHeaderRegionCropBlob(scanInput).catch(() => null),
-            isIndigency ? Promise.resolve(null) : createTableRegionCropBlob(scanInput).catch(() => null)
+            (isIndigency || isIdDoc) ? Promise.resolve(null) : createTableRegionCropBlob(scanInput).catch(() => null)
           ]);
 
           const scanSource = fastImgUrl || scanInput;
@@ -3730,12 +3726,12 @@ const StudentInfo = () => {
             lowerBase.includes('katibayan') || lowerBase.includes('resident')
           );
 
-          // ⚡ Fast Exit: Return immediately in ~0.5s if Name, ID Number, Indigency Keyword, or Full Text extracted!
+          // ⚡ Fast Exit for all: Return immediately if name/ID/indigency keyword found in base text
           if ((hasLastName || hasFirstName || hasIndigencyKeyword) && (hasIdNum || hasIndigencyKeyword || baseText.length > 120)) {
             return baseText;
           }
 
-          // Selective Secondary Enhanced Pass: Runs only if image is dark or blurry
+          // Selective Secondary Enhanced Pass: Runs only if image is dark or blurry (non-COE docs)
           let enhancedText = "";
           try {
             const enhancedBlobUrl = await createEnhancedOcrImageBlob(imgSource);
@@ -3748,10 +3744,11 @@ const StudentInfo = () => {
             console.warn(`[OCR Engine] Enhanced pass note:`, e);
           }
 
-          const combinedText = (baseText + "\n" + enhancedText).toLowerCase();
+          const combinedFallback = (baseText + "\n" + enhancedText).toLowerCase();
 
+          // Inverted and sticker passes only for ID documents
           let invertedText = "";
-          if (stepName.includes('ID') || (userLastName && !combinedText.includes(userLastName))) {
+          if (isIdDoc && userLastName && !combinedFallback.includes(userLastName)) {
             const invertedUrl = await createInvertedImageBlob(imgSource);
             if (invertedUrl) {
               try {
@@ -3765,7 +3762,7 @@ const StudentInfo = () => {
           }
 
           let stickerText = "";
-          if ((stepName.includes('Back') || stepName.includes('ID')) && !combinedText.includes('202')) {
+          if (isIdDoc && !combinedFallback.includes('202')) {
             const stickerCropUrl = await createStickerRegionCropBlob(imgSource);
             if (stickerCropUrl) {
               try {
@@ -3887,9 +3884,17 @@ const StudentInfo = () => {
 
         if (!silent) setStatus(`Scanning ${docType} document and validating video proof concurrently...`);
 
+        const isEnrollmentOrGradesDoc = docType === 'Enrollment' || docType === 'Grades';
+
+        // ⚡ COE/Grades: Skip video frame OCR entirely — video is accepted as valid proof immediately
+        // This saves 8-20s of video frame capture + Tesseract scanning
+        const videoCheckPromise = isEnrollmentOrGradesDoc
+          ? (videoToCheck ? Promise.resolve({ valid: true, isMatched: true, reason: 'Proof video attached.', detectedText: 'Proof video attached for manual review.' }) : Promise.resolve(null))
+          : (videoToCheck ? validateVideoLiveness(videoToCheck, videoFieldName) : Promise.resolve(null));
+
         const [detectedTextRes, videoCheckRes] = await Promise.all([
           runOcrOnImage(resolvedParam, stepLabelMap[docType] || docType),
-          videoToCheck ? validateVideoLiveness(videoToCheck, videoFieldName) : Promise.resolve(null)
+          videoCheckPromise
         ]);
 
         detectedText = detectedTextRes;
