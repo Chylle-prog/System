@@ -1707,7 +1707,10 @@ const StudentInfo = () => {
         Object.values(res.score_details).forEach(val => {
           if (val !== null && val !== undefined) {
             totalFields++;
-            if (val === true || val === 1 || val === 'true') passedFields++;
+            const sVal = String(val).toLowerCase();
+            if (val === true || val === 1 || val === 'true' || sVal === 'match✓' || sVal.startsWith('met') || sVal.startsWith('uploaded') || sVal.includes('verified')) {
+              passedFields++;
+            }
           }
         });
       }
@@ -1742,6 +1745,8 @@ const StudentInfo = () => {
               isMatch = false;
             } else if (val === 'Uploaded & Attached' || val === 'Uploaded & Validated') {
               isMatch = matchVal !== false;
+            } else if (log.status === 'VERIFIED (SUCCESS)' && (matchVal === null || matchVal === undefined)) {
+              isMatch = true;
             } else {
               isMatch = Boolean(matchVal);
             }
@@ -4991,10 +4996,18 @@ const StudentInfo = () => {
           setGradesResults([{ doc: 'Grades', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true, "GPA Requirement": true } }]);
         }
 
-        if (profile.id_verified && profile.schoolid_front_vid_url && profile.schoolid_back_vid_url && profile.has_id && profile.has_id_back) {
+        const restoredIdType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
+        const isRestoredNationalId = restoredIdType === 'National ID';
+
+        if (profile.id_verified && profile.schoolid_front_vid_url && (isRestoredNationalId || (profile.schoolid_back_vid_url && profile.has_id_back)) && profile.has_id) {
           setIdVerified('success');
-          setIdStatus('School ID verified successfully client-side!');
-          setIdResults([{ doc: 'SchoolID', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true } }]);
+          setIdStatus(isRestoredNationalId ? 'National ID verified successfully client-side!' : 'School ID verified successfully client-side!');
+          setIdResults([{
+            doc: 'SchoolID',
+            verified: true,
+            message: 'Verified from database records.',
+            score_details: isRestoredNationalId ? { "First Name": true, "Last Name": true, "Barangay Address": true, "Video Proof": true } : { "First Name": true, "Last Name": true, "Video Proof": true }
+          }]);
         }
 
         if (profile.face_verified && profile.id_vid_url && profile.has_profile_picture) setFaceVerified('success');
