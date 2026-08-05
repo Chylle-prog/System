@@ -3579,10 +3579,12 @@ def get_applicants(current_user_id, pro_no, role, program):
                         ({applicant_document_expr(cursor, 'id_img_back', 'a', 'ad')} IS NOT NULL) as "has_id_img_back",
                         ({applicant_document_expr(cursor, 'id_pic', 'a', 'ad')} IS NOT NULL) as "has_id_pic",
                         {profile_picture_expr} as "has_profile_picture",
-                        ({applicant_document_expr(cursor, 'signature_image_data', 'a', 'ad')} IS NOT NULL) as "has_signature",
                         {applicant_document_expr(cursor, 'indigency_vid_url', 'a', 'ad')} as indigency_vid_url,
                         {applicant_document_expr(cursor, 'enrollment_certificate_vid_url', 'a', 'ad')} as enrollment_certificate_vid_url,
-                        {applicant_document_expr(cursor, 'grades_vid_url', 'a', 'ad')} as grades_vid_url
+                        {applicant_document_expr(cursor, 'grades_vid_url', 'a', 'ad')} as grades_vid_url,
+                        {applicant_document_expr(cursor, 'schoolid_front_vid_url', 'a', 'ad')} as schoolid_front_vid_url,
+                        {applicant_document_expr(cursor, 'schoolid_back_vid_url', 'a', 'ad')} as schoolid_back_vid_url,
+                        {applicant_document_expr(cursor, 'id_vid_url', 'a', 'ad')} as id_vid_url
                 FROM applicants a
                 INNER JOIN applicant_status s ON a.applicant_no = s.applicant_no
                 INNER JOIN scholarships esc ON s.scholarship_no = esc.req_no
@@ -3674,12 +3676,20 @@ def get_applicants(current_user_id, pro_no, role, program):
                 if a.get('grades_vid_url'):
                     a['gradesFiles'].extend(get_applicant_media_metadata(app_no, 'grades_vid_url', True, a.get('grades_vid_url'), "Grades Video"))
                 
-                # Only include ID Front and Back images in idFiles (ID (Front & Back) field)
+                # Include ID Front and Back images and videos in idFiles
                 id_files = []
                 if a.get('has_id_img_front'):
                     id_files.extend(get_applicant_media_metadata(app_no, 'id_img_front', True, None, "ID Front"))
+                front_vid = a.get('schoolid_front_vid_url') or a.get('id_vid_url')
+                if front_vid:
+                    id_files.extend(get_applicant_media_metadata(app_no, 'schoolid_front_vid_url' if a.get('schoolid_front_vid_url') else 'id_vid_url', True, front_vid, "ID Front Video"))
+
                 if a.get('has_id_img_back'):
                     id_files.extend(get_applicant_media_metadata(app_no, 'id_img_back', True, None, "ID Back"))
+                back_vid = a.get('schoolid_back_vid_url')
+                if back_vid:
+                    id_files.extend(get_applicant_media_metadata(app_no, 'schoolid_back_vid_url', True, back_vid, "ID Back Video"))
+
                 a['idFiles'] = id_files
 
                 # Fill in ID# with school_id_no

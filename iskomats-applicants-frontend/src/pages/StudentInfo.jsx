@@ -549,9 +549,11 @@ function normalizeNameConfusions(s) {
     .replace(/8/g, 'b')
     .replace(/rn/g, 'm')
     .replace(/cl/g, 'd')
-    .replace(/vv/g, 'w')
+    .replace(/vv/g, 'w')   // must come before v→f to handle 'vv' first
+    .replace(/l/g, 'i')    // lowercase l ↔ uppercase I confusion in print OCR
     .replace(/k/g, 'n')
-    .replace(/f/g, 't')
+    .replace(/v/g, 'f')    // v/f visual confusion (v→f, then f→t below)
+    .replace(/f/g, 't')    // f→t (so both v and f normalize to t)
     .replace(/x/g, 'k');
 }
 
@@ -566,14 +568,13 @@ function isSimilarWord(expected, actual) {
   const actConf = normalizeNameConfusions(actNorm);
   if (expConf && expConf === actConf) return true;
 
-  // Levenshtein edit distance fuzzy match — strictly NO truncation/prefix matches allowed.
-  // The actual word must be at least as long as the expected word, so that "mikael" (6) cannot
-  // match "mikaela" (7). OCR noise swaps/garbles characters but does NOT drop trailing letters.
-  if (actNorm.length < expNorm.length) return false;
-
+  // Levenshtein fuzzy match — ONLY for long names (≥ 8 chars).
+  // Short names (< 8) MUST match exactly or via the OCR confusion table above.
+  // This prevents e.g. "Magbhat" (7) from fuzzy-matching "Maguhat" (7) when the
+  // real name is "Magbuhat" (8). Long-name OCR drops like "Magbuhat"→"Maguhat"
+  // (dist=1, len=8) are still caught by the ≥ 8 rule below.
   const dist = getLevenshteinDistance(expNorm, actNorm);
   if (expNorm.length >= 8 && dist <= 2) return true;
-  if (expNorm.length >= 4 && dist <= 1) return true;
 
   return false;
 }
