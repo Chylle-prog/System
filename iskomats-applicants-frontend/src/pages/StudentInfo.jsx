@@ -751,7 +751,7 @@ function studentNameMatchesText(text, first, middle, last) {
   const lastOk = checkNameWordGroup(last, targetText) || checkNameWordGroup(last, normText);
   const middleOk = middle ? (checkNameWordGroup(middle, targetText) || checkNameWordGroup(middle, normText)) : true;
 
-  const success = firstOk && lastOk && middleOk && sequenceOk;
+  const success = firstOk && lastOk && middleOk;
 
   console.debug('[NAME CHECK]', { first, last, normText: normText.slice(0,200), targetText: targetText.slice(0,200), sequenceOk, firstOk, lastOk, success });
 
@@ -3896,9 +3896,9 @@ const StudentInfo = () => {
         const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: true, last_ok: false } } : studentNameMatchesText(backText, firstName, "", lastName);
         const nameMatchVid = (frontVidCheck?.detectedText) ? studentNameMatchesText(frontVidCheck.detectedText, firstName, "", lastName) : { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
 
-        const nameOk = nameMatchFront.success || nameMatchBack.success || nameMatchVid.success;
         const firstOk = nameMatchFront.details.first_ok || nameMatchBack.details.first_ok || nameMatchVid.details.first_ok;
         const lastOk = nameMatchFront.details.last_ok || nameMatchBack.details.last_ok || nameMatchVid.details.last_ok;
+        const nameOk = (firstOk && lastOk) || nameMatchFront.success || nameMatchBack.success || nameMatchVid.success;
 
         const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, combinedFrontText) || studentIdNoMatchesText(idNumber, combinedBackText)) : true);
         const schoolOk = schoolName ? (schoolNameMatchesText(allIdText, schoolName)) : true;
