@@ -3157,8 +3157,18 @@ export default function ScholarshipDashboard({
                         <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-100 text-[#800020]">
                           {post.semester || 'Semester TBD'} {post.year || ''}
                         </span>
+                        {(post.isRemoved === true || post.is_removed === true) && (
+                          <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-red-600 text-white shadow-sm flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span> DELETED
+                          </span>
+                        )}
                       </div>
-                      <h3 className="text-xl font-black text-gray-900">{post.scholarshipName || 'Untitled Scholarship'}</h3>
+                      <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
+                        {post.scholarshipName || 'Untitled Scholarship'}
+                        {(post.isRemoved === true || post.is_removed === true) && (
+                          <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-md uppercase">(Deleted)</span>
+                        )}
+                      </h3>
                       <p className="text-sm text-gray-500 mt-1">{post.location || 'Open location criteria'}</p>
                     </div>
                     <div className="text-right">
@@ -5234,6 +5244,21 @@ export default function ScholarshipDashboard({
     const dispatchKey = getApplicantDispatchKey(a);
     const docTypes = getApplicantDocTypes(a);
 
+    // Ensure idFiles contains Front & Back ID videos alongside ID images
+    const idFiles = [...(a.idFiles || [])];
+    const frontVid = a.schoolid_front_vid_url || a.id_vid_url || a.schoolIdFront_video;
+    if (frontVid && !idFiles.some(f => f.src === frontVid || f.name?.includes('Front Video') || f.name?.includes('ID Video'))) {
+      const frontImgIdx = idFiles.findIndex(f => f.name?.includes('Front') || f.name?.includes('ID Front'));
+      const insertIdx = frontImgIdx !== -1 ? frontImgIdx + 1 : 1;
+      idFiles.splice(insertIdx, 0, { src: frontVid, type: 'video/mp4', name: 'ID Front Video' });
+    }
+    const backVid = a.schoolid_back_vid_url || a.schoolIdBack_video;
+    if (backVid && !idFiles.some(f => f.src === backVid || f.name?.includes('Back Video'))) {
+      const backImgIdx = idFiles.findIndex(f => f.name?.includes('Back') || f.name?.includes('ID Back'));
+      const insertIdx = backImgIdx !== -1 ? backImgIdx + 1 : idFiles.length;
+      idFiles.splice(insertIdx, 0, { src: backVid, type: 'video/mp4', name: 'ID Back Video' });
+    }
+
     // Preload media URLs when applicant object is available
     if (a) {
       const mediaUrls = [
@@ -5242,7 +5267,7 @@ export default function ScholarshipDashboard({
         ...(a.coeFiles || []).map(f => f.src),
         ...(a.indigencyFiles || []).map(f => f.src),
         ...(a.gradesFiles || []).map(f => f.src),
-        ...(a.idFiles || []).map(f => f.src),
+        ...idFiles.map(f => f.src),
       ].filter(Boolean);
       preloadMediaUrls(mediaUrls);
     }
@@ -5589,7 +5614,7 @@ export default function ScholarshipDashboard({
                 <span className="w-1.5 h-1.5 rounded-full bg-[#800020]"></span> {docTypes.idLabel}
               </p>
               <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
-                {renderMediaGrid(a.idFiles)}
+                {renderMediaGrid(idFiles)}
               </div>
             </div>
           </div>
