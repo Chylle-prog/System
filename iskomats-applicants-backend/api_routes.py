@@ -2957,17 +2957,48 @@ def update_account(current_user_id, pro_no, role, account_id):
             if account_context['user_no']:
                 # Update user table
                 if 'name' in data or 'firstName' in data or 'lastName' in data:
-                    name = data.get('name') or f"{data.get('firstName', '')} {data.get('lastName', '')}".strip()
+                    name = (data.get('name') or f"{data.get('firstName', '')} {data.get('lastName', '')}").strip()
                     if name:
                         cursor.execute("UPDATE users SET user_name = %s WHERE user_no = %s", (name, account_context['user_no']))
-            elif account_context['applicant_no'] and ('name' in data or 'firstName' in data or 'lastName' in data):
-                full_name = data.get('name') or f"{data.get('firstName', '')} {data.get('lastName', '')}".strip()
-                name_parts = full_name.split()
-                if len(name_parts) >= 2:
-                    cursor.execute(
-                        "UPDATE applicants SET first_name = %s, last_name = %s WHERE applicant_no = %s",
-                        (' '.join(name_parts[:-1]), name_parts[-1], account_context['applicant_no'])
-                    )
+
+                # Update scholarship provider assignment for admin account
+                scholarship_val = data.get('scholarship')
+                if scholarship_val is not None:
+                    scholarship_str = str(scholarship_val).strip()
+                    if not scholarship_str or scholarship_str.lower() in ['all', 'unassigned', 'no scholarship']:
+                        cursor.execute("UPDATE users SET pro_no = NULL WHERE user_no = %s", (account_context['user_no'],))
+                    else:
+                        cursor.execute("SELECT pro_no FROM scholarship_providers WHERE provider_name ILIKE %s LIMIT 1", (f"%{scholarship_str}%",))
+                        prov = cursor.fetchone()
+                        if not prov:
+                            cursor.execute("INSERT INTO scholarship_providers (provider_name) VALUES (%s) RETURNING pro_no", (scholarship_str,))
+                            prov = cursor.fetchone()
+                        if prov:
+                            cursor.execute("UPDATE users SET pro_no = %s WHERE user_no = %s", (prov['pro_no'], account_context['user_no']))
+
+            elif account_context['applicant_no']:
+                if 'name' in data or 'firstName' in data or 'lastName' in data:
+                    full_name = (data.get('name') or f"{data.get('firstName', '')} {data.get('lastName', '')}").strip()
+                    name_parts = full_name.split()
+                    if name_parts:
+                        first_name = ' '.join(name_parts[:-1]) if len(name_parts) > 1 else name_parts[0]
+                        last_name = name_parts[-1] if len(name_parts) > 1 else ''
+                        cursor.execute(
+                            "UPDATE applicants SET first_name = %s, last_name = %s WHERE applicant_no = %s",
+                            (first_name, last_name, account_context['applicant_no'])
+                        )
+
+                scholarship_val = data.get('scholarship')
+                if scholarship_val and str(scholarship_val).strip().lower() not in ['all', 'unassigned', 'no scholarship']:
+                    cursor.execute("SELECT req_no FROM scholarships WHERE scholarship_name ILIKE %s LIMIT 1", (f"%{scholarship_val}%",))
+                    sch = cursor.fetchone()
+                    if sch:
+                        cursor.execute("SELECT stat_no FROM applicant_status WHERE applicant_no = %s LIMIT 1", (account_context['applicant_no'],))
+                        st = cursor.fetchone()
+                        if st:
+                            cursor.execute("UPDATE applicant_status SET scholarship_no = %s WHERE applicant_no = %s", (sch['req_no'], account_context['applicant_no']))
+                        else:
+                            cursor.execute("INSERT INTO applicant_status (applicant_no, scholarship_no) VALUES (%s, %s)", (account_context['applicant_no'], sch['req_no']))
                     
             target_table = get_user_email_table(cursor) if account_context['account_type'] == 'Admin' else get_applicant_email_table(cursor)
             id_column = 'user_em_no' if account_context['account_type'] == 'Admin' else 'app_em_no'

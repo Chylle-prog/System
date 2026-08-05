@@ -639,6 +639,25 @@ export default function ScholarshipDashboard({
   const [showTrackAdvancedSearch, setShowTrackAdvancedSearch] = useState(false);
   const [trackAdvancedSearch, setTrackAdvancedSearch] = useState({ ...EMPTY_ADVANCED_SEARCH });
 
+  const isSuperAdminUser = useMemo(() => {
+    const userRole = (localStorage.getItem('userRole') || '').toLowerCase();
+    return (
+      standaloneInbox ||
+      providerKey === 'system' ||
+      userRole === 'admin' ||
+      userRole === 'superadmin' ||
+      userRole === 'super_admin' ||
+      !activeProviderNo ||
+      activeProviderNo === 0
+    );
+  }, [standaloneInbox, providerKey, activeProviderNo]);
+
+  useEffect(() => {
+    if (isSuperAdminUser && inboxMode !== 'admin_rooms') {
+      setInboxMode('admin_rooms');
+    }
+  }, [isSuperAdminUser, inboxMode]);
+
   const trackActiveFilterCount = useMemo(() => {
     return Object.values(trackAdvancedSearch).filter((value) => String(value ?? '').trim() !== '').length;
   }, [trackAdvancedSearch]);
@@ -2972,9 +2991,10 @@ export default function ScholarshipDashboard({
     return filtered;
   }, [conversations, inboxSearch, inboxFilter, inboxMode]);
 
-  const currentConversation = (viewMessage?.applicant_no
-    ? filteredConversations.find((c) => c.applicant_no?.toString() === viewMessage.applicant_no?.toString() || c.room === viewMessage.room)
-    : null) || filteredConversations[0] || null;
+  const selectedConversation = viewMessage
+    ? (filteredConversations.find((c) => (viewMessage.applicant_no && c.applicant_no?.toString() === viewMessage.applicant_no?.toString()) || (viewMessage.room && c.room === viewMessage.room)) || null)
+    : null;
+  const currentConversation = selectedConversation || (filteredConversations.length > 0 ? filteredConversations[0] : null);
   const currentConversationMessages = useMemo(
     () => sortMessages(currentConversation?.messages || []),
     [currentConversation]
@@ -5660,19 +5680,21 @@ export default function ScholarshipDashboard({
   const renderInbox = () => (
     <div className={`flex flex-col ${standaloneInbox ? 'h-[calc(100vh-14rem)] min-h-[500px]' : 'h-[calc(100vh-6.5rem)] sm:h-[calc(100vh-8rem)]'} bg-gradient-to-br from-gray-50 to-blue-50/30 animate-in fade-in duration-300`}>
       <div className="flex items-center gap-3 mb-3 flex-shrink-0">
-        <button
-          type="button"
-          onClick={() => {
-            setInboxMode('applicants');
-            setViewMessage(null);
-          }}
-          className={`px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2.5 ${inboxMode === 'applicants'
-              ? 'bg-[#800020] text-white shadow-lg shadow-rose-900/20 ring-2 ring-[#800020]/30'
-              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
-            }`}
-        >
-          <FaUsers className="text-sm" /> Applicant Messages
-        </button>
+        {!isSuperAdminUser && (
+          <button
+            type="button"
+            onClick={() => {
+              setInboxMode('applicants');
+              setViewMessage(null);
+            }}
+            className={`px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2.5 ${inboxMode === 'applicants'
+                ? 'bg-[#800020] text-white shadow-lg shadow-rose-900/20 ring-2 ring-[#800020]/30'
+                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
+              }`}
+          >
+            <FaUsers className="text-sm" /> Applicant Messages
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {
@@ -5689,7 +5711,7 @@ export default function ScholarshipDashboard({
       </div>
 
       <div className="flex-1 flex flex-col md:flex-row gap-3 sm:gap-4 overflow-hidden">
-        <div className={`w-full md:w-80 flex-shrink-0 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col ${currentConversation ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`w-full md:w-80 flex-shrink-0 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col ${selectedConversation ? 'hidden md:flex' : 'flex'}`}>
           {inboxMode === 'applicants' ? (
             <div className="p-3 sm:p-4 border-b border-gray-100 bg-white">
               <div className="flex items-center gap-2 mb-2 sm:mb-3">
@@ -5815,7 +5837,7 @@ export default function ScholarshipDashboard({
           </div>
         </div>
 
-        <div className={`flex-1 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden ${currentConversation ? 'flex' : 'hidden md:flex'}`}>
+        <div className={`flex-1 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden ${selectedConversation ? 'flex' : 'hidden md:flex'}`}>
           {currentConversation ? (
             <>
               <div className="p-3 sm:p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between gap-3">

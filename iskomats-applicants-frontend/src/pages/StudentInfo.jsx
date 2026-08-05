@@ -1447,7 +1447,7 @@ function extractTotalUnitsFromText(text) {
     if (isMetadataLine(lower)) continue;
 
     const isSubjectRow =
-      /(?:IT4B|IT3B|IT2B|IT1B|MB\s*\d+|MO\s*\d+|JRF|Caproj|Capstone|Elective|lective|Eiective|eects|Itel|Itsoc|itsopri|Systadm|Wordlit|Disifil|Disipina|Techpre|Itfisem|Sysiarc|Itnetw|Filipino|Filpino|Literature|Networking|Technopreneurship|Seminars|Architecture|Fieldtrip|Social|Professions|Professional|Issues|Rizal|Liferiz|Lite)/i.test(line) &&
+      /(?:IT4B|IT3B|IT2B|IT1B|MB\s*\d+|MO\s*\d+|JRF|Caproj|Capstone|Captcie|Captc|Capt|Project|Projet|Projec|ITER|Elective|lective|Eiective|eects|sects|Becve|becv|Itel|Itsoc|itsopri|ttscpn|Systadm|systacm|Wordlit|wordt|Disifil|Disipina|fino|Techpre|Itfisem|irsem|fikdtrips|Sysiarc|Itnetw|tnetw|Filipino|Filpino|Literature|Networking|Technopreneurship|Seminars|Architecture|Fieldtrip|Social|Professions|Professional|Issues|Rizal|Liferiz|Lite)/i.test(line) &&
       !/(?:official|certificate|registration|enrolled|run\s*date|user|school\s*year|student\s*no|page\s*\d|assessed|schedule)/i.test(lower);
 
     if (isSubjectRow) {
@@ -1526,16 +1526,49 @@ function extractTotalUnitsFromText(text) {
   return calculatedSubjectUnits;
 }
 
+function extractYearLevelFromText(text) {
+  if (!text) return null;
+  const s = String(text);
+
+  // 1. Check section codes first (e.g. IT4B, IT3B, IT2B, IT1B, BSIT4)
+  if (/\bIT4B\b|\bBSIT4\b/i.test(s)) return '4th Year';
+  if (/\bIT3B\b|\bBSIT3\b/i.test(s)) return '3rd Year';
+  if (/\bIT2B\b|\bBSIT2\b/i.test(s)) return '2nd Year';
+  if (/\bIT1B\b|\bBSIT1\b/i.test(s)) return '1st Year';
+
+  // 2. Check year level header line (e.g. "Year Level : 4th Year", "Your Loved 4th")
+  const yearHeaderLineMatch = s.match(/(?:year\s*level|yr\s*level|your\s*loved|yr\s*lvl)\s*[:=\-]?\s*(?:the\s*)?([1-5])(?:st|nd|rd|th)?(?:\s*(?:year|yr|your))?\b/i);
+  if (yearHeaderLineMatch && yearHeaderLineMatch[1]) {
+    const numMap = { '1': '1st Year', '2': '2nd Year', '3': '3rd Year', '4': '4th Year', '5': '5th Year' };
+    if (numMap[yearHeaderLineMatch[1]]) return numMap[yearHeaderLineMatch[1]];
+  }
+
+  // 3. Explicit ordinal matching (strictly preventing false match from "1st Semester" / "15 Serstr")
+  if (/\b(?:4th|fourth)\s*(?:year|yr|your)\b/i.test(s) || /\b4th\s*yr\b/i.test(s)) return '4th Year';
+  if (/\b(?:3rd|third)\s*(?:year|yr|your)\b/i.test(s) || /\b3rd\s*yr\b/i.test(s)) return '3rd Year';
+  if (/\b(?:2nd|second)\s*(?:year|yr|your)\b/i.test(s) || /\b2nd\s*yr\b/i.test(s)) return '2nd Year';
+  if (/\b(?:1st|first)\s*(?:year|yr|your)\b(?![\s\-\:]*(?:sem|semester|serstr))/i.test(s)) return '1st Year';
+
+  return null;
+}
 
 function yearLevelMatchesText(text, expectedYearLevel) {
   if (!expectedYearLevel || !text) return true;
+
+  const detected = extractYearLevelFromText(text);
+  if (detected) {
+    const expNum = parseInt(String(expectedYearLevel).replace(/\D/g, ''), 10);
+    const detNum = parseInt(String(detected).replace(/\D/g, ''), 10);
+    if (!isNaN(expNum) && !isNaN(detNum)) {
+      return expNum === detNum;
+    }
+  }
 
   const normText = normalizeForOcr(text);
   const normLevel = normalizeForOcr(String(expectedYearLevel));
 
   const numericMap = { '1st': 1, '2nd': 2, '3rd': 3, '4th': 4, '5th': 5, 'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5 };
   let expNum = null;
-
   for (const [key, num] of Object.entries(numericMap)) {
     if (normLevel.includes(key)) {
       expNum = num;
@@ -1549,13 +1582,13 @@ function yearLevelMatchesText(text, expectedYearLevel) {
 
   if (!expNum) return true;
 
-  // 1. Direct search for explicit ordinal year patterns: e.g. "4th year", "3rd year", "2nd year", "1st year"
+  // 1. Direct search for explicit ordinal year patterns
   const ordinalMap = [
-    { num: 4, regex: /\b(?:4th|fourth)\s*(?:year|yr)\b/i },
-    { num: 3, regex: /\b(?:3rd|third)\s*(?:year|yr)\b/i },
-    { num: 2, regex: /\b(?:2nd|second)\s*(?:year|yr)\b/i },
-    { num: 1, regex: /\b(?:1st|first)\s*(?:year|yr)\b/i },
-    { num: 5, regex: /\b(?:5th|fifth)\s*(?:year|yr)\b/i }
+    { num: 4, regex: /\b(?:4th|fourth)\s*(?:year|yr|your)\b/i },
+    { num: 3, regex: /\b(?:3rd|third)\s*(?:year|yr|your)\b/i },
+    { num: 2, regex: /\b(?:2nd|second)\s*(?:year|yr|your)\b/i },
+    { num: 1, regex: /\b(?:1st|first)\s*(?:year|yr|your)\b(?![\s\-\:]*(?:sem|semester|serstr))/i },
+    { num: 5, regex: /\b(?:5th|fifth)\s*(?:year|yr|your)\b/i }
   ];
 
   for (const item of ordinalMap) {
@@ -1576,7 +1609,7 @@ function yearLevelMatchesText(text, expectedYearLevel) {
   }
 
   // 3. Fallback header match requiring explicit ordinal or year level prefix
-  const yearHeaderMatch = String(text).match(/(?:year\s*level|yr\s*level|grade\s*level)\s*[\.\:\-\[\=\s]+\s*([1-5])(?:st|nd|rd|th)?\b/i);
+  const yearHeaderMatch = String(text).match(/(?:year\s*level|yr\s*level|your\s*loved)\s*[\.\:\-\[\=\s]+\s*([1-5])(?:st|nd|rd|th)?\b/i);
   if (yearHeaderMatch && yearHeaderMatch[1]) {
     const foundNum = parseInt(yearHeaderMatch[1], 10);
     return foundNum === expNum;
@@ -3673,10 +3706,9 @@ const StudentInfo = () => {
             }
           }
 
-          // ⚡ COE/Grades: Single-pass mode on top 68% height at 1200px WITH GPU contrast filter
-          // Crops out bottom 32% (fee breakdown tables & refund terms print) for 50% faster Tesseract execution (~3-5s total)
+          // ⚡ COE/Grades: Single-pass mode at 1200px WITH GPU contrast filter
           if (isEnrollmentOrGrades) {
-            const enhancedUrl = await downscaleImageForFastOcr(scanInput, 1200, true, 0.68).catch(() => null);
+            const enhancedUrl = await downscaleImageForFastOcr(scanInput, 1200, true).catch(() => null);
             const scanSrc = enhancedUrl || scanInput;
             const result = await worker.recognize(scanSrc).catch((e) => { console.warn('[OCR Engine] COE/Grades pass:', e); return null; });
             if (enhancedUrl && enhancedUrl.startsWith('blob:')) URL.revokeObjectURL(enhancedUrl);

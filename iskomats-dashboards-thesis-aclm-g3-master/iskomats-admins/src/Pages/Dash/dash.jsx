@@ -461,11 +461,12 @@ export default function Dash() {
           await loadDashboardData(false);
         }
       } else {
-        // Now support editing both Admin and Applicant (Scholar) accounts
         const updatePayload = {
           name: accountForm.fullName.trim(),
           email: accountForm.email.trim(),
           scholarship: accountForm.scholarship || 'All',
+          role: accountForm.role === 'Admin' ? 'admin' : 'scholar',
+          status: accountForm.status || 'Active',
         };
 
         if (accountForm.password.trim()) {
@@ -473,12 +474,7 @@ export default function Dash() {
         }
 
         await adminAPI.updateAccount(accountModal.data.id, updatePayload);
-
-        setAccounts((previousAccounts) => previousAccounts.map((account) => (
-          account.id === accountModal.data.id
-            ? normalizeAccount({ ...account, name: accountForm.fullName.trim(), email: accountForm.email.trim(), scholarship: accountForm.scholarship || 'All' })
-            : account
-        )));
+        await loadDashboardData(false);
       }
 
       setAccountModal({ open: false, mode: 'add', data: null });
