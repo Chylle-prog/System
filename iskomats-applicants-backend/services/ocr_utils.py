@@ -1139,16 +1139,18 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         if not exp_words:
             return False
         t_words = [w for w in normalize_text(search_text).split() if len(w) >= 1]
-        
+
         expected_idx = 0
         last_found_idx = -1
 
         for i, t_word in enumerate(t_words):
             e_word = exp_words[expected_idx]
-            
+
             is_match = is_similar_name_word(e_word, t_word) or (len(e_word) == 1 and (t_word == e_word or t_word == e_word + '.'))
             if is_match:
-                if last_found_idx != -1 and (i - last_found_idx) > 2:
+                # Fix 3: Increase word gap tolerance from 2 to 5 to handle LASTNAME, FIRSTNAME MIDDLENAME
+                # with commas, middle names, suffixes, or other words between last and first name.
+                if last_found_idx != -1 and (i - last_found_idx) > 5:
                     expected_idx = 0
                     last_found_idx = -1
                     if is_similar_name_word(exp_words[0], t_word):
@@ -1661,7 +1663,12 @@ def extract_total_units_from_text(raw_text, azure_kvp=None):
                 continue
 
             subject_row_count += 1
-            row_digits = re.findall(r'\b([1-6](?:\.0)?)\b', line_clean)
+            # Fix 4: Sanitize delimiters before digit parsing so colons/punctuation next to numbers
+            # (e.g. "3:0" or ":3") don't truncate multi-digit unit values
+            sanitized_row = re.sub(r'(?<![0-9])[:,;](?=[0-9])|(?<=[0-9])[:,;](?![0-9])', ' ', line_clean)
+            sanitized_row = re.sub(r'\s+', ' ', sanitized_row).strip()
+            # Fix 5: Actual Column Summing — read actual unit values from subject table rows
+            row_digits = re.findall(r'\b([1-6](?:\.0{1,2})?)\b', sanitized_row)
             if row_digits:
                 try:
                     u = float(row_digits[-1])
@@ -1692,10 +1699,11 @@ def parse_cor_document(raw_text, azure_kvp=None):
 
     label_patterns = {
         'name': [
-            r'name\s*[:=\+\-1l\|\]\}\)\~]\s*([A-Za-z\s,\.\-]+)',
-            r'student\s*name\s*[:=\+\-1l\|\]\}\)\~]\s*([A-Za-z\s,\.\-]+)',
-            r'pangalan\s*[:=\+\-1l\|\]\}\)\~]\s*([A-Za-z\s,\.\-]+)',
-            r'name\s+([A-Za-z\s,\.\-]+)'
+            # Fix 1: Support Latin-1 Unicode accented characters (ñ, Ñ, é, etc.) for Filipino/Spanish names
+            r'name\s*[:=\+\-1l\|\]\}\)\~]\s*([A-Za-z\u00C0-\u017E\s,\.\-]+)',
+            r'student\s*name\s*[:=\+\-1l\|\]\}\)\~]\s*([A-Za-z\u00C0-\u017E\s,\.\-]+)',
+            r'pangalan\s*[:=\+\-1l\|\]\}\)\~]\s*([A-Za-z\u00C0-\u017E\s,\.\-]+)',
+            r'name\s+([A-Za-z\u00C0-\u017E\s,\.\-]+)'
         ],
         'student_id': [
             r'student\s*(?:no|number|id)\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})',
@@ -1751,7 +1759,9 @@ def parse_cor_document(raw_text, azure_kvp=None):
                 match = re.search(regex, line, re.IGNORECASE)
                 if match:
                     val = match.group(1 if len(match.groups()) >= 1 else 0).strip()
-                    val = re.sub(r'\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref)\s*[:=\+\-].*', '', val, flags=re.IGNORECASE)
+                    # Fix 2: Strip right-column label bleed (Student No, Student ID, Gender, Sex, Yr Level, Course, Program, Term)
+                    val = re.sub(r'\s+(?:Student\s*(?:No|ID|Number)|Gender|Sex|Yr\s*Level|Year\s*Level|Course|Program|Term|Reg|Tran|College|Pay|User|Scholarship|Discount|Ref)\s*[:=\+\-].*', '', val, flags=re.IGNORECASE)
+                    val = val.strip()
                     if len(val) > 0:
                         fields[field_name] = val
                         break
