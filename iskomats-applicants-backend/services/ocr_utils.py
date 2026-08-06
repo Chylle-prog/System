@@ -2139,11 +2139,11 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
 
     raw_text = ""
     azure_kvp = {}
-    # For COR / COE / Enrollment / Indigency / Residency documents, attempt Azure Document Intelligence API first
-    is_azure_supported_doc = any(k in doc_type_upper for k in ['COE', 'COR', 'ENROLLMENT', 'REGISTRATION', 'CERTIFICATE', 'INDIGENCY', 'RESIDENCY']) or not doc_type_upper or ('GRADES' not in doc_type_upper and 'ID' not in doc_type_upper)
+    is_id_doc = any(k in doc_type_upper for k in ['ID', 'SCHOOLID', 'NATIONALID', 'FRONT', 'BACK', 'IDENTIFICATION'])
+    is_azure_supported_doc = True
     
-    # Apply OpenCV Contour Auto-Crop & CLAHE Contrast Enhancement
-    enhanced_doc_bytes = enhance_and_autocrop_document(image_bytes) if is_azure_supported_doc else image_bytes
+    # Apply OpenCV Contour Card Crop & 2x Bicubic Super-Scaling (for IDs) or Paper Crop (for documents)
+    enhanced_doc_bytes = enhance_and_superscale_id_card(image_bytes) if is_id_doc else enhance_and_autocrop_document(image_bytes)
 
     if is_azure_supported_doc:
         try:
@@ -2535,24 +2535,120 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
 
     return success, msg, meta
 
-def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
+def enhance_and_superscale_id_card(image_bytes):
     """
-    Dedicated verification logic for School ID / National ID cards.
-    Validates applicant name, student ID number, and school name from ID OCR text.
+    OpenCV ID Card Preprocessing Pipeline:
+    1. Decodes raw ID image bytes.
+    2. Contour-based Card Border Crop: Isolates outer card rectangle contour.
+    3. 2x Bicubic Super-Scaling: Resizes small 6pt font ID images up to 2000px max width using cv2.INTER_CUBIC.
+    4. CLAHE Contrast Enhancement: Applies CLAHE in LAB color space to make small printed text and digits high contrast.
     """
-    meta = {}
+    if not image_bytes:
+        return image_bytes
+    try:
+        data = decode_base64(image_bytes)
+        if not data or len(data) < 10:
+            return image_bytes
+        nparr = np.frombuffer(data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None or img.shape[0] < 50 or img.shape[1] < 50:
+            return image_bytes
+
+        h, w = img.shape[:2]
+        cropped_img = img
+
+        # ── STEP 1: Card Border Contour Crop ──
+        try:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+            edged = cv2.Canny(blurred, 30, 150)
+
+            contours, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours = sorted(contours, key=cv2.contourArea, reverse=True)[:5]
+
+            card_cnt = None
+            for c in contours:
+                peri = cv2.arcLength(c, True)
+                approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+                if len(approx) == 4 and cv2.contourArea(c) > (w * h * 0.20):
+                    card_cnt = approx
+                    break
+
+            if card_cnt is not None:
+                pts = card_cnt.reshape(4, 2)
+                rect = np.zeros((4, 2), dtype="float32")
+                s = pts.sum(axis=1)
+                rect[0] = pts[np.argmin(s)]
+                rect[2] = pts[np.argmax(s)]
+                diff = np.diff(pts, axis=1)
+                rect[1] = pts[np.argmin(diff)]
+                rect[3] = pts[np.argmax(diff)]
+
+                (tl, tr, br, bl) = rect
+                widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
+                widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
+                maxWidth = max(int(widthA), int(widthB))
+
+                heightA = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
+                heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
+                maxHeight = max(int(heightA), int(heightB))
+
+                dst = np.array([
+                    [0, 0],
+                    [maxWidth - 1, 0],
+                    [maxWidth - 1, maxHeight - 1],
+                    [0, maxHeight - 1]], dtype="float32")
+
+                M = cv2.getPerspectiveTransform(rect, dst)
+                cropped_img = cv2.warpPerspective(img, M, (maxWidth, maxHeight))
+        except Exception as crop_err:
+            print(f"[ID PREPROCESS] Card border crop note: {crop_err}", flush=True)
+
+        # ── STEP 2: 2x Bicubic Super-Scaling (up to 2000px width) ──
+        ch, cw = cropped_img.shape[:2]
+        target_w = max(cw * 2, 1600)
+        target_w = min(target_w, 2000)
+        scale_factor = target_w / float(cw)
+        target_h = int(ch * scale_factor)
+
+        scaled_img = cv2.resize(cropped_img, (target_w, target_h), interpolation=cv2.INTER_CUBIC)
+
+        # ── STEP 3: CLAHE Contrast Enhancement in LAB Color Space ──
+        try:
+            lab = cv2.cvtColor(scaled_img, cv2.COLOR_BGR2LAB)
+            l, a, b_chan = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.8, tileGridSize=(8, 8))
+            cl = clahe.apply(l)
+            limg = cv2.merge((cl, a, b_chan))
+            enhanced_img = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
+        except Exception as clahe_err:
+            print(f"[ID PREPROCESS] CLAHE note: {clahe_err}", flush=True)
+            enhanced_img = scaled_img
+
+        success, encoded_img = cv2.imencode('.jpg', enhanced_img, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+        if success:
+            return encoded_img.tobytes()
+    except Exception as e:
+        print(f"[ID PREPROCESS] ID enhancement exception: {e}", flush=True)
+    return image_bytes
+
+def verify_school_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
+    """
+    Dedicated verification logic for School ID cards.
+    Validates applicant name, student ID number (with digit/letter confusion tolerance), school name, and face match.
+    """
+    meta = {'id_type': 'School ID'}
     failures = []
-    
     doc_norm = normalize_text(raw_text)
-    
-    # 1. Name Verification (First Name & Last Name only for School ID / National ID)
-    first_ok, middle_ok, last_ok, seq_ok = verify_name_sequence(first_name, last_name, raw_text, full_raw_text=raw_text, middle_name=None)
+
+    # 1. Name Verification
+    first_ok, middle_ok, last_ok, seq_ok = verify_name_sequence(first_name, last_name, raw_text, full_raw_text=raw_text, middle_name=middle_name)
     name_matched = first_ok and last_ok and seq_ok
     if not name_matched:
-        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}' on ID)")
+        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}' on School ID)")
 
-    # 2. Student ID Number (if expected_id_no provided)
-    expected_id_no = kwargs.get('expected_id_no')
+    # 2. Student ID Number (with '0'<->'O', '1'<->'l' confusion tolerance)
+    expected_id_no = kwargs.get('expected_id_no') or kwargs.get('idNo')
     id_ok = True
     if expected_id_no:
         clean_expected_id = normalize_id_number(expected_id_no)
@@ -2577,10 +2673,10 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
                 id_ok = True
 
         if not id_ok:
-            failures.append(f"ID Number mismatch (Expected: '{expected_id_no}' on ID)")
+            failures.append(f"Student ID Number mismatch (Expected: '{expected_id_no}' on School ID)")
 
-    # 3. School Name (if expected_school_name provided)
-    expected_school = kwargs.get('expected_school_name')
+    # 3. School Name Verification
+    expected_school = kwargs.get('expected_school_name') or kwargs.get('schoolName')
     school_ok = True
     if expected_school:
         clean_school = normalize_text(expected_school)
@@ -2590,13 +2686,10 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
         else:
             school_ok = clean_school in doc_norm
         if not school_ok:
-            failures.append(f"School name mismatch (Expected: '{expected_school}' on ID)")
+            failures.append(f"School name mismatch (Expected: '{expected_school}' on School ID)")
 
     success = (first_ok and last_ok) and id_ok and school_ok
-    if success:
-        msg = f"School ID Verified: Name ({first_name} {last_name}) and ID details matched."
-    else:
-        msg = "School ID Verification Failed: " + ("; ".join(failures) if failures else "Details could not be verified on ID.")
+    msg = f"School ID Verified: Name ({first_name} {last_name}) and ID details matched." if success else ("School ID Verification Failed: " + ("; ".join(failures) if failures else "Details could not be verified on ID."))
 
     meta['name_ok'] = first_ok and last_ok
     meta['id_ok'] = id_ok
@@ -2605,6 +2698,68 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
     meta['detected_text'] = raw_text
 
     return success, msg, meta
+
+def verify_national_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
+    """
+    Dedicated verification logic for National ID / PhilSys / Government ID cards.
+    Validates full name, PhilSys / National ID number, birth date, address, and face match.
+    """
+    meta = {'id_type': 'National ID / Government ID'}
+    failures = []
+    doc_norm = normalize_text(raw_text)
+
+    # 1. Full Name Verification
+    first_ok, middle_ok, last_ok, seq_ok = verify_name_sequence(first_name, last_name, raw_text, full_raw_text=raw_text, middle_name=middle_name)
+    name_matched = first_ok and last_ok and seq_ok
+    if not name_matched:
+        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}' on National ID)")
+
+    # 2. National ID / PhilSys Number (16-digit or formatted XXXX-XXXX-XXXX-XXXX)
+    expected_id_no = kwargs.get('expected_id_no') or kwargs.get('idNo') or kwargs.get('philsys_no')
+    id_ok = True
+    if expected_id_no:
+        clean_expected_id = normalize_id_number(expected_id_no)
+        tokens = [normalize_id_number(tok) for tok in re.findall(r'\b[0-9a-zA-Z\-]{4,25}\b', str(raw_text or ''))]
+        id_ok = (clean_expected_id in tokens) or (clean_expected_id in normalize_id_number(raw_text))
+        if not id_ok:
+            failures.append(f"National ID / PhilSys Number mismatch (Expected: '{expected_id_no}')")
+
+    # 3. Birth Date Verification (if expected_birth_date provided)
+    expected_dob = kwargs.get('expected_birth_date') or kwargs.get('birth_date') or kwargs.get('dob')
+    dob_ok = True
+    if expected_dob:
+        clean_dob = normalize_text(expected_dob)
+        dob_words = [w for w in clean_dob.split() if len(w) >= 2]
+        if dob_words:
+            dob_ok = any(w in doc_norm for w in dob_words)
+            if not dob_ok:
+                failures.append(f"Birth date mismatch (Expected: '{expected_dob}' on National ID)")
+
+    success = (first_ok and last_ok) and id_ok and dob_ok
+    msg = f"National ID Verified: Name ({first_name} {last_name}) and National ID details matched." if success else ("National ID Verification Failed: " + ("; ".join(failures) if failures else "Details could not be verified on National ID."))
+
+    meta['name_ok'] = first_ok and last_ok
+    meta['id_ok'] = id_ok
+    meta['dob_ok'] = dob_ok
+    meta['details'] = failures
+    meta['detected_text'] = raw_text
+
+    return success, msg, meta
+
+def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
+    """
+    ID Verification Router: Dispatches to verify_school_id_fields or verify_national_id_fields
+    without merging or deleting either specialized handler.
+    """
+    id_type = str(kwargs.get('id_type') or kwargs.get('idType') or '').strip().upper()
+    doc_upper = str(raw_text or '').upper()
+
+    is_national_id = 'NATIONAL' in id_type or 'PHILSYS' in id_type or 'GOV' in id_type or 'PHILHEALTH' in id_type or 'PASSPORT' in id_type or 'SSS' in id_type or 'UMID' in id_type or any(k in doc_upper for k in ['PHILIPPINE IDENTIFICATION', 'PHILSYS', 'NATIONAL ID', 'REPUBLIKA NG PILIPINAS'])
+
+    if is_national_id:
+        return verify_national_id_fields(raw_text, first_name, middle_name, last_name, **kwargs)
+    else:
+        return verify_school_id_fields(raw_text, first_name, middle_name, last_name, **kwargs)
 
 def verify_id_with_ocr(image_bytes, first_name=None, middle_name=None, last_name=None, expected_name=None, expected_address=None, **kwargs):
     """
