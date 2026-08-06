@@ -2564,30 +2564,35 @@ const StudentInfo = () => {
 
       if (profile.has_mayorIndigency_photo) {
         const indigencyUrl = `${apiOrigin}/api/student/applicant/document/raw/indigency_doc?token=${token}`;
-        newPhotos.mayorIndigency_photo = indigencyUrl;
-        updates.mayorIndigency_photo = indigencyUrl;
+        const resolved = await applicantAPI.resolveDocument('mayorIndigency_photo', indigencyUrl);
+        newPhotos.mayorIndigency_photo = resolved;
+        updates.mayorIndigency_photo = resolved;
       }
       if (profile.has_mayorCOE_photo) {
         const coeUrl = `${apiOrigin}/api/student/applicant/document/raw/enrollment_certificate_doc?token=${token}`;
-        newPhotos.mayorCOE_photo = coeUrl;
-        updates.mayorCOE_photo = coeUrl;
+        const resolved = await applicantAPI.resolveDocument('mayorCOE_photo', coeUrl);
+        newPhotos.mayorCOE_photo = resolved;
+        updates.mayorCOE_photo = resolved;
       }
       if (profile.has_mayorGrades_photo) {
         const gradesUrl = `${apiOrigin}/api/student/applicant/document/raw/grades_doc?token=${token}`;
-        newPhotos.mayorGrades_photo = gradesUrl;
-        updates.mayorGrades_photo = gradesUrl;
+        const resolved = await applicantAPI.resolveDocument('mayorGrades_photo', gradesUrl);
+        newPhotos.mayorGrades_photo = resolved;
+        updates.mayorGrades_photo = resolved;
       }
 
       const newIdPhotos = {};
       if (profile.has_id) {
         const frontUrl = `${apiOrigin}/api/student/applicant/document/raw/id_img_front?token=${token}`;
-        newIdPhotos.front = frontUrl;
-        updates.schoolIdFront = frontUrl;
+        const resolved = await applicantAPI.resolveDocument('id_front', frontUrl);
+        newIdPhotos.front = resolved;
+        updates.schoolIdFront = resolved;
       }
       if (profile.has_id_back) {
         const backUrl = `${apiOrigin}/api/student/applicant/document/raw/id_img_back?token=${token}`;
-        newIdPhotos.back = backUrl;
-        updates.schoolIdBack = backUrl;
+        const resolved = await applicantAPI.resolveDocument('id_back', backUrl);
+        newIdPhotos.back = resolved;
+        updates.schoolIdBack = resolved;
       }
 
       setPhotos(prev => ({
@@ -2600,7 +2605,7 @@ const StudentInfo = () => {
         setSchoolIdPhotos(prev => ({ ...prev, ...newIdPhotos }));
       }
 
-      const nextVideos = {
+      const rawVideos = {
         face_video: profile.id_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/face_video?token=${token}` : null,
         mayorIndigency_video: profile.indigency_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null,
         mayorGrades_video: profile.grades_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorGrades_video?token=${token}` : null,
@@ -2610,12 +2615,13 @@ const StudentInfo = () => {
       };
 
       const activeVideos = {};
-      Object.keys(nextVideos).forEach(k => {
-        if (nextVideos[k]) {
-          activeVideos[k] = nextVideos[k];
-          updates[k] = nextVideos[k];
+      for (const [k, urlVal] of Object.entries(rawVideos)) {
+        if (urlVal) {
+          const resolvedVid = await applicantAPI.resolveDocument(k, urlVal);
+          activeVideos[k] = resolvedVid;
+          updates[k] = resolvedVid;
         }
-      });
+      }
 
       setDocumentVideos(prev => ({ ...prev, ...activeVideos }));
 
@@ -7130,26 +7136,12 @@ const StudentInfo = () => {
                       style={{ position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '5' }}
                     />
                     <div style={{ textAlign: 'center', color: '#999', fontSize: '0.85rem', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                      {(idPicturePreview || formData.profile_picture || photos.profile_picture || userProfile?.profile_picture || userProfile?.id_pic || ((userProfile?.has_profile_picture || userProfile?.has_id_pic) ? `${API_ORIGIN}/api/student/applicant/document/raw/${userProfile?.has_profile_picture ? 'profile_picture' : 'id_pic'}?token=${localStorage.getItem('authToken')}` : null)) ? (
+                      {((idPicturePreview && (idPicturePreview.startsWith('blob:') || idPicturePreview.startsWith('data:'))) || (formData.profile_picture && (formData.profile_picture.startsWith('blob:') || formData.profile_picture.startsWith('data:'))) || (photos.profile_picture && (photos.profile_picture.startsWith('blob:') || photos.profile_picture.startsWith('data:')))) ? (
                         <img
-                          src={idPicturePreview || formData.profile_picture || photos.profile_picture || userProfile?.profile_picture || userProfile?.id_pic || `${API_ORIGIN}/api/student/applicant/document/raw/${userProfile?.has_profile_picture ? 'profile_picture' : 'id_pic'}?token=${localStorage.getItem('authToken')}`}
+                          src={(idPicturePreview && (idPicturePreview.startsWith('blob:') || idPicturePreview.startsWith('data:'))) ? idPicturePreview : (formData.profile_picture && (formData.profile_picture.startsWith('blob:') || formData.profile_picture.startsWith('data:'))) ? formData.profile_picture : photos.profile_picture}
                           style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px', display: 'block' }}
                           alt="ID Preview"
-                          onError={(e) => {
-                            const currentSrc = e.target.src;
-                            console.warn('[PROFILE PIC] Image failed to render:', currentSrc);
-                            if (currentSrc && (currentSrc.startsWith('http://') || currentSrc.startsWith('https://'))) {
-                              applicantAPI.resolveDocument('profile_picture', currentSrc).then(resolved => {
-                                if (resolved && resolved !== currentSrc) {
-                                  setIdPicturePreview(resolved);
-                                } else {
-                                  setIdPicturePreview(null);
-                                }
-                              }).catch(() => setIdPicturePreview(null));
-                            } else {
-                              setIdPicturePreview(null);
-                            }
-                          }}
+                          onError={() => setIdPicturePreview(null)}
                         />
                       ) : (
                         <div>
