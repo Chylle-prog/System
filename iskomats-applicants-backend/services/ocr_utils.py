@@ -1258,6 +1258,61 @@ def _run_tesseract_on_image(img, psm=6):
         print(f"[OCR] Tesseract error: {e}", flush=True)
         return ""
 
+def extract_text_with_azure_document_intelligence(image_bytes):
+    """
+    Extracts text from document using Azure Document Intelligence REST API (prebuilt-layout model).
+    Specifically optimized for Certificates of Registration (COR/COE) with small fonts and tables.
+    """
+    key = os.environ.get('AZURE_DOC_INTEL_KEY', '').strip()
+    endpoint = os.environ.get('AZURE_DOC_INTEL_ENDPOINT', '').strip().rstrip('/')
+
+    if not key or not endpoint:
+        return None
+
+    try:
+        data = decode_base64(image_bytes)
+        if not data or len(data) < 10:
+            return None
+
+        import requests
+        analyze_url = f"{endpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31"
+        headers = {
+            'Ocp-Apim-Subscription-Key': key,
+            'Content-Type': 'application/octet-stream'
+        }
+
+        # Step 1: Submit Analyze Request to Azure Form Recognizer
+        resp = requests.post(analyze_url, headers=headers, data=data, timeout=15)
+        if resp.status_code != 202:
+            print(f"[AZURE OCR] Analyze submit status: {resp.status_code}", flush=True)
+            return None
+
+        op_location = resp.headers.get('Operation-Location')
+        if not op_location:
+            return None
+
+        # Step 2: Poll for Results (max 15 seconds)
+        for _ in range(30):
+            time.sleep(0.5)
+            poll_resp = requests.get(op_location, headers={'Ocp-Apim-Subscription-Key': key}, timeout=10)
+            if poll_resp.status_code == 200:
+                result_json = poll_resp.json()
+                status = result_json.get('status')
+                if status == 'succeeded':
+                    content = result_json.get('analyzeResult', {}).get('content', '')
+                    if content and len(content.strip()) > 0:
+                        print(f"[AZURE OCR] COR Extraction succeeded! Extracted {len(content)} chars via Azure Form Recognizer.", flush=True)
+                        return content.strip()
+                elif status in ('failed', 'canceled'):
+                    print(f"[AZURE OCR] Analysis status: {status}", flush=True)
+                    return None
+        return None
+    except Exception as e:
+        print(f"[AZURE OCR] Exception: {e}", flush=True)
+        return None
+
+
+
 def extract_document_text(image_bytes, psm=3, max_width=None, prefer_fast_layout=False, crop_percent=None, is_id_back=False, return_tuple=False, **kwargs):
     should_return_tuple = return_tuple or (
         max_width is not None or crop_percent is not None or is_id_back or prefer_fast_layout
@@ -1886,7 +1941,21 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
     doc_type_upper = str(doc_type or '').strip().upper()
     max_w = 1400 if 'INDIGENCY' in doc_type_upper else None
 
-    raw_text = extract_document_text(image_bytes, psm=3, max_width=max_w)
+    raw_text = ""
+    # For COR / COE / Enrollment / Registration documents, attempt Azure Document Intelligence API first
+    is_cor_doc = any(k in doc_type_upper for k in ['COE', 'COR', 'ENROLLMENT', 'REGISTRATION', 'CERTIFICATE']) or not doc_type_upper or ('GRADES' not in doc_type_upper and 'INDIGENCY' not in doc_type_upper and 'ID' not in doc_type_upper)
+    if is_cor_doc:
+        try:
+            azure_text = extract_text_with_azure_document_intelligence(image_bytes)
+            if azure_text and len(azure_text.strip()) >= 10:
+                raw_text = azure_text
+                print(f"[OCR] Successfully extracted text using Azure Document Intelligence for COR/COE", flush=True)
+        except Exception as az_err:
+            print(f"[OCR] Azure extraction note: {az_err}", flush=True)
+
+    if not raw_text or not raw_text.strip():
+        raw_text = extract_document_text(image_bytes, psm=3, max_width=max_w)
+
     if not raw_text.strip():
         return False, "Unable to extract readable text from document.", "", {}
 
