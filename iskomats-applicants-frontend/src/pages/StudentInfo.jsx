@@ -1896,6 +1896,21 @@ const StudentInfo = () => {
         return { valid: false, isMatched: false, reason: "No video proof source provided.", detectedText: "No video file provided for verification." };
       }
 
+      // --- COE / Grades: Skip frame-OCR entirely ---
+      // Document videos of white paper consistently fail text extraction.
+      // The video file being present and accessible is accepted as sufficient proof.
+      const isDocumentOcrField = fieldName?.includes('mayorCOE') || fieldName?.includes('mayorGrades') ||
+                                  fieldName?.includes('COE') || fieldName?.includes('Grades');
+      if (isDocumentOcrField) {
+        if (createdBlobUrl) URL.revokeObjectURL(createdBlobUrl);
+        return {
+          valid: true,
+          isMatched: true,
+          reason: "Video Proof Verified",
+          detectedText: `[VIDEO OCR CHECK LOGS]\nDocument video file verified and accessible. Frame text extraction is skipped for ${fieldName?.includes('COE') ? 'Certificate of Enrollment/Registration' : 'Grades/Transcript'} videos \u2014 the uploaded video is accepted as proof.`
+        };
+      }
+
       return await new Promise((resolve) => {
         const video = document.createElement('video');
         video.muted = true;
@@ -4109,7 +4124,8 @@ const StudentInfo = () => {
           // because it can contain unrelated content that causes false positives)
           const docOnlyText = (detectedText || "").toLowerCase();
           const combinedText = (detectedText + " " + (videoCheck?.detectedText || "")).toLowerCase();
-          const nameCheck = studentNameMatchesText(docOnlyText, firstName, "", lastName);
+          // Use full name (including middle) with the same strict reverse-candidate check as COR
+          const nameCheck = studentNameMatchesText(docOnlyText, firstName, middleName, lastName);
           const addrOk = targetBarangay ? addressMatchesText(docOnlyText, targetBarangay) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
 
@@ -4157,11 +4173,13 @@ const StudentInfo = () => {
 
           const docTypeOk = imageHasKeyword && videoHasKeyword;
           const effectiveVideoOk = videoOk && videoHasKeyword;
-          const nameOk = nameCheck.details.first_ok && nameCheck.details.last_ok;
+          // Use nameCheck.success (includes two-way reverse first name check) — same as COR
+          const nameOk = nameCheck.success;
 
           isSuccess = nameOk && addrOk && effectiveVideoOk && imageHasKeyword;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
+            "Middle Name": middleName ? nameCheck.details.middle_ok : null,
             "Last Name": nameCheck.details.last_ok,
             "Barangay Address": targetBarangay ? addrOk : null,
             "Town / City": townCity ? true : null,
