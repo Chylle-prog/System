@@ -252,14 +252,11 @@ const makeRequest = async (endpoint, options = {}) => {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const executeRequest = async (isRetry = false) => {
+  const executeRequest = async () => {
     return fetch(url, {
       ...options,
       headers,
     }).catch(err => {
-      if (!isRetry) {
-        console.warn(`Fetch retry initiated for [${endpoint}]:`, err?.message || err);
-      }
       if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
         throw new Error(`Network Error: Could not reach the server at ${url}. This might be a timeout or CORS issue.`);
       }
@@ -278,7 +275,7 @@ const makeRequest = async (endpoint, options = {}) => {
           await new Promise(r => setTimeout(r, 1000 * attempt));
         }
 
-        response = await executeRequest(attempt > 0);
+        response = await executeRequest();
 
         // Retry on 502, 503, 504 server cold-start errors from Render free tier
         if ((response.status === 502 || response.status === 503 || response.status === 504) && attempt < maxRetries) {
