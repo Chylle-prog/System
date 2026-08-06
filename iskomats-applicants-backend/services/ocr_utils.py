@@ -1067,7 +1067,7 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         e_clean, t_clean = e_word.lower().strip(), t_word.lower().strip()
         if e_clean == t_clean: return True
         if len(e_clean) >= 3 and len(t_clean) >= 3 and abs(len(e_clean) - len(t_clean)) <= 2:
-            if difflib.SequenceMatcher(None, e_clean, t_clean).ratio() >= 0.78:
+            if difflib.SequenceMatcher(None, e_clean, t_clean).ratio() >= 0.85:
                 return True
         def _conf(s):
             return re.sub(r'[^a-z0-9]', '', s).replace('1', 'i').replace('|', 'i').replace('0', 'o').replace('5', 's').replace('3', 'e').replace('8', 'b').replace('rn', 'm').replace('cl', 'd').replace('vv', 'w')
@@ -2528,14 +2528,18 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     meta = {}
     failures = []
 
-    # Semantic Anchor Extraction
+    # Semantic Anchor Extraction — Step 1: Isolate Applicant Line after "This is to certify that..." / "Pinatutunayan na si..."
     anchors = extract_semantic_anchors_from_indigency(raw_text)
-    candidate_name = anchors.get('candidate_name') or raw_text
+    candidate_name = anchors.get('candidate_name')
     meta['anchors'] = anchors
 
-    # 1. NAME MATCHING — verify against extracted semantic candidate string and full text
+    # Use isolated applicant line if present to prevent matching Barangay Captain signatures at bottom
+    search_target = candidate_name if candidate_name else raw_text
+    search_raw = candidate_name if candidate_name else raw_text
+
+    # 1. NAME MATCHING — Step 2 & 3: Order-Flexible Token-Set Matching + 85% Levenshtein & Char Map
     first_ok, middle_ok, last_ok, sequence_ok = verify_name_sequence(
-        first_name, last_name, candidate_name, raw_text, middle_name
+        first_name, last_name, search_target, search_raw, middle_name
     )
 
     if not (first_ok and middle_ok and last_ok and sequence_ok):
