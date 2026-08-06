@@ -1907,39 +1907,28 @@ const StudentInfo = () => {
         return { valid: false, isMatched: false, reason: "No video proof source provided.", detectedText: "No video file provided for verification." };
       }
 
-      // --- COE / Grades: Skip frame-OCR entirely ---
-      // Document videos of white paper consistently fail text extraction.
-      // The video file being present and accessible is accepted as sufficient proof.
-      const isDocumentOcrField = fieldName?.includes('mayorCOE') || fieldName?.includes('mayorGrades') ||
-                                  fieldName?.includes('COE') || fieldName?.includes('Grades');
-      if (isDocumentOcrField) {
-        if (createdBlobUrl) URL.revokeObjectURL(createdBlobUrl);
-        return {
-          valid: true,
-          isMatched: true,
-          reason: "Video Proof Verified",
-          detectedText: `[VIDEO OCR CHECK LOGS]\nDocument video file verified and accessible. Frame text extraction is skipped for ${fieldName?.includes('COE') ? 'Certificate of Enrollment/Registration' : 'Grades/Transcript'} videos \u2014 the uploaded video is accepted as proof.`
-        };
-      }
-
       return await new Promise((resolve) => {
         const video = document.createElement('video');
         video.muted = true;
         video.playsInline = true;
         video.style.position = 'fixed';
-        video.style.top = '-9999px';
-        video.style.left = '-9999px';
+        video.style.top = '0px';
+        video.style.left = '0px';
         video.style.width = '1px';
         video.style.height = '1px';
-        video.style.opacity = '0';
+        video.style.opacity = '0.01';
+        video.style.pointerEvents = 'none';
+        video.style.zIndex = '-9999';
         document.body.appendChild(video);
 
         let cleanedUp = false;
         let ocrTriggered = false;
+        let playInterval = null;
 
         const cleanup = () => {
           if (cleanedUp) return;
           cleanedUp = true;
+          if (playInterval) { clearInterval(playInterval); playInterval = null; }
           try {
             video.pause();
             video.removeAttribute('src');
@@ -1956,12 +1945,18 @@ const StudentInfo = () => {
           const cleanText = normalizeForOcr(rawCombined);
 
           // Extract expected name words safely from formData or userProfile
-          const userLast = formData?.lastName || userProfile?.last_name || userProfile?.lastName || '';
-          const userFirst = formData?.firstName || userProfile?.first_name || userProfile?.firstName || '';
+          const userLast = String(formData?.lastName || userProfile?.last_name || userProfile?.lastName || '');
+          const userFirst = String(formData?.firstName || userProfile?.first_name || userProfile?.firstName || '');
 
           const lastWord = normalizeForOcr(userLast).split(' ').filter(w => w.length >= 2);
           const firstWord = normalizeForOcr(userFirst).split(' ').filter(w => w.length >= 2);
           const allNameWords = [...lastWord, ...firstWord];
+
+          const schoolNameStr = String(formData?.schoolName || userProfile?.school_name || userProfile?.schoolName || '');
+          const schoolWords = normalizeForOcr(schoolNameStr).split(' ').filter(w => w.length >= 3);
+
+          const studentIdStr = String(formData?.schoolIdNumber || userProfile?.school_id_number || userProfile?.schoolIdNumber || '');
+          const cleanStudentId = studentIdStr.replace(/[^a-zA-Z0-9]/g, '');
 
           // Target document category keywords (including common Philippine document phrases)
           let targetKeywords = [];
@@ -1979,20 +1974,20 @@ const StudentInfo = () => {
             ];
           } else if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('certificate') || fieldName?.includes('mayorCOE') || fieldName?.includes('cor')) {
             targetKeywords = [
-              'certificate of registration', 'certificate of enrollment', 'official certificate of registration',
-              'enrollment', 'registration', 'certificate', 'student', 'college', 'semester', 'academic',
-              'official', 'course', 'school', 'university', 'whom', 'concern', 'certify', 'bonafide',
-              'enrolled', 'registrar', 'dean', 'republic', 'philippines', 'department',
-              'dlsl', 'lipa', 'salle', 'bsit', 'units', 'cor', 'coe', 'total', 'pathfi', 'coprog',
-              'coworld', 'dismath', 'intcom', 'itbupro', 'nstp', 'purpcom', 'readphi', '2025', '2026',
-              'form', 'year', 'level', 'fee', 'tuition', 'subject', 'grades'
+              'certificate', 'registration', 'enrollment', 'official', 'student', 'college', 'semester', 'academic',
+              'course', 'school', 'university', 'whom', 'concern', 'certify', 'bonafide', 'enrolled', 'registrar',
+              'dean', 'republic', 'philippines', 'department', 'dlsl', 'lipa', 'salle', 'bsit', 'units', 'cor', 'coe', 'total',
+              'form', 'year', 'level', 'fee', 'tuition', 'subject', 'grades', 'matriculation', 'assessment', 'schedule',
+              'classes', 'load', 'student load', 'admission', 'curriculum', '1st sem', '2nd sem', 'sy', 'ay', 'school year',
+              'academic year', 'tertiary', 'secondary', 'high school', 'institute', 'state', 'national'
             ];
           } else if (fieldName?.includes('Grades') || fieldName?.includes('grades') || fieldName?.includes('mayorGrades') || fieldName?.includes('reportCard')) {
             targetKeywords = [
               'grade', 'grades', 'transcript', 'gpa', 'gwa', 'academic', 'rating', 'remarks', 'passed',
-              'subject', 'subjects', 'units', 'evaluation', 'record', 'scholastic', 'registrar',
+              'subject', 'subjects', 'units', 'unit', 'evaluation', 'record', 'scholastic', 'registrar',
               'certified', 'true', 'copy', 'student', 'school', 'college', 'course', 'term', 'semester',
-              'year', 'tor', 'card', 'report'
+              'year', 'tor', 'card', 'report', 'report card', 'transcript of records', 'scholastic record',
+              'final grade', 'remedial', 'credit', 'credits', 'weighted', 'average', 'cumulative', 'general'
             ];
           } else if (fieldName?.includes('schoolId') || fieldName?.includes('Id') || fieldName?.includes('id') || fieldName?.includes('nationalId')) {
             targetKeywords = [
@@ -2007,16 +2002,18 @@ const StudentInfo = () => {
             ];
           }
 
-          const isCoeVideo = fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('mayorCOE') || fieldName?.includes('certificate') || fieldName?.includes('cor');
           const isSchoolIdVideo = fieldName?.includes('schoolId') || fieldName?.includes('schoolid') || fieldName?.includes('schoolIdFront') || fieldName?.includes('schoolIdBack') || fieldName?.includes('face_video') || fieldName?.includes('id_vid');
-          const hasCoeTitleMatch = isCoeVideo ? (/certificate\s*o[fr]\s*(?:raguetration|registration|enrollment|reg)|enrollment|registration|\bcor\b|\bcoe\b/i.test(rawCombined) || cleanText.includes('enrollment') || cleanText.includes('registration')) : false;
+          const isBackIdVideo = fieldName?.includes('schoolIdBack') || fieldName?.includes('backVid');
 
           const targetBarangay = formData?.barangay || userProfile?.barangay || '';
           const hasNameMatch = allNameWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
           const hasAddressMatch = targetBarangay ? (cleanText.includes(targetBarangay.toLowerCase()) || rawCombined.includes(targetBarangay.toLowerCase())) : false;
           const hasKeywordMatch = targetKeywords.some(k => cleanText.includes(k) || rawCombined.includes(k));
+          const hasSchoolMatch = schoolWords.length > 0 && schoolWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
+          const hasIdMatch = cleanStudentId.length >= 4 && (cleanText.includes(cleanStudentId.toLowerCase()) || rawCombined.includes(cleanStudentId.toLowerCase()));
+          const hasAnyDocumentWord = /certificate|registration|enrollment|grade|grades|transcript|report|card|student|college|university|school|semester|academic|course|units|official|republic|philippines|certify|whom/i.test(rawCombined);
 
-          if (isSchoolIdVideo) {
+          if (isSchoolIdVideo && !isBackIdVideo) {
             if (!hasNameMatch) {
               return {
                 valid: false,
@@ -2027,7 +2024,7 @@ const StudentInfo = () => {
             }
           }
 
-          if (hasNameMatch || hasAddressMatch || hasKeywordMatch || hasCoeTitleMatch) {
+          if (hasNameMatch || hasAddressMatch || hasKeywordMatch || hasSchoolMatch || hasIdMatch || hasAnyDocumentWord || (cleanText && cleanText.length >= 8)) {
             return {
               valid: true,
               isMatched: true,
@@ -2054,14 +2051,8 @@ const StudentInfo = () => {
           }
         }, videoTimeout);
 
-        // Use more checkpoints for document videos (COE/Grades are typically longer)
-        const isDocumentVideo = fieldName?.includes('COE') || fieldName?.includes('Grades') || fieldName?.includes('mayorCOE') || fieldName?.includes('mayorGrades');
-        const checkPoints = isDocumentVideo ? [0.10, 0.25, 0.45, 0.65, 0.85] : [0.15, 0.45, 0.75];
-        let currentCheckIndex = 0;
         let isCapturing = false;
         let accumulatedText = [];
-        let hasSeeked = false;
-        let skippedFrames = 0;
 
         const captureFrame = async () => {
           if (ocrTriggered || isCapturing) return;
@@ -2071,10 +2062,6 @@ const StudentInfo = () => {
           const h = video.videoHeight;
           if (!w || !h) {
             isCapturing = false;
-            ocrTriggered = true;
-            clearTimeout(timeout);
-            cleanup();
-            resolve(evaluateVideoText(accumulatedText));
             return;
           }
 
@@ -2092,6 +2079,7 @@ const StudentInfo = () => {
               }
             }
 
+            // Canvas 1: Raw full video frame
             const canvas = document.createElement('canvas');
             canvas.width = targetW;
             canvas.height = targetH;
@@ -2100,52 +2088,66 @@ const StudentInfo = () => {
             ctx.imageSmoothingQuality = "high";
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // Enhance contrast for OCR: grayscale + contrast boost
-            try {
-              const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-              const data = imgData.data;
+            // Canvas 2: Top 60% Header Crop
+            const headerH = Math.floor(h * 0.60);
+            const headerCanvas = document.createElement('canvas');
+            headerCanvas.width = targetW;
+            headerCanvas.height = targetH;
+            const hCtx = headerCanvas.getContext('2d');
+            hCtx.imageSmoothingEnabled = true;
+            hCtx.imageSmoothingQuality = "high";
+            if ('filter' in hCtx) {
+              hCtx.filter = "contrast(160%) brightness(92%)";
+            }
+            hCtx.drawImage(video, 0, 0, w, headerH, 0, 0, targetW, targetH);
 
-              // Variance check — skip truly pure solid/black frames
-              // For document videos (COE/Grades), white paper background has low but non-zero stdDev
-              // so we use a very low threshold (0.5) and never skip the last checkpoint
-              let sumG = 0, sumSqG = 0, n = 0;
-              for (let i = 0; i < data.length; i += 16) {
-                const g = data[i];
-                sumG += g;
-                sumSqG += g * g;
-                n++;
-              }
-              const mean = sumG / n;
-              const stdDev = Math.sqrt(Math.max(0, (sumSqG / n) - (mean * mean)));
+            // Canvas 3: Middle 65% Body Crop
+            const midY = Math.floor(h * 0.18);
+            const midH = Math.floor(h * 0.65);
+            const centerCanvas = document.createElement('canvas');
+            centerCanvas.width = targetW;
+            centerCanvas.height = targetH;
+            const cCtx = centerCanvas.getContext('2d');
+            cCtx.imageSmoothingEnabled = true;
+            cCtx.imageSmoothingQuality = "high";
+            if ('filter' in cCtx) {
+              cCtx.filter = "contrast(170%) brightness(90%)";
+            }
+            cCtx.drawImage(video, 0, midY, w, midH, 0, 0, targetW, targetH);
 
-              const isLastCheckpoint = currentCheckIndex >= checkPoints.length - 1;
-              const blankThreshold = isDocumentVideo ? 0.5 : 1.5;
-              if (stdDev < blankThreshold && !isLastCheckpoint) {
-                // Pure blank/solid frame — skip unless this is the last checkpoint
-                skippedFrames++;
-                isCapturing = false;
-                await advanceToNextCheckpoint();
-                return;
-              }
+            // Canvas 4: High-contrast document enhancement
+            const enhancedCanvas = document.createElement('canvas');
+            enhancedCanvas.width = targetW;
+            enhancedCanvas.height = targetH;
+            const eCtx = enhancedCanvas.getContext('2d');
+            eCtx.imageSmoothingEnabled = true;
+            eCtx.imageSmoothingQuality = "high";
+            if ('filter' in eCtx) {
+              eCtx.filter = "contrast(180%) brightness(90%) grayscale(100%)";
+            }
+            eCtx.drawImage(video, 0, 0, targetW, targetH);
 
-              // Convert to grayscale + apply contrast stretch
-              for (let i = 0; i < data.length; i += 4) {
-                const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-                // Contrast stretch: shift toward extremes
-                const stretched = Math.min(255, Math.max(0, (gray - 80) * 1.8));
-                data[i] = stretched;
-                data[i + 1] = stretched;
-                data[i + 2] = stretched;
-              }
-              ctx.putImageData(imgData, 0, 0);
-            } catch (e) { /* continue with unprocessed frame */ }
-
-            // Run OCR
-            let ocrResult = null;
+            // Run Tesseract OCR on all 4 passes and combine text
+            let combinedFrameText = "";
             try {
               const worker = await getTesseractWorker();
               if (worker && !ocrTriggered) {
-                ocrResult = await worker.recognize(canvas);
+                const res1 = await worker.recognize(canvas).catch(() => null);
+                const text1 = String(res1?.data?.text || "").trim();
+
+                const res2 = await worker.recognize(headerCanvas).catch(() => null);
+                const text2 = String(res2?.data?.text || "").trim();
+
+                const res3 = await worker.recognize(centerCanvas).catch(() => null);
+                const text3 = String(res3?.data?.text || "").trim();
+
+                let text4 = "";
+                if ((text1.length + text2.length + text3.length) < 15) {
+                  const res4 = await worker.recognize(enhancedCanvas).catch(() => null);
+                  text4 = String(res4?.data?.text || "").trim();
+                }
+
+                combinedFrameText = [text1, text2, text3, text4].filter(Boolean).join(" ");
               }
             } catch (e) {
               console.warn("[VIDEO OCR] Frame recognition failed:", e?.message || e);
@@ -2153,9 +2155,8 @@ const StudentInfo = () => {
 
             if (ocrTriggered) { isCapturing = false; return; }
 
-            if (ocrResult) {
-              const extractedText = ocrResult?.data?.text || "";
-              const cleanExtracted = extractedText.trim().replace(/\s+/g, ' ');
+            if (combinedFrameText) {
+              const cleanExtracted = combinedFrameText.trim().replace(/\s+/g, ' ');
               if (cleanExtracted && cleanExtracted.length >= 3) {
                 accumulatedText.push(`[Frame at ${video.currentTime.toFixed(1)}s]: "${cleanExtracted}"`);
                 console.log(`[VIDEO OCR] Frame text (${video.currentTime.toFixed(1)}s):`, cleanExtracted.substring(0, 120));
@@ -2174,83 +2175,33 @@ const StudentInfo = () => {
             }
 
             isCapturing = false;
-            await advanceToNextCheckpoint();
           } catch (err) {
             console.warn("[VIDEO OCR] captureFrame error:", err?.message || err);
             isCapturing = false;
-            await advanceToNextCheckpoint();
           }
-        };
-
-        const advanceToNextCheckpoint = async () => {
-          if (ocrTriggered) return;
-          currentCheckIndex++;
-          if (currentCheckIndex < checkPoints.length && isFinite(video.duration) && video.duration > 0) {
-            // Seek to next checkpoint and wait for onseeked before capturing
-            const nextTime = video.duration * checkPoints[currentCheckIndex];
-            video.currentTime = nextTime;
-            // onseeked will trigger captureFrame
-          } else {
-            ocrTriggered = true;
-            clearTimeout(timeout);
-            cleanup();
-            resolve(evaluateVideoText(accumulatedText));
-          }
-        };
-
-        // Stall guard: if seek never fires within 4s, attempt capture anyway
-        let stallGuardTimeout = null;
-
-        const initiateSeek = () => {
-          if (hasSeeked) return;
-          hasSeeked = true;
-          if (isFinite(video.duration) && video.duration > 0) {
-            video.currentTime = video.duration * checkPoints[0];
-            stallGuardTimeout = setTimeout(() => {
-              if (!ocrTriggered) {
-                console.warn('[VIDEO-OCR] Seek stalled — capturing current frame directly.');
-                captureFrame();
-              }
-            }, 4000);
-          } else {
-            // Duration unknown (live stream / blob without metadata), capture immediately
-            captureFrame();
-          }
-        };
-
-        video.onloadedmetadata = () => initiateSeek();
-        video.onloadeddata = () => initiateSeek();
-        video.oncanplay = () => {
-          if (!hasSeeked) {
-            initiateSeek();
-          }
-        };
-        video.onseeked = () => {
-          if (stallGuardTimeout) { clearTimeout(stallGuardTimeout); stallGuardTimeout = null; }
-          captureFrame();
         };
 
         video.onerror = (e) => {
-          console.warn('[VIDEO-OCR] video.onerror — trying fallback capture. Error:', e);
-          if (stallGuardTimeout) clearTimeout(stallGuardTimeout);
+          console.warn('[VIDEO-OCR] video.onerror — evaluating accumulated text. Error:', e);
           clearTimeout(timeout);
           cleanup();
-          // If we captured any text at all, evaluate it; otherwise graceful pass for server-stored videos
-          if (accumulatedText.length > 0) {
-            resolve(evaluateVideoText(accumulatedText));
-          } else {
-            resolve({
-              valid: true,
-              isMatched: true,
-              reason: "Video Proof Verified (Server Video Attached)",
-              detectedText: "Video file attached and stored on server."
-            });
-          }
+          resolve(evaluateVideoText(accumulatedText));
         };
 
         video.src = srcUrl;
         video.load();
-        video.play().catch(() => { });
+        video.play().then(() => {
+          // Continuous 400ms frame sampling during live video playback
+          if (!playInterval) {
+            playInterval = setInterval(() => {
+              if (ocrTriggered) {
+                if (playInterval) clearInterval(playInterval);
+                return;
+              }
+              captureFrame();
+            }, 400);
+          }
+        }).catch(() => { });
       });
     } catch (err) {
       if (createdBlobUrl) URL.revokeObjectURL(createdBlobUrl);
@@ -3828,6 +3779,26 @@ const StudentInfo = () => {
             if (enhancedUrl && enhancedUrl.startsWith('blob:')) URL.revokeObjectURL(enhancedUrl);
             if (realScanBlobUrl && realScanBlobUrl !== imgSource && realScanBlobUrl.startsWith('blob:')) URL.revokeObjectURL(realScanBlobUrl);
             return (result?.data?.text || '').trim();
+          }
+
+          // ⚡ ID Documents (School ID / National ID): Single-pass mode at 1200px WITH GPU contrast filter
+          if (isIdDoc) {
+            const enhancedUrl = await downscaleImageForFastOcr(scanInput, 1200, true, 1.0).catch(() => null);
+            const stickerUrl = await createStickerRegionCropBlob(scanInput).catch(() => null);
+            const scanSrc = enhancedUrl || scanInput;
+
+            const [primaryRes, stickerRes] = await Promise.all([
+              worker.recognize(scanSrc).catch((e) => { console.warn('[OCR Engine] ID primary pass:', e); return null; }),
+              stickerUrl ? worker.recognize(stickerUrl).catch((e) => { console.warn('[OCR Engine] ID sticker pass:', e); return null; }) : Promise.resolve(null)
+            ]);
+
+            if (enhancedUrl && enhancedUrl.startsWith('blob:')) URL.revokeObjectURL(enhancedUrl);
+            if (stickerUrl && stickerUrl.startsWith('blob:')) URL.revokeObjectURL(stickerUrl);
+            if (realScanBlobUrl && realScanBlobUrl !== imgSource && realScanBlobUrl.startsWith('blob:')) URL.revokeObjectURL(realScanBlobUrl);
+
+            const pText = (primaryRes?.data?.text || '').trim();
+            const sText = (stickerRes?.data?.text || '').trim();
+            return [pText, sText].filter(Boolean).join("\n");
           }
 
           // ID/Other docs: Use a smaller downscale dim for faster Tesseract execution
