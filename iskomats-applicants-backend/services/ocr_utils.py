@@ -1218,37 +1218,41 @@ def verify_name_sequence_detailed(first_name, last_name, target_text, full_raw_t
             sequence_ok = True
             break
 
-    # 5. TWO-WAY REVERSE CANDIDATE NAME CHECK (Document Candidate Name vs Form Input)
-    # Extracts the document's candidate full name (from target_text or certificate anchor)
-    # and verifies that every name word in the document's candidate line is present in user input.
+    # 5. TWO-WAY REVERSE CANDIDATE FIRST NAME CHECK (Document Candidate Name vs Form Input)
     candidate_name = None
-    if target_text and target_text != full_raw_text and len(target_text.strip()) > 3:
+    if target_text and target_text != full_raw_text and len(target_text.strip()) > 3 and len(target_text.strip()) < 80 and not any(kw in target_text.lower() for kw in ['certify', 'resident', 'barangay', 'office']):
         candidate_name = target_text
     else:
-        cert_m = re.search(r'(?:certify|certifies)\s+that\s+([A-Za-z\s,\.\-]+?)(?=\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)', full_raw_text or '', re.I)
+        cert_m = re.search(r'(?:certify|certifies)\s+that\s+([A-Za-z\s,\.\-]+?)(?=\s+\d+\s+years|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)', full_raw_text or target_text or '', re.I)
         if cert_m:
             candidate_name = cert_m.group(1)
 
     if candidate_name:
         clean_cand = re.sub(r'(?:reg\s*no|student\s*no|id|tran\s*date|status|sec|bldg|college|pay|user|scholarship|discount|ref\s*no).*', '', candidate_name, flags=re.I)
         clean_cand = re.sub(r'[^a-zA-Z\s]', ' ', clean_cand)
-        stop_words = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines']
+        stop_words = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines', 'this', 'that', 'years', 'age']
         cand_words = [
             w for w in normalize_text(clean_cand).split()
             if len(w) >= 2 and w.lower() not in stop_words
         ]
-        input_tokens = [w for w in (first_clean + " " + mid_clean + " " + last_clean).split() if len(w) >= 1]
         
-        if len(cand_words) >= 2:
-            missing_cand_words = []
-            for cw in cand_words:
-                matched = any(is_similar_name_word(cw, itok) or is_similar_name_word(itok, cw) for itok in input_tokens)
-                if not matched:
-                    missing_cand_words.append(cw)
-            
-            if missing_cand_words:
+        input_first_tokens = [w for w in (first_clean + " " + mid_clean).split() if len(w) >= 1]
+        
+        # Identify candidate first name words (ignore single-letter initials and last name matching token)
+        cand_first_words = [
+            cw for cw in cand_words
+            if len(cw) >= 2 and not any(is_similar_name_word(cw, lw, strict_spelling=True) for lw in last_words)
+        ]
+        
+        if len(cand_first_words) >= 2:
+            missing_doc_first_words = [
+                cw for cw in cand_first_words
+                if not any(is_similar_name_word(cw, itok) or is_similar_name_word(itok, cw) for itok in input_first_tokens)
+            ]
+            if missing_doc_first_words:
+                first_ok = False
                 sequence_ok = False
-                errors.append(f"Name Mismatch: Document contains extra name words '{' '.join(missing_cand_words)}' not entered in your profile.")
+                errors.append(f"First Name Mismatch: Document contains additional first name '{' '.join(missing_doc_first_words)}' not entered in your profile.")
 
     return first_ok, middle_ok, last_ok, sequence_ok, errors
 

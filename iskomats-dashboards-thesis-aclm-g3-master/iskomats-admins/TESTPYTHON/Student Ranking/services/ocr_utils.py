@@ -1012,33 +1012,38 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
             sequence_ok = True
             break
 
-    # Two-Way Reverse Candidate Name Check
+    # Two-Way Reverse Candidate First Name Check
     candidate_name = None
-    if norm_target and norm_target != norm_raw and len(norm_target.strip()) > 3:
+    if norm_target and norm_target != norm_raw and len(norm_target.strip()) > 3 and len(norm_target.strip()) < 80 and not any(kw in norm_target.lower() for kw in ['certify', 'resident', 'barangay', 'office']):
         candidate_name = norm_target
     else:
-        cert_m = re.search(r'(?:certify|certifies)\s+that\s+([A-Za-z\s,\.\-]+?)(?=\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)', norm_raw or '', re.I)
+        cert_m = re.search(r'(?:certify|certifies)\s+that\s+([A-Za-z\s,\.\-]+?)(?=\s+\d+\s+years|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)', norm_raw or norm_target or '', re.I)
         if cert_m:
             candidate_name = cert_m.group(1)
 
     if candidate_name:
         clean_cand = re.sub(r'(?:reg\s*no|student\s*no|id|tran\s*date|status|sec|bldg|college|pay|user|scholarship|discount|ref\s*no).*', '', candidate_name, flags=re.I)
         clean_cand = re.sub(r'[^a-zA-Z\s]', ' ', clean_cand)
-        stop_words = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines']
+        stop_words = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines', 'this', 'that', 'years', 'age']
         cand_words = [
             w for w in normalize_text(clean_cand).split()
             if len(w) >= 2 and w.lower() not in stop_words
         ]
-        input_tokens = [w for w in (first_clean + " " + mid_clean + " " + last_clean).split() if len(w) >= 1]
         
-        if len(cand_words) >= 2:
-            missing_cand_words = []
-            for cw in cand_words:
-                matched = any(is_similar_name_word(cw, itok) or is_similar_name_word(itok, cw) for itok in input_tokens)
-                if not matched:
-                    missing_cand_words.append(cw)
-            
-            if missing_cand_words:
+        input_first_tokens = [w for w in (first_clean + " " + mid_clean).split() if len(w) >= 1]
+        
+        cand_first_words = [
+            cw for cw in cand_words
+            if len(cw) >= 2 and not any(is_similar_name_word(cw, lw, strict_spelling=True) for lw in last_words)
+        ]
+        
+        if len(cand_first_words) >= 2:
+            missing_doc_first_words = [
+                cw for cw in cand_first_words
+                if not any(is_similar_name_word(cw, itok) or is_similar_name_word(itok, cw) for itok in input_first_tokens)
+            ]
+            if missing_doc_first_words:
+                first_ok = False
                 sequence_ok = False
 
     return first_ok, last_ok, sequence_ok

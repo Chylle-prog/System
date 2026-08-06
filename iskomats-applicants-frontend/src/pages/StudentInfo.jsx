@@ -712,47 +712,59 @@ function studentNameMatchesText(text, first, middle, last) {
   const lastOk = checkNameWordGroup(last, targetText) || checkNameWordGroup(last, normText);
   const middleOk = middle ? (checkNameWordGroup(middle, targetText) || checkNameWordGroup(middle, normText)) : true;
 
-  // --- Two-Way Reverse Candidate Name Check ---
+  // --- Two-Way Reverse Candidate First Name Check ---
   // Extract candidate full name from document (e.g. kv.name or certificate anchor)
-  // and verify that every name word in document's candidate name is present in form input
-  let reverseCheckOk = true;
-  const candidateNameStr = kv.name || (function() {
-    const certM = text.match(/(?:certify|certifies)\s+that\s+([A-Za-z\s,\.\-]+?)(?=\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)/i);
-    return certM ? certM[1] : null;
-  })();
+  // and verify that all first-name words in document's candidate name are present in user's first/middle input.
+  let reverseFirstOk = true;
+  let candidateNameStr = kv.name || null;
+  if (!candidateNameStr) {
+    const certM = text.match(/(?:certify|certifies)\s+that\s+([A-Za-z\s,\.\-]+?)(?=\s+\d+\s+years|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)/i);
+    if (certM) candidateNameStr = certM[1];
+  }
 
   if (candidateNameStr) {
     let cleanCandStr = candidateNameStr.replace(/(?:reg\s*no|student\s*no|id|tran\s*date|status|sec|bldg|college|pay|user|scholarship|discount|ref\s*no).*/i, '');
     cleanCandStr = cleanCandStr.replace(/[^a-zA-Z\s]/g, ' ');
     const normCand = normalizeForOcr(cleanCandStr);
-    const stopWords = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines'];
+    const stopWords = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines', 'this', 'that', 'years', 'age'];
     const candWords = normCand.split(/\s+/).filter(w => w.length >= 2 && !stopWords.includes(w.toLowerCase()));
 
-    const userInputNorm = normalizeForOcr(`${first || ''} ${middle || ''} ${last || ''}`);
-    const inputWords = userInputNorm.split(/\s+/).filter(w => w.length >= 1);
-
     if (candWords.length >= 2) {
-      const missingDocWords = candWords.filter(docW => {
-        return !inputWords.some(inpW => isSimilarWord(docW, inpW) || isSimilarWord(inpW, docW));
+      const userInputFirstNorm = normalizeForOcr(`${first || ''} ${middle || ''}`);
+      const inputFirstWords = userInputFirstNorm.split(/\s+/).filter(w => w.length >= 1);
+      const userInputLastNorm = normalizeForOcr(last || '');
+
+      // Identify candidate first name words (ignore single-letter initials and last name matching token)
+      const candFirstWords = candWords.filter(cw => {
+        if (cw.length < 2) return false;
+        if (isSimilarWord(cw, userInputLastNorm) || isSimilarWord(userInputLastNorm, cw)) return false;
+        return true;
       });
-      if (missingDocWords.length > 0) {
-        console.debug('[REVERSE NAME CHECK FAILED] Candidate doc name has extra words not in form input:', missingDocWords);
-        reverseCheckOk = false;
+
+      if (candFirstWords.length >= 2) {
+        const missingDocFirstWords = candFirstWords.filter(docW => {
+          return !inputFirstWords.some(inpW => isSimilarWord(docW, inpW) || isSimilarWord(inpW, docW));
+        });
+        if (missingDocFirstWords.length > 0) {
+          console.debug('[REVERSE FIRST NAME CHECK FAILED] Document name has extra first name words missing in input:', missingDocFirstWords);
+          reverseFirstOk = false;
+        }
       }
     }
   }
 
-  const success = firstOk && lastOk && middleOk && reverseCheckOk;
+  const finalFirstOk = firstOk && reverseFirstOk;
+  const success = finalFirstOk && lastOk && middleOk;
 
-  console.debug('[NAME CHECK]', { first, last, normText: normText.slice(0,200), targetText: targetText.slice(0,200), sequenceOk, firstOk, lastOk, reverseCheckOk, success });
+  console.debug('[NAME CHECK]', { first, last, normText: normText.slice(0,200), targetText: targetText.slice(0,200), sequenceOk, firstOk: finalFirstOk, lastOk, reverseFirstOk, success });
 
   return {
     success,
     details: {
-      first_ok: firstOk,
+      first_ok: finalFirstOk,
       middle_ok: middleOk,
       last_ok: lastOk,
-      sequence_ok: sequenceOk && reverseCheckOk
+      sequence_ok: sequenceOk && reverseFirstOk
     }
   };
 }
