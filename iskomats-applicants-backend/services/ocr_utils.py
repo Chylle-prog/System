@@ -1191,12 +1191,14 @@ def verify_name_sequence_detailed(first_name, last_name, target_text, full_raw_t
         last_found_idx = -1
         for i, t_word in enumerate(t_words):
             e_word = exp_words[expected_idx]
-            is_match = is_similar_name_word(e_word, t_word, strict_spelling=False) or (len(e_word) == 1 and (t_word == e_word or t_word == e_word + '.'))
+            is_last_word = any(e_word == lw or e_word in last_words for lw in last_words)
+            is_match = is_similar_name_word(e_word, t_word, strict_spelling=is_last_word) or (len(e_word) == 1 and (t_word == e_word or t_word == e_word + '.'))
             if is_match:
                 if last_found_idx != -1 and (i - last_found_idx) > 5:
                     expected_idx = 0
                     last_found_idx = -1
-                    if is_similar_name_word(exp_words[0], t_word, strict_spelling=False):
+                    is_first_last = any(exp_words[0] == lw for lw in last_words)
+                    if is_similar_name_word(exp_words[0], t_word, strict_spelling=is_first_last):
                         expected_idx = 1
                         last_found_idx = i
                     continue

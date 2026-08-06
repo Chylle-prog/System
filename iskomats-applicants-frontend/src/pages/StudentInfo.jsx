@@ -708,46 +708,7 @@ function studentNameMatchesText(text, first, middle, last) {
       return false;
     });
 
-    const primaryOk = matchResults[0] === true;
-    if (!primaryOk) return false;
-
-    const allMatched = matchResults.every(Boolean);
-    if (allMatched) return true;
-
-    // Compound First Name rule (e.g. "Alexie Chyle"):
-    // Primary token ("Alexie") matched. If secondary token ("Chyle") is truncated on document, allow pass unless conflicting token exists.
-    if (isFirst && words.length > 1 && primaryOk) {
-      const normTextLower = normalizeForOcr(searchText);
-      const normLast = normalizeForOcr(last || '');
-      const normMid = normalizeForOcr(middle || '');
-
-      const hasConflict = words.slice(1).some(secWord => {
-        const normSec = normalizeForOcr(secWord);
-        // Allow up to 2 intervening words between primary first name and next token
-        const rxAfterPrimary = new RegExp('\\b' + normalizeForOcr(words[0]) + '(?:\\s+[a-z]+){0,2}\\s+([a-z]+)', 'i');
-        const mAfter = normTextLower.match(rxAfterPrimary);
-        if (mAfter) {
-          const nextTok = mAfter[1];
-          if (
-            nextTok.length >= 2 &&
-            !isSimilarWord(normSec, nextTok) &&
-            !isSimilarWord(normLast, nextTok) &&
-            !isSimilarWord(normMid, nextTok) &&
-            !normLast.includes(nextTok) &&
-            !normMid.includes(nextTok)
-          ) {
-            // Check if secWord appears anywhere else in OCR text (e.g. Ysabel vs Ybabel)
-            const appearsAnywhere = ocrWords.some(ocrW => isSimilarWord(normSec, normalizeForOcr(ocrW)));
-            if (!appearsAnywhere) return true;
-          }
-        }
-        return false;
-      });
-
-      if (!hasConflict) return true;
-    }
-
-    return matchResults.filter(Boolean).length === words.length;
+    return matchResults.every(Boolean);
   };
 
   const firstOk = checkNameWordGroup(first, targetText) || checkNameWordGroup(first, normText);
@@ -4025,19 +3986,6 @@ const StudentInfo = () => {
           const isNationalId = idType === 'National ID';
 
           let nameCheck = studentNameMatchesText(docOnlyText, firstName, middleName, lastName);
-          // Flexible name matching for Enrollment/COE documents
-          const coeNamePass = nameCheck.success || nameCheck.details.last_ok || nameCheck.details.first_ok || (lastName && docOnlyText.includes(lastName.toLowerCase())) || (firstName && docOnlyText.includes(firstName.toLowerCase()));
-          if (coeNamePass) {
-            nameCheck = {
-              success: true,
-              details: {
-                first_ok: true,
-                middle_ok: middleName ? true : null,
-                last_ok: true,
-                sequence_ok: true
-              }
-            };
-          }
 
           const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
           const courseOk = course ? courseMatchesText(course, combinedText) : true;

@@ -870,6 +870,47 @@ def normalize_id_number(s):
     return normalized
 
 
+def is_similar_name_word(w1, w2, strict_spelling=False):
+    """
+    Returns True if name word w1 matches token w2.
+    If strict_spelling is True (used for Last Name & strict First Name verification):
+      - Accepts exact match or OCR character substitutions (0/O, 1/I, 5/S, 8/B, etc.).
+      - Rejects misspelled names (e.g., SANTOS vs DELA CRUZ, or SANTUZ vs SANTOS).
+    If strict_spelling is False:
+      - Allows 1-character OCR typo tolerance for longer words (>= 5 chars) with ratio >= 0.88.
+      - Requires exact match or OCR substitution for short words (<= 4 chars).
+    """
+    if not w1 or not w2:
+        return False
+    w1_clean = re.sub(r'[^a-z0-9]', '', str(w1).lower())
+    w2_clean = re.sub(r'[^a-z0-9]', '', str(w2).lower())
+    if not w1_clean or not w2_clean:
+        return False
+
+    # Exact match
+    if w1_clean == w2_clean:
+        return True
+
+    # Character OCR confusion map (0->o, 1->i, 5->s, 3->e, 8->b, rn->m, cl->d, vv->w)
+    def _conf(s):
+        return re.sub(r'[^a-z0-9]', '', s).replace('1', 'i').replace('|', 'i').replace('0', 'o').replace('5', 's').replace('3', 'e').replace('8', 'b').replace('rn', 'm').replace('cl', 'd').replace('vv', 'w')
+
+    if _conf(w1_clean) == _conf(w2_clean):
+        return True
+
+    # If strict spelling requested (e.g. Last Name), do not allow arbitrary character edits
+    if strict_spelling:
+        return False
+
+    # For general words: allow 1-character OCR difference ONLY for longer words (>= 5 chars)
+    if len(w1_clean) >= 5 and len(w2_clean) >= 5 and abs(len(w1_clean) - len(w2_clean)) <= 1:
+        match_ratio = difflib.SequenceMatcher(None, w1_clean, w2_clean).ratio()
+        if match_ratio >= 0.88:
+            return True
+
+    return False
+
+
 def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
     """
     Verifies that the student's FULL name (first + last together) appears as a
@@ -944,16 +985,14 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         for i, t_word in enumerate(t_words):
             e_word = exp_words[expected_idx]
             
-            # Distance check
-            dist = difflib.SequenceMatcher(None, e_word, t_word).ratio()
-            is_match = (dist >= 0.80) or (len(e_word) == 1 and t_word == e_word) or (
-                abs(len(e_word) - len(t_word)) <= 1 and sum(1 for c1, c2 in zip(e_word, t_word) if c1 != c2) <= 1
-            )
+            is_last_word = any(e_word == lw or e_word in last_words for lw in last_words)
+            is_match = is_similar_name_word(e_word, t_word, strict_spelling=is_last_word) or (len(e_word) == 1 and (t_word == e_word or t_word == e_word + '.'))
             if is_match:
                 if last_found_idx != -1 and (i - last_found_idx) > 5:
                     expected_idx = 0
                     last_found_idx = -1
-                    if difflib.SequenceMatcher(None, exp_words[0], t_word).ratio() >= 0.80 or (len(exp_words[0]) == 1 and t_word == exp_words[0]):
+                    is_first_last = any(exp_words[0] == lw for lw in last_words)
+                    if is_similar_name_word(exp_words[0], t_word, strict_spelling=is_first_last):
                         expected_idx = 1
                         last_found_idx = i
                     continue
@@ -972,20 +1011,6 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         if check_word_sequence_fuzzy(seq, norm_target) or check_word_sequence_fuzzy(seq, norm_raw):
             sequence_ok = True
             break
-
-    # ---- Fuzzy full-name fallback (handles heavy OCR noise on the name field) ----
-    if not sequence_ok:
-        max_ratio = 0
-        for seq in sequences_to_check:
-            ratio = difflib.SequenceMatcher(None, seq, norm_target).ratio()
-            max_ratio = max(max_ratio, ratio)
-            
-        if max_ratio >= 0.80:
-            sequence_ok = True
-
-    if sequence_ok:
-        first_ok = True
-        last_ok = True
 
     return first_ok, last_ok, sequence_ok
 
