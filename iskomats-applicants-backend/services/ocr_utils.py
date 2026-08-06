@@ -2160,8 +2160,20 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
     if not raw_text.strip():
         return False, "Unable to extract readable text from document.", "", {}
 
-    if 'GRADES' in doc_type_upper or 'TRANSCRIPT' in doc_type_upper or 'TOR' in doc_type_upper:
+    if 'GRADES' in doc_type_upper or 'TRANSCRIPT' in doc_type_upper or 'TOR' in doc_type_upper or 'REPORTCARD' in doc_type_upper:
         parsed_fields = parse_grades_document(raw_text)
+        # Merge Azure Key-Value Pairs into parsed fields if available
+        for k, v in azure_kvp.items():
+            if 'gpa' in k or 'gwa' in k or 'average' in k or 'grade' in k:
+                if not parsed_fields.get('gpa'):
+                    g_match = re.search(r'\b[1-5]\.[0-9]{1,4}\b', v)
+                    if g_match:
+                        parsed_fields['gpa'] = g_match.group(0)
+            elif 'student' in k or 'id' in k or 'number' in k:
+                if not parsed_fields.get('student_id'): parsed_fields['student_id'] = v
+            elif 'name' in k:
+                if not parsed_fields.get('name'): parsed_fields['name'] = v
+
         success, msg, meta = verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs)
         return success, msg, raw_text, meta
     elif 'INDIGENCY' in doc_type_upper or 'RESIDENCY' in doc_type_upper:
