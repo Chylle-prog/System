@@ -1459,7 +1459,7 @@ function extractTotalUnitsFromText(text) {
     if (isMetadataLine(lower)) continue;
 
     const isSubjectRow =
-      /(?:IT4B|IT3B|IT2B|IT1B|MB\s*\d+|MO\s*\d+|JRF|Caproj|Capstone|Captcie|Captc|Capt|Project|Projet|Projec|ITER|Elective|lective|Eiective|eects|sects|Becve|becv|Itel|Itsoc|itsopri|ttscpn|Systadm|systacm|Wordlit|wordt|Disifil|Disipina|fino|Techpre|Itfisem|irsem|fikdtrips|Sysiarc|Itnetw|tnetw|Filipino|Filpino|Literature|Networking|Technopreneurship|Seminars|Architecture|Fieldtrip|Social|Professions|Professional|Issues|Rizal|Liferiz|Lite)/i.test(line) &&
+      /(?:IT4B|IT3B|IT2B|IT1B|MB\s*\d+|MO\s*\d+|JRF|Caproj|Capstone|Captcie|Captc|Capt|Project|Projet|Projec|ITCH|ttscpn|ects|sects|Utes|Lifi|Liferiz|Lite|ITER|Elective|lective|Eiective|Becve|becv|Itel|Itsoc|itsopri|Systadm|systacm|Wordlit|wordt|Disifil|Disipina|fino|Techpre|Itfisem|irsem|fikdtrips|Sysiarc|Itnetw|tnetw|Filipino|Filpino|Literature|Networking|Technopreneurship|Seminars|Architecture|Fieldtrip|Social|Professions|Professional|Issues|Rizal)/i.test(line) &&
       !/(?:official|certificate|registration|enrolled|run\s*date|user|school\s*year|student\s*no|page\s*\d|assessed|schedule)/i.test(lower);
 
     if (isSubjectRow) {
@@ -1500,7 +1500,10 @@ function extractTotalUnitsFromText(text) {
     const line = rawLines[i].trim();
     if (!TOTAL_UNITS_LINE_RE.test(line)) continue;
 
-    const cleanedLine = line.replace(/[\-\_\=\~\#]+/g, ' ').replace(/S13/g, '12').replace(/S12/g, '12').replace(/S(?=\d{2})/g, '');
+    const cleanedLine = line
+      .replace(/[\-\_\=\~\#\:\+\|]+/g, ' ')
+      .replace(/\byi\b|\by1\b|\bv1\b|\bvi\b|\bu1\b|\bui\b|\b1z\b|\b1a\b|\bs12\b|\bs13\b/gi, '12')
+      .replace(/S(?=\d{2})/g, '');
 
     const allNums = [...cleanedLine.matchAll(/\b(\d+(?:\.\d+)?)\b/g)];
     for (let k = allNums.length - 1; k >= 0; k--) {
