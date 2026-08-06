@@ -2028,11 +2028,14 @@ const StudentInfo = () => {
           }
         }, videoTimeout);
 
-        const checkPoints = [0.15, 0.45, 0.75];
+        // Use more checkpoints for document videos (COE/Grades are typically longer)
+        const isDocumentVideo = fieldName?.includes('COE') || fieldName?.includes('Grades') || fieldName?.includes('mayorCOE') || fieldName?.includes('mayorGrades');
+        const checkPoints = isDocumentVideo ? [0.10, 0.25, 0.45, 0.65, 0.85] : [0.15, 0.45, 0.75];
         let currentCheckIndex = 0;
         let isCapturing = false;
         let accumulatedText = [];
         let hasSeeked = false;
+        let skippedFrames = 0;
 
         const captureFrame = async () => {
           if (ocrTriggered || isCapturing) return;
@@ -2076,7 +2079,9 @@ const StudentInfo = () => {
               const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
               const data = imgData.data;
 
-              // Variance check — skip only truly pure solid frames (< 1.5 stddev)
+              // Variance check — skip truly pure solid/black frames
+              // For document videos (COE/Grades), white paper background has low but non-zero stdDev
+              // so we use a very low threshold (0.5) and never skip the last checkpoint
               let sumG = 0, sumSqG = 0, n = 0;
               for (let i = 0; i < data.length; i += 16) {
                 const g = data[i];
@@ -2087,8 +2092,11 @@ const StudentInfo = () => {
               const mean = sumG / n;
               const stdDev = Math.sqrt(Math.max(0, (sumSqG / n) - (mean * mean)));
 
-              if (stdDev < 1.5) {
-                // Pure blank frame — skip silently
+              const isLastCheckpoint = currentCheckIndex >= checkPoints.length - 1;
+              const blankThreshold = isDocumentVideo ? 0.5 : 1.5;
+              if (stdDev < blankThreshold && !isLastCheckpoint) {
+                // Pure blank/solid frame — skip unless this is the last checkpoint
+                skippedFrames++;
                 isCapturing = false;
                 await advanceToNextCheckpoint();
                 return;
