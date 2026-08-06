@@ -4058,7 +4058,7 @@ const StudentInfo = () => {
           const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
           const semOk = semesterMatchesText(combinedText, semester || formData.semester, reqSemester);
           const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText) || studentIdNoMatchesText(idNumber, combinedText)) : true;
-          const yrOk = true; // Flexible year level for COE to prevent false mismatches from video OCR noise
+          const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
           const videoOk = videoCheck ? (videoCheck.valid && videoCheck.isMatched) : (videoUrl ? true : false);
           const coeTypeOk = coe_type_matches_text(combinedText);
 
