@@ -2320,30 +2320,39 @@ def parse_grades_document(raw_text):
                         fields[field_name] = val
                         break
 
-    # Extract GPA / GWA from document (e.g. GPA: 3.5481 or GPA 35461)
-    gpa_patterns = [
-        r'(?:GPA|GWA|GBA|WEIGHTED\s*AVERAGE|GRADE\s*POINT|GENERAL\s*WEIGHTED|FINAL\s*GRADE)\s*[:\-=.,|\sA-Za-z]*?([1-5][.,0-9]{1,5})\b',
-        r'([1-5]\.[0-9]{1,4})\s*[:\-=.,|\s]*(?:Total\s*Units?|Units?)'
+    # --- Step 1: Extract True Overall GPA from dedicated summary headers ONLY ---
+    # Priority: GPA:/GWA:/Cumulative GPA:/General Weighted Average: headers
+    # This prevents individual course grades (e.g. 1.75 in Capstone) from being
+    # mistaken for the overall GPA.
+    gpa_header_patterns = [
+        r'(?:general\s*weighted\s*average|cumulative\s*gpa|cumulative\s*gwa|overall\s*gpa|overall\s*gwa)\s*[:\-=.,|\sA-Za-z]*?([1-5][.,0-9]{1,5})\b',
+        r'(?:GPA|GWA|GBA)\s*[:\-=]\s*([1-5][.,0-9]{1,5})\b',
+        r'(?:weighted\s*average|grade\s*point\s*average|final\s*average)\s*[:\-=.,|\sA-Za-z]*?([1-5][.,0-9]{1,5})\b',
     ]
-    for pattern in gpa_patterns:
+    for pattern in gpa_header_patterns:
         match = re.search(pattern, raw_text, re.IGNORECASE)
         if match:
             raw_digits = match.group(1).replace(',', '.').strip()
-            if '.' in raw_digits:
-                val = float(raw_digits)
-            else:
-                if len(raw_digits) in (3, 4, 5):
-                    val = float(raw_digits[0] + '.' + raw_digits[1:])
-                elif len(raw_digits) == 2:
-                    val = float(raw_digits[0] + '.' + raw_digits[1])
-                else:
+            try:
+                if '.' in raw_digits:
                     val = float(raw_digits)
-            if 1.0 <= val <= 5.0:
-                fields['gpa'] = f"{val:.2f}"
-                break
+                else:
+                    if len(raw_digits) in (3, 4, 5):
+                        val = float(raw_digits[0] + '.' + raw_digits[1:])
+                    elif len(raw_digits) == 2:
+                        val = float(raw_digits[0] + '.' + raw_digits[1])
+                    else:
+                        val = float(raw_digits)
+                if 1.0 <= val <= 5.0:
+                    fields['gpa'] = f"{val:.2f}"
+                    fields['gpa_source'] = 'header'
+                    break
+            except ValueError:
+                pass
 
     if 'gpa' not in fields:
-        # Calculate weighted average from subject grade table (supports 3.0, 30, 3.00, etc.)
+        # --- Step 2: Weighted average fallback from subject grade table ---
+        # Calculates GPA from individual rows (grade × units) when no header was found.
         grade_matches = re.findall(r'\b([1-5]\.[0-9]{1,2})\s+([1-9]\.0?|30|3\.0)\b', raw_text)
         if grade_matches and len(grade_matches) >= 3:
             total_pts = sum(float(g) * (3.0 if u == '30' else float(u)) for g, u in grade_matches)
@@ -2352,11 +2361,9 @@ def parse_grades_document(raw_text):
                 calc_gpa = total_pts / total_u
                 if 1.0 <= calc_gpa <= 5.0:
                     fields['gpa'] = f"{calc_gpa:.2f}"
+                    fields['gpa_source'] = 'calculated'
 
-    if 'gpa' not in fields:
-        decimals = [float(x) for x in re.findall(r'\b[1-5]\.[0-9]{1,4}\b', raw_text) if 1.0 <= float(x) <= 5.0]
-        if decimals:
-            fields['gpa'] = f"{decimals[-1]:.2f}"
+    # NOTE: No raw decimal scan fallback — avoids false course-grade matches.
 
     # Extract Total Units
     units_match = re.search(r'Total\s*Units\s*[:\-=\s]*([0-9]+)', raw_text, re.IGNORECASE)
@@ -2403,35 +2410,33 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
         if not id_ok:
             failures.append(f"Student ID mismatch (Expected: '{expected_id_no}', Found in Grades: '{parsed_fields.get('student_id', 'Not found')}')")
 
-    # 3. GPA MATCHING
+    # 3. GPA MATCHING — Strict Direct Comparison (no candidate overriding)
+    # FIXED: No longer scans all decimals in the document to find a match for user input.
+    # Only uses the GPA extracted from dedicated summary headers (GPA:, GWA:, General Weighted Average:)
+    # or the weighted-average calculation. User input is NEVER used to re-search the document.
     if expected_gpa and str(expected_gpa).strip():
-        exp_gpa_val = re.search(r'\d+(?:\.\d+)?', str(expected_gpa))
+        exp_gpa_match = re.search(r'\d+(?:\.\d+)?', str(expected_gpa))
+        # Use strictly the GPA from parse_grades_document (header or calculated) — no document re-scan
         found_gpa_val = parsed_fields.get('gpa')
 
-        if exp_gpa_val:
-            e_gpa = float(exp_gpa_val.group(0))
-            decimals = [float(x) for x in re.findall(r'\b[1-5]\.[0-9]{1,4}\b', raw_text) if 1.0 <= float(x) <= 5.0]
-
-            if decimals:
-                match_cand = next((c for c in decimals if abs(c - e_gpa) <= 0.05), None)
-                if match_cand is not None:
-                    found_gpa_val = f"{match_cand:.2f}"
-                elif not found_gpa_val:
-                    found_gpa_val = f"{decimals[-1]:.2f}"
-
         meta['detected_gpa'] = found_gpa_val
+        meta['gpa_source'] = parsed_fields.get('gpa_source', 'none')
 
-        if found_gpa_val:
-            try:
-                f_gpa = float(found_gpa_val)
-                if exp_gpa_val:
-                    e_gpa = float(exp_gpa_val.group(0))
+        if exp_gpa_match:
+            e_gpa = float(exp_gpa_match.group(0))
+            if found_gpa_val:
+                try:
+                    f_gpa = float(found_gpa_val)
                     if abs(e_gpa - f_gpa) > 0.05:
-                        failures.append(f"GPA mismatch (Expected: '{e_gpa:.2f}', Found in Grades: '{f_gpa:.2f}')")
-            except ValueError:
-                pass
-        else:
-            failures.append(f"GPA mismatch (Expected: '{expected_gpa}', Not detected in Grades document)")
+                        failures.append(f"GPA mismatch (Expected: '{e_gpa:.2f}', Detected from Grades document: '{f_gpa:.2f}')")
+                        print(f"[GPA CHECK] REJECT — Input GPA {e_gpa:.2f} vs Document GPA {f_gpa:.2f} (source: {parsed_fields.get('gpa_source', 'unknown')})", flush=True)
+                    else:
+                        print(f"[GPA CHECK] PASS — Input GPA {e_gpa:.2f} matches Document GPA {f_gpa:.2f} (±0.05 tolerance)", flush=True)
+                except ValueError:
+                    pass
+            else:
+                failures.append(f"GPA mismatch (Expected: '{expected_gpa}', GPA not found in Grades document summary headers)")
+                print(f"[GPA CHECK] REJECT — No GPA summary header found in document", flush=True)
 
     # 4. ACADEMIC YEAR MATCHING
     if expected_academic_year and str(expected_academic_year).strip():
