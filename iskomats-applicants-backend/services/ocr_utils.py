@@ -1880,19 +1880,27 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
     meta = {'parsed_fields': parsed_fields}
     failures = []
 
-    # 1. NAME MATCHING — flexible matching for COR / COE
+    # 0. MANDATORY HEADER KEYWORD GUARD — strictly reject non-COR documents
+    doc_norm = normalize_text(raw_text)
+    cor_headers = [
+        'certificate of registration', 'certificate of enrolment', 'certificate of enrollment',
+        'certification of enrolment', 'certification of enrollment', 'registration form',
+        'enrollment form', 'enrolment form', 'statement of account', 'official receipt',
+        'cor', 'coe', 'student registration', 'college registrar', 'office of the registrar',
+        'assessment form', 'matriculation'
+    ]
+    has_cor_header = any(h in doc_norm for h in cor_headers)
+    if not has_cor_header:
+        failures.append("Document Type Mismatch: File is missing required Certificate of Registration / Enrolment headers")
+
+    # 1. NAME MATCHING — Order-Independent Token Set Matching + 80% Fuzzy Levenshtein & OCR Char Map
     target_name_str = parsed_fields.get('name', raw_text)
     first_ok, middle_ok, last_ok, sequence_ok = verify_name_sequence(
         first_name, last_name, target_name_str, raw_text, middle_name
     )
 
-    # Flexible COR name check: pass if last_ok or first_ok or any name component matches in OCR text
-    if first_ok or last_ok or sequence_ok or (last_name and last_name.lower() in str(raw_text).lower()) or (first_name and first_name.lower() in str(raw_text).lower()):
-        first_ok = True
-        last_ok = True
-        middle_ok = True
-        sequence_ok = True
-    else:
+    name_ok = (first_ok and last_ok)
+    if not name_ok:
         failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}'. Found in COR: '{parsed_fields.get('name', 'Not found')}')")
 
     # 2. STUDENT ID MATCHING
