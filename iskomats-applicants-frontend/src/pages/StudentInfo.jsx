@@ -2013,6 +2013,20 @@ const StudentInfo = () => {
           const hasIdMatch = cleanStudentId.length >= 4 && (cleanText.includes(cleanStudentId.toLowerCase()) || rawCombined.includes(cleanStudentId.toLowerCase()));
           const hasAnyDocumentWord = /certificate|registration|enrollment|grade|grades|transcript|report|card|student|college|university|school|semester|academic|course|units|official|republic|philippines|certify|whom/i.test(rawCombined);
 
+          // 🚫 Strict rejection: Reject Barangay Indigency/Residency document videos uploaded as School ID videos
+          if (isSchoolIdVideo) {
+            const isIndigencyDocVideo = /punong\s*barangay|barangay\s*inosluban|to\s*whom\s*it\s*may\s*concern|resident\s*of\s*this\s*barangay|residing\s*at|specimen\s*signature|kawalang\s*kabuhayan/i.test(rawCombined) ||
+                                       (cleanText.includes('barangay') && cleanText.includes('certify') && cleanText.includes('resident'));
+            if (isIndigencyDocVideo) {
+              return {
+                valid: false,
+                isMatched: false,
+                reason: "School ID video verification failed: Detected Barangay Indigency/Residency document video instead of School ID card.",
+                detectedText: (textLogs || []).join("\n\n")
+              };
+            }
+          }
+
           if (isSchoolIdVideo && !isBackIdVideo) {
             if (!hasNameMatch) {
               return {
@@ -2020,6 +2034,19 @@ const StudentInfo = () => {
                 isMatched: false,
                 reason: `School ID video verification failed: Could not detect applicant name (${allNameWords.join(' ')}) in video frames.`,
                 detectedText: (textLogs || []).join("\n\n") || "No valid name text recognized in video frames."
+              };
+            }
+          }
+
+          if (isBackIdVideo) {
+            const hasBackIdIndicator = /signature|non-transferable|transferable|emergency|notify|valid\s*until|\bsy\b|2025|2026|chancellor|registrar|de\s*la\s*salle|lipa|isseso|college|university/i.test(rawCombined) ||
+                                       hasNameMatch || hasSchoolMatch || hasIdMatch;
+            if (!hasBackIdIndicator) {
+              return {
+                valid: false,
+                isMatched: false,
+                reason: "School ID back video verification failed: Could not detect valid School ID back indicators (signature, emergency contact, or SY sticker).",
+                detectedText: (textLogs || []).join("\n\n")
               };
             }
           }
