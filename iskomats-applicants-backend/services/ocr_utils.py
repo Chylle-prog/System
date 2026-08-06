@@ -1059,8 +1059,26 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
     last_words  = [w for w in last_clean.split()  if len(w) >= 2]
     mid_words   = [w for w in mid_clean.split()   if len(w) >= 1]
 
-    # Individual word presence with OCR typo tolerance (e.g. Mikaela vs Mikarla, Ysabel vs Ybabel, Lantafe vs Lantave)
-    target_tokens = norm_target.split() + norm_raw.split()
+    # Address Noise Filtering: Strip place-related address phrases (e.g. "San Pedro", "San Juan", "Purok", "Zone", "Lipa City")
+    # from full_raw_text so address words cannot falsely match applicant name words.
+    def sanitize_address_noise_from_text(txt):
+        if not txt: return ""
+        cleaned = str(txt)
+        address_patterns = [
+            r'\b(?:san\s+pedro|san\s+juan|san\s+isidro|san\s+jose|san\s+carlos|san\s+miguel)\b',
+            r'\b(?:purok|zone|sitio|street|st\.|avenue|ave\.|subdivision|subd\.)\s+[a-z0-9\s,\.\-]{1,30}\b',
+            r'\b(?:city\s+of|municipality\s+of|bayan\s+ng|lungsod\s+ng|barangay|brgy)\s+[a-z0-9\s,\.\-]{1,30}\b',
+            r'\b(?:lipa|batangas|manila|quezon|laguna|cavite|bulacan|pampanga)\b'
+        ]
+        for pat in address_patterns:
+            cleaned = re.sub(pat, ' ', cleaned, flags=re.IGNORECASE)
+        return cleaned
+
+    sanitized_target = sanitize_address_noise_from_text(norm_target)
+    sanitized_raw    = sanitize_address_noise_from_text(norm_raw)
+
+    # Individual word presence with OCR typo tolerance & address noise excluded
+    target_tokens = (sanitized_target.split() if target_text else []) + (sanitized_raw.split() if full_raw_text else [])
 
     def is_similar_name_word(e_word, t_word):
         if not e_word or not t_word: return False
