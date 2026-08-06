@@ -593,11 +593,18 @@ export const applicantAPI = {
    * Get current user's profile
    * @returns {Promise}
    */
-  getProfile: async () => {
-    return await makeRequest('/student/applicant/profile', {
-      method: 'GET',
-    });
-  },
+  getProfile: (() => {
+    let pendingProfilePromise = null;
+    return async () => {
+      if (pendingProfilePromise) return pendingProfilePromise;
+      pendingProfilePromise = makeRequest('/student/applicant/profile', {
+        method: 'GET',
+      }).finally(() => {
+        pendingProfilePromise = null;
+      });
+      return pendingProfilePromise;
+    };
+  })(),
 
   /**
    * Update applicant profile
