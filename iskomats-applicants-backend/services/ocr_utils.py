@@ -1039,38 +1039,21 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
     last_words  = [w for w in last_clean.split()  if len(w) >= 2]
     mid_words   = [w for w in mid_clean.split()   if len(w) >= 1]
 
-    # Individual word presence (for UI / failure messages)
-    first_ok = True
-    if first_words:
-        first_primary_ok = bool(re.search(rf'\b{re.escape(first_words[0])}\b', norm_target) or re.search(rf'\b{re.escape(first_words[0])}\b', norm_raw))
-        if not first_primary_ok:
-            first_ok = False
-        else:
-            first_all_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) or re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in first_words)
-            if first_all_ok:
-                first_ok = True
-            elif len(first_words) > 1:
-                rx_after = re.compile(rf'\b{re.escape(first_words[0])}\s+([a-z]+)', re.IGNORECASE)
-                m_after = rx_after.search(norm_target) or rx_after.search(norm_raw)
-                if m_after:
-                    next_tok = m_after.group(1).lower()
-                    sec_word = first_words[1].lower()
-                    if next_tok and len(next_tok) >= 2 and next_tok not in [sec_word, last_clean.lower(), mid_clean.lower()]:
-                        first_ok = False
-                    else:
-                        first_ok = True
-                else:
-                    first_ok = True
+    # Individual word presence with OCR typo tolerance (e.g. Mikaela vs Mikarla, Ysabel vs Ybabel, Lantafe vs Lantave)
+    target_tokens = norm_target.split() + norm_raw.split()
 
-    last_ok  = all(re.search(rf'\b{re.escape(w)}\b', norm_target) or re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in last_words)  if last_words  else True
+    def check_word_in_tokens(w):
+        if not w: return True
+        return any(is_similar_name_word(w, tok) for tok in target_tokens)
 
+    first_ok = all(check_word_in_tokens(w) for w in first_words) if first_words else True
+    last_ok  = all(check_word_in_tokens(w) for w in last_words) if last_words else True
     middle_ok = True
     if mid_words:
-        mid_full_ok = all(re.search(rf'\b{re.escape(w)}\b', norm_target) or re.search(rf'\b{re.escape(w)}\b', norm_raw) for w in mid_words if len(w) >= 2)
+        mid_full_ok = all(check_word_in_tokens(w) for w in mid_words if len(w) >= 2)
         if not mid_full_ok and mid_clean:
             initial = mid_clean[0]
-            name_tokens = norm_target.split() + norm_raw.split()
-            mid_full_ok = (initial in name_tokens) or bool(re.search(rf'\b{re.escape(initial)}\b', norm_target)) or bool(re.search(rf'\b{re.escape(initial)}\b', norm_raw))
+            mid_full_ok = any(tok.startswith(initial) for tok in target_tokens)
         middle_ok = mid_full_ok
 
     # ---- Full-name sequence check (the key anti-spoofing step) ----
@@ -1533,6 +1516,8 @@ def parse_cor_document(raw_text):
         'year_level': [
             r'year\s*level\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)',
             r'yr\s*level\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)',
+            r'your\s*loved\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)',
+            r'your\s*loved\s+pa\s+([A-Za-z0-9\s]+)',
             r'grade\s*level\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)'
         ],
         'course': [
@@ -1837,22 +1822,36 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
     # 5. YEAR LEVEL MATCHING
     if expected_year_level and str(expected_year_level).strip():
-        found_yl = parsed_fields.get('year_level', raw_text)
-        def parse_yl_num(s):
-            if not s: return None
-            st = str(s).lower()
-            if '1st' in st or 'first' in st or '1' in st: return 1
-            if '2nd' in st or 'second' in st or '2' in st: return 2
-            if '3rd' in st or 'third' in st or '3' in st: return 3
-            if '4th' in st or 'fourth' in st or '4' in st: return 4
-            if '5th' in st or 'fifth' in st or '5' in st: return 5
+        found_yl_field = parsed_fields.get('year_level')
+        def parse_yl_num(val, raw):
+            if val:
+                st = str(val).lower()
+                if any(k in st for k in ['4th', 'fourth', '4']): return 4
+                if any(k in st for k in ['3rd', 'third', '3']): return 3
+                if any(k in st for k in ['2nd', 'second', '2']): return 2
+                if any(k in st for k in ['1st', 'first', '1']): return 1
+                if any(k in st for k in ['5th', 'fifth', '5']): return 5
+
+            if not raw: return None
+            r_str = str(raw).lower()
+            if re.search(r'\b(?:4th|fourth)\s*(?:year|yr|level)?\b', r_str) or re.search(r'\b(?:year|yr)\s*level\s*[:=\-]?\s*4\b', r_str) or re.search(r'\b[a-z]{2,5}4[a-z0-9]{1,3}\b', r_str):
+                return 4
+            if re.search(r'\b(?:3rd|third)\s*(?:year|yr|level)?\b', r_str) or re.search(r'\b(?:year|yr)\s*level\s*[:=\-]?\s*3\b', r_str) or re.search(r'\b[a-z]{2,5}3[a-z0-9]{1,3}\b', r_str):
+                return 3
+            if re.search(r'\b(?:2nd|second)\s*(?:year|yr|level)?\b', r_str) or re.search(r'\b(?:year|yr)\s*level\s*[:=\-]?\s*2\b', r_str) or re.search(r'\b[a-z]{2,5}2[a-z0-9]{1,3}\b', r_str):
+                return 2
+            if re.search(r'\b(?:1st|first)\s*(?:year|yr|level)?\b', r_str) or re.search(r'\b(?:year|yr)\s*level\s*[:=\-]?\s*1\b', r_str) or re.search(r'\b[a-z]{2,5}1[a-z0-9]{1,3}\b', r_str):
+                return 1
+            if re.search(r'\b(?:5th|fifth)\s*(?:year|yr|level)?\b', r_str) or re.search(r'\b(?:year|yr)\s*level\s*[:=\-]?\s*5\b', r_str) or re.search(r'\b[a-z]{2,5}5[a-z0-9]{1,3}\b', r_str):
+                return 5
+
             return None
 
-        exp_yl_num = parse_yl_num(expected_year_level)
-        found_yl_num = parse_yl_num(found_yl)
+        exp_yl_num = parse_yl_num(expected_year_level, None)
+        found_yl_num = parse_yl_num(found_yl_field, raw_text)
 
         if exp_yl_num and found_yl_num and exp_yl_num != found_yl_num:
-            failures.append(f"Year Level mismatch (Expected: '{expected_year_level}', Found in COR: '{found_yl}')")
+            failures.append(f"Year Level mismatch (Expected: '{expected_year_level}', Found in COR: '{found_yl_field or (str(found_yl_num) + 'th Year')}')")
 
     success = (len(failures) == 0)
     if success:

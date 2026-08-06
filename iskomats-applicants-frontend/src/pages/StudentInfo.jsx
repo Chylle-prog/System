@@ -2521,6 +2521,47 @@ const StudentInfo = () => {
     face_video: null
   });
 
+  useEffect(() => {
+    let active = true;
+    const loadSavedVideos = async () => {
+      try {
+        const profile = await applicantAPI.getProfile();
+        if (!active || !profile) return;
+        const token = localStorage.getItem('authToken');
+        const apiOrigin = API_ORIGIN;
+
+        const rawVideos = {
+          face_video: profile.id_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/face_video?token=${token}` : null,
+          mayorIndigency_video: profile.indigency_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null,
+          mayorGrades_video: profile.grades_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorGrades_video?token=${token}` : null,
+          mayorCOE_video: profile.enrollment_certificate_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorCOE_video?token=${token}` : null,
+          schoolIdFront_video: profile.schoolid_front_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdFront_video?token=${token}` : null,
+          schoolIdBack_video: profile.schoolid_back_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null
+        };
+
+        const activeVids = {};
+        for (const [k, urlVal] of Object.entries(rawVideos)) {
+          if (urlVal) {
+            const resolved = await applicantAPI.resolveDocument(k, urlVal);
+            if (active && resolved) {
+              activeVids[k] = resolved;
+            }
+          }
+        }
+
+        if (active && Object.keys(activeVids).length > 0) {
+          setDocumentVideos(prev => ({ ...prev, ...activeVids }));
+          setFormData(prev => ({ ...prev, ...activeVids }));
+        }
+      } catch (err) {
+        console.warn('[VIDEOS AUTO-LOAD] Note:', err);
+      }
+    };
+
+    loadSavedVideos();
+    return () => { active = false; };
+  }, []);
+
   const [uploadingFields, setUploadingFields] = useState({}); // { fieldName: Promise }
   const [uploadProgress, setUploadProgress] = useState({});
 
