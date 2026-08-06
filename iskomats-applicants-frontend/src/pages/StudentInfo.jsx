@@ -3788,7 +3788,7 @@ const StudentInfo = () => {
 
         const isIdDoc = stepName.includes('ID') || stepName.includes('Back') || stepName.includes('Front');
         const isEnrollmentOrGrades = docType === 'Enrollment' || docType === 'Grades';
-        const isIndigency = stepName.includes('Indigency') || docType === 'Indigency';
+        const isIndigencyOrResidency = stepName.includes('Indigency') || stepName.includes('Residency') || docType === 'Indigency' || docType === 'Residency';
 
         try {
           const worker = await getTesseractWorker();
@@ -3816,12 +3816,12 @@ const StudentInfo = () => {
             return (result?.data?.text || '').trim();
           }
 
-          // ⚡ Indigency: Single-pass mode at 1000px WITH GPU contrast filter
+          // ⚡ Indigency / Residency: Single-pass mode at 1000px WITH GPU contrast filter
           // Large printed body text — no header crop, table crop, or enhanced fallback needed
-          if (isIndigency) {
+          if (isIndigencyOrResidency) {
             const enhancedUrl = await downscaleImageForFastOcr(scanInput, 1000, true).catch(() => null);
             const scanSrc = enhancedUrl || scanInput;
-            const result = await worker.recognize(scanSrc).catch((e) => { console.warn('[OCR Engine] Indigency pass:', e); return null; });
+            const result = await worker.recognize(scanSrc).catch((e) => { console.warn('[OCR Engine] Indigency/Residency pass:', e); return null; });
             if (enhancedUrl && enhancedUrl.startsWith('blob:')) URL.revokeObjectURL(enhancedUrl);
             if (realScanBlobUrl && realScanBlobUrl !== imgSource && realScanBlobUrl.startsWith('blob:')) URL.revokeObjectURL(realScanBlobUrl);
             return (result?.data?.text || '').trim();

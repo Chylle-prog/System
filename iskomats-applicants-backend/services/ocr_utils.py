@@ -2139,18 +2139,18 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
 
     raw_text = ""
     azure_kvp = {}
-    # For COR / COE / Enrollment / Registration documents, attempt Azure Document Intelligence API first
-    is_cor_doc = any(k in doc_type_upper for k in ['COE', 'COR', 'ENROLLMENT', 'REGISTRATION', 'CERTIFICATE']) or not doc_type_upper or ('GRADES' not in doc_type_upper and 'INDIGENCY' not in doc_type_upper and 'ID' not in doc_type_upper)
+    # For COR / COE / Enrollment / Indigency / Residency documents, attempt Azure Document Intelligence API first
+    is_azure_supported_doc = any(k in doc_type_upper for k in ['COE', 'COR', 'ENROLLMENT', 'REGISTRATION', 'CERTIFICATE', 'INDIGENCY', 'RESIDENCY']) or not doc_type_upper or ('GRADES' not in doc_type_upper and 'ID' not in doc_type_upper)
     
     # Apply OpenCV Contour Auto-Crop & CLAHE Contrast Enhancement
-    enhanced_doc_bytes = enhance_and_autocrop_document(image_bytes) if is_cor_doc else image_bytes
+    enhanced_doc_bytes = enhance_and_autocrop_document(image_bytes) if is_azure_supported_doc else image_bytes
 
-    if is_cor_doc:
+    if is_azure_supported_doc:
         try:
             azure_text, azure_kvp = extract_text_and_kvp_with_azure(enhanced_doc_bytes)
             if azure_text and len(azure_text.strip()) >= 10:
                 raw_text = azure_text
-                print(f"[OCR] Successfully extracted text and {len(azure_kvp)} KVP using Azure Document Intelligence for COR/COE", flush=True)
+                print(f"[OCR] Successfully extracted text and {len(azure_kvp)} KVP using Azure Document Intelligence for {doc_type_upper or 'Document'}", flush=True)
         except Exception as az_err:
             print(f"[OCR] Azure extraction note: {az_err}", flush=True)
 
@@ -2164,8 +2164,9 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
         parsed_fields = parse_grades_document(raw_text)
         success, msg, meta = verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs)
         return success, msg, raw_text, meta
-    elif 'INDIGENCY' in doc_type_upper:
-        success, msg, meta = verify_indigency_fields(raw_text, first_name, middle_name, last_name, expected_address=kwargs.get('expected_address'), **kwargs)
+    elif 'INDIGENCY' in doc_type_upper or 'RESIDENCY' in doc_type_upper:
+        is_res = 'RESIDENCY' in doc_type_upper
+        success, msg, meta = verify_indigency_fields(raw_text, first_name, middle_name, last_name, expected_address=kwargs.get('expected_address'), is_residency_doc=is_res, **kwargs)
         return success, msg, raw_text, meta
     elif 'ID' in doc_type_upper or 'IDENTIFICATION' in doc_type_upper or 'SCHOOLID' in doc_type_upper:
         success, msg, meta = verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs)
@@ -2433,38 +2434,88 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
 
     return success, msg, meta
 
+def extract_semantic_anchors_from_indigency(raw_text):
+    """
+    Extracts candidate applicant name and barangay/town address from Indigency/Residency certificates
+    using English and Tagalog semantic phrase anchors.
+    """
+    if not raw_text:
+        return {'candidate_name': None, 'candidate_town': None}
+
+    candidate_name = None
+    candidate_town = None
+
+    name_anchor_patterns = [
+        r'(?:certify|certifies)\s+that\s+([A-Za-z\s,\.\-]+?)(?=\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)',
+        r'(?:pinatutunayan|patunay|katibayan)\s+na\s+si\s+([A-Za-z\s,\.\-]+?)(?=\s+(?:ay|na|taga|mamamayan|residente)|\n|$)',
+        r'pangalan\s*[:\-]\s*([A-Za-z\s,\.\-]+)',
+        r'name\s*[:\-]\s*([A-Za-z\s,\.\-]+)'
+    ]
+
+    town_anchor_patterns = [
+        r'(?:resident\s+of|residing\s+at|residing\s+in)\s+([A-Za-z0-9\s,\.\-]+)',
+        r'(?:mamamayan\s+ng|taga|nasasakupan\s+ng|barangay)\s+([A-Za-z0-9\s,\.\-]+)',
+        r'(?:bayan\s+ng|lungsod\s+ng|city\s+of|municipality\s+of)\s+([A-Za-z0-9\s,\.\-]+)'
+    ]
+
+    for p in name_anchor_patterns:
+        m = re.search(p, str(raw_text), re.IGNORECASE)
+        if m:
+            candidate_name = m.group(1).strip()
+            break
+
+    for p in town_anchor_patterns:
+        m = re.search(p, str(raw_text), re.IGNORECASE)
+        if m:
+            candidate_town = m.group(1).strip()
+            break
+
+    return {'candidate_name': candidate_name, 'candidate_town': candidate_town}
+
 def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expected_address=None, **kwargs):
     """
     Flexible verification for Indigency certificates (which vary widely in format by barangay/municipality).
-    Verifies student name and barangay/town address keywords without requiring rigid template structures.
+    Verifies student name and barangay/town address using Semantic Anchors & robust OCR typo tolerance.
     """
     meta = {}
     failures = []
 
-    # NAME MATCHING — full sequence required (not just word-by-word independently)
+    # Semantic Anchor Extraction
+    anchors = extract_semantic_anchors_from_indigency(raw_text)
+    candidate_name = anchors.get('candidate_name') or raw_text
+    meta['anchors'] = anchors
+
+    # 1. NAME MATCHING — verify against extracted semantic candidate string and full text
     first_ok, middle_ok, last_ok, sequence_ok = verify_name_sequence(
-        first_name, last_name, raw_text, raw_text, middle_name
+        first_name, last_name, candidate_name, raw_text, middle_name
     )
 
     if not (first_ok and middle_ok and last_ok and sequence_ok):
         failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}' in Indigency Certificate)")
 
+    # 2. ADDRESS / TOWN MATCHING
     addr_ok = True
     if expected_address and str(expected_address).strip():
         doc_norm = normalize_text(raw_text)
         addr_clean = normalize_text(expected_address)
-        ignore_words = {'city', 'municipality', 'town', 'province', 'brgy', 'barangay'}
+        ignore_words = {'city', 'municipality', 'town', 'province', 'brgy', 'barangay', 'st', 'street'}
         addr_words = [w for w in addr_clean.split() if len(w) >= 3 and w not in ignore_words]
 
         # Inosloban / Inosluban alias handling
         if 'inosloban' in addr_clean or 'inosluban' in addr_clean or 'inosl' in addr_clean:
             addr_words.extend(['inosloban', 'inosluban'])
 
-    # DOCUMENT TYPE KEYWORD MATCHING (Indigency or Residency accepted non-exclusively)
+        if addr_words:
+            matched_addr_words = sum(1 for w in addr_words if w in doc_norm)
+            addr_ok = (matched_addr_words >= 1)
+            if not addr_ok:
+                failures.append(f"Address mismatch (Expected town/barangay from: '{expected_address}')")
+
+    # 3. DOCUMENT TYPE KEYWORD MATCHING (Indigency or Residency accepted non-exclusively)
     is_residency_doc = kwargs.get('is_residency_doc') or kwargs.get('isResidencyDoc') or False
     doc_norm = normalize_text(raw_text)
-    residency_keywords = ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
-    indigency_keywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang']
+    residency_keywords = ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan', 'taga-barangay', 'mamamayan']
+    indigency_keywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang', 'mababang kita', 'katibayan', 'pinatutunayan', 'patunay', 'barangay']
     all_doc_keywords = residency_keywords + indigency_keywords
 
     doc_type_ok = any(k in doc_norm for k in all_doc_keywords)
