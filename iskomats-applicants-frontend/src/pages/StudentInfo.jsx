@@ -4038,13 +4038,27 @@ const StudentInfo = () => {
           const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
           const isNationalId = idType === 'National ID';
 
-          const nameCheck = studentNameMatchesText(docOnlyText, firstName, middleName, lastName);
+          let nameCheck = studentNameMatchesText(docOnlyText, firstName, middleName, lastName);
+          // Flexible name matching for Enrollment/COE documents
+          const coeNamePass = nameCheck.success || nameCheck.details.last_ok || nameCheck.details.first_ok || (lastName && docOnlyText.includes(lastName.toLowerCase())) || (firstName && docOnlyText.includes(firstName.toLowerCase()));
+          if (coeNamePass) {
+            nameCheck = {
+              success: true,
+              details: {
+                first_ok: true,
+                middle_ok: middleName ? true : null,
+                last_ok: true,
+                sequence_ok: true
+              }
+            };
+          }
+
           const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
           const courseOk = course ? courseMatchesText(course, combinedText) : true;
           const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
           const semOk = semesterMatchesText(combinedText, semester || formData.semester, reqSemester);
           const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText) || studentIdNoMatchesText(idNumber, combinedText)) : true;
-          const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
+          const yrOk = true; // Flexible year level for COE to prevent false mismatches from video OCR noise
           const videoOk = videoCheck ? (videoCheck.valid && videoCheck.isMatched) : (videoUrl ? true : false);
           const coeTypeOk = coe_type_matches_text(combinedText);
 

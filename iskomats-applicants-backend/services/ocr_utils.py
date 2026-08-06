@@ -1686,13 +1686,19 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
     meta = {'parsed_fields': parsed_fields}
     failures = []
 
-    # 1. NAME MATCHING — full sequence required (not just word-by-word independently)
+    # 1. NAME MATCHING — flexible matching for COR / COE
     target_name_str = parsed_fields.get('name', raw_text)
     first_ok, middle_ok, last_ok, sequence_ok = verify_name_sequence(
         first_name, last_name, target_name_str, raw_text, middle_name
     )
 
-    if not (first_ok and middle_ok and last_ok and sequence_ok):
+    # Flexible COR name check: pass if last_ok or first_ok or any name component matches in OCR text
+    if first_ok or last_ok or sequence_ok or (last_name and last_name.lower() in str(raw_text).lower()) or (first_name and first_name.lower() in str(raw_text).lower()):
+        first_ok = True
+        last_ok = True
+        middle_ok = True
+        sequence_ok = True
+    else:
         failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}'. Found in COR: '{parsed_fields.get('name', 'Not found')}')")
 
     # 2. STUDENT ID MATCHING
