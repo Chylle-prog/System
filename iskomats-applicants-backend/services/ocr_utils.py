@@ -1020,6 +1020,26 @@ def normalize_id_number(s):
     return normalized
 
 
+def is_similar_name_word(w1, w2):
+    """
+    Returns True if name word w1 is equal to or highly similar to token w2,
+    allowing single-character OCR typos (e.g. Mikaela vs Mikarla, Lantafe vs Lantave).
+    """
+    if not w1 or not w2:
+        return False
+    w1_clean = re.sub(r'[^a-z0-9]', '', str(w1).lower())
+    w2_clean = re.sub(r'[^a-z0-9]', '', str(w2).lower())
+    if not w1_clean or not w2_clean:
+        return False
+    if w1_clean == w2_clean or w1_clean in w2_clean or w2_clean in w1_clean:
+        return True
+    if len(w1_clean) >= 3 and len(w2_clean) >= 3 and abs(len(w1_clean) - len(w2_clean)) <= 2:
+        match_ratio = difflib.SequenceMatcher(None, w1_clean, w2_clean).ratio()
+        if match_ratio >= 0.78:
+            return True
+    return False
+
+
 def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
     """
     Verifies that the student's FULL name (first + last + middle together) appears as a
@@ -1041,6 +1061,17 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
 
     # Individual word presence with OCR typo tolerance (e.g. Mikaela vs Mikarla, Ysabel vs Ybabel, Lantafe vs Lantave)
     target_tokens = norm_target.split() + norm_raw.split()
+
+    def is_similar_name_word(e_word, t_word):
+        if not e_word or not t_word: return False
+        e_clean, t_clean = e_word.lower().strip(), t_word.lower().strip()
+        if e_clean == t_clean: return True
+        if len(e_clean) >= 3 and len(t_clean) >= 3 and abs(len(e_clean) - len(t_clean)) <= 2:
+            if difflib.SequenceMatcher(None, e_clean, t_clean).ratio() >= 0.78:
+                return True
+        def _conf(s):
+            return re.sub(r'[^a-z0-9]', '', s).replace('1', 'i').replace('|', 'i').replace('0', 'o').replace('5', 's').replace('3', 'e').replace('8', 'b').replace('rn', 'm').replace('cl', 'd').replace('vv', 'w')
+        return _conf(e_clean) == _conf(t_clean)
 
     def check_word_in_tokens(w):
         if not w: return True
@@ -1084,13 +1115,6 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
             f'{last_clean} {first_clean}'
         ]
 
-    def is_similar_name_word(e_word, t_word):
-        if not e_word or not t_word: return False
-        e_clean, t_clean = e_word.lower().strip(), t_word.lower().strip()
-        if e_clean == t_clean: return True
-        def _conf(s):
-            return re.sub(r'[^a-z0-9]', '', s).replace('1', 'i').replace('|', 'i').replace('0', 'o').replace('5', 's').replace('3', 'e').replace('8', 'b').replace('rn', 'm').replace('cl', 'd').replace('vv', 'w')
-        return _conf(e_clean) == _conf(t_clean)
 
     def check_word_sequence_fuzzy(name_str, search_text):
         exp_words = [w for w in normalize_text(name_str).split() if len(w) >= 1]
@@ -1241,58 +1265,200 @@ def _run_tesseract_on_image(img, psm=6):
         print(f"[OCR] Tesseract error: {e}", flush=True)
         return ""
 
-def extract_text_with_azure_document_intelligence(image_bytes):
+COURSE_ALIASES = {
+    'BSIT': 'BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY',
+    'BS IT': 'BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY',
+    'BSCS': 'BACHELOR OF SCIENCE IN COMPUTER SCIENCE',
+    'BS CS': 'BACHELOR OF SCIENCE IN COMPUTER SCIENCE',
+    'BSA': 'BACHELOR OF SCIENCE IN ACCOUNTANCY',
+    'BSBA': 'BACHELOR OF SCIENCE IN BUSINESS ADMINISTRATION',
+    'BSED': 'BACHELOR OF SECONDARY EDUCATION',
+    'BEED': 'BACHELOR OF ELEMENTARY EDUCATION',
+    'BSN': 'BACHELOR OF SCIENCE IN NURSING',
+    'BSCE': 'BACHELOR OF SCIENCE IN CIVIL ENGINEERING',
+    'BSEE': 'BACHELOR OF SCIENCE IN ELECTRICAL ENGINEERING',
+    'BSME': 'BACHELOR OF SCIENCE IN MECHANICAL ENGINEERING',
+    'BSECE': 'BACHELOR OF SCIENCE IN ELECTRONICS ENGINEERING',
+    'BS ECE': 'BACHELOR OF SCIENCE IN ELECTRONICS ENGINEERING',
+    'BS ARCH': 'BACHELOR OF SCIENCE IN ARCHITECTURE',
+    'BSARCH': 'BACHELOR OF SCIENCE IN ARCHITECTURE',
+    'BSTM': 'BACHELOR OF SCIENCE IN TOURISM MANAGEMENT',
+    'BSHM': 'BACHELOR OF SCIENCE IN HOSPITALITY MANAGEMENT',
+    'BSP': 'BACHELOR OF SCIENCE IN PSYCHOLOGY',
+}
+
+SEMESTER_ALIASES = {
+    '1ST SEM': 'FIRST SEMESTER',
+    '1ST SEMESTER': 'FIRST SEMESTER',
+    'FIRST SEM': 'FIRST SEMESTER',
+    '2ND SEM': 'SECOND SEMESTER',
+    '2ND SEMESTER': 'SECOND SEMESTER',
+    'SECOND SEM': 'SECOND SEMESTER',
+    '3RD SEM': 'THIRD SEMESTER',
+    '3RD SEMESTER': 'THIRD SEMESTER',
+    'SUMMER': 'SUMMER TERM',
+    'MIDYEAR': 'MIDYEAR TERM',
+}
+
+def normalize_course_string(course_input):
+    if not course_input:
+        return ""
+    clean = re.sub(r'[^A-Z0-9\s]', ' ', str(course_input).upper()).strip()
+    clean = re.sub(r'\s+', ' ', clean)
+    for alias, full in COURSE_ALIASES.items():
+        if clean == alias or clean.startswith(alias + ' '):
+            return full
+    return clean
+
+def enhance_and_autocrop_document(image_bytes):
     """
-    Extracts text from document using Azure Document Intelligence REST API (prebuilt-layout model).
-    Specifically optimized for Certificates of Registration (COR/COE) with small fonts and tables.
+    OpenCV Document Preprocessing Pipeline:
+    1. Decodes raw document image bytes.
+    2. Contour-based Paper Auto-Crop: Detects largest 4-point paper sheet contour and applies perspective transform.
+    3. CLAHE Contrast Enhancement: Applies CLAHE in LAB color space to make faint printed text high contrast.
+    """
+    if not image_bytes:
+        return image_bytes
+    try:
+        data = decode_base64(image_bytes)
+        if not data or len(data) < 10:
+            return image_bytes
+        nparr = np.frombuffer(data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None or img.shape[0] < 100 or img.shape[1] < 100:
+            return image_bytes
+
+        h, w = img.shape[:2]
+        cropped_img = img
+
+        # ── STEP 1: Contour Paper Auto-Crop (Perspective Transform) ──
+        try:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+            edged = cv2.Canny(blurred, 50, 200)
+
+            contours, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours = sorted(contours, key=cv2.contourArea, reverse=True)[:5]
+
+            doc_cnt = None
+            for c in contours:
+                peri = cv2.arcLength(c, True)
+                approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+                if len(approx) == 4 and cv2.contourArea(c) > (w * h * 0.25):
+                    doc_cnt = approx
+                    break
+
+            if doc_cnt is not None:
+                pts = doc_cnt.reshape(4, 2)
+                rect = np.zeros((4, 2), dtype="float32")
+                s = pts.sum(axis=1)
+                rect[0] = pts[np.argmin(s)]
+                rect[2] = pts[np.argmax(s)]
+                diff = np.diff(pts, axis=1)
+                rect[1] = pts[np.argmin(diff)]
+                rect[3] = pts[np.argmax(diff)]
+
+                (tl, tr, br, bl) = rect
+                widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
+                widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
+                maxWidth = max(int(widthA), int(widthB))
+
+                heightA = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
+                heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
+                maxHeight = max(int(heightA), int(heightB))
+
+                dst = np.array([
+                    [0, 0],
+                    [maxWidth - 1, 0],
+                    [maxWidth - 1, maxHeight - 1],
+                    [0, maxHeight - 1]], dtype="float32")
+
+                M = cv2.getPerspectiveTransform(rect, dst)
+                cropped_img = cv2.warpPerspective(img, M, (maxWidth, maxHeight))
+        except Exception as crop_err:
+            print(f"[OCR PREPROCESS] Auto-crop contour note: {crop_err}", flush=True)
+
+        # ── STEP 2: CLAHE Contrast Enhancement (LAB Color Space) ──
+        try:
+            lab = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2LAB)
+            l, a, b_chan = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+            cl = clahe.apply(l)
+            limg = cv2.merge((cl, a, b_chan))
+            enhanced_img = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
+        except Exception as clahe_err:
+            print(f"[OCR PREPROCESS] CLAHE note: {clahe_err}", flush=True)
+            enhanced_img = cropped_img
+
+        success, encoded_img = cv2.imencode('.jpg', enhanced_img, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+        if success:
+            return encoded_img.tobytes()
+    except Exception as e:
+        print(f"[OCR PREPROCESS] Document enhancement exception: {e}", flush=True)
+    return image_bytes
+
+def extract_text_and_kvp_with_azure(image_bytes):
+    """
+    Extracts text and Key-Value Pairs from document using Azure Document Intelligence REST API.
+    Attempts prebuilt-document model first (for structured KVP), falling back to prebuilt-layout.
     """
     key = os.environ.get('AZURE_DOC_INTEL_KEY', '').strip()
     endpoint = os.environ.get('AZURE_DOC_INTEL_ENDPOINT', '').strip().rstrip('/')
 
     if not key or not endpoint:
-        return None
+        return None, {}
 
     try:
         data = decode_base64(image_bytes)
         if not data or len(data) < 10:
-            return None
+            return None, {}
 
         import requests
-        analyze_url = f"{endpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31"
         headers = {
             'Ocp-Apim-Subscription-Key': key,
             'Content-Type': 'application/octet-stream'
         }
 
-        # Step 1: Submit Analyze Request to Azure Form Recognizer
-        resp = requests.post(analyze_url, headers=headers, data=data, timeout=15)
-        if resp.status_code != 202:
-            print(f"[AZURE OCR] Analyze submit status: {resp.status_code}", flush=True)
-            return None
+        models = ['prebuilt-document', 'prebuilt-layout']
+        for model in models:
+            analyze_url = f"{endpoint}/formrecognizer/documentModels/{model}:analyze?api-version=2023-07-31"
+            resp = requests.post(analyze_url, headers=headers, data=data, timeout=15)
+            if resp.status_code != 202:
+                continue
 
-        op_location = resp.headers.get('Operation-Location')
-        if not op_location:
-            return None
+            op_location = resp.headers.get('Operation-Location')
+            if not op_location:
+                continue
 
-        # Step 2: Poll for Results (max 15 seconds)
-        for _ in range(30):
-            time.sleep(0.5)
-            poll_resp = requests.get(op_location, headers={'Ocp-Apim-Subscription-Key': key}, timeout=10)
-            if poll_resp.status_code == 200:
-                result_json = poll_resp.json()
-                status = result_json.get('status')
-                if status == 'succeeded':
-                    content = result_json.get('analyzeResult', {}).get('content', '')
-                    if content and len(content.strip()) > 0:
-                        print(f"[AZURE OCR] COR Extraction succeeded! Extracted {len(content)} chars via Azure Form Recognizer.", flush=True)
-                        return content.strip()
-                elif status in ('failed', 'canceled'):
-                    print(f"[AZURE OCR] Analysis status: {status}", flush=True)
-                    return None
-        return None
+            for _ in range(30):
+                time.sleep(0.4)
+                poll_resp = requests.get(op_location, headers={'Ocp-Apim-Subscription-Key': key}, timeout=10)
+                if poll_resp.status_code == 200:
+                    result_json = poll_resp.json()
+                    status = result_json.get('status')
+                    if status == 'succeeded':
+                        analyze_res = result_json.get('analyzeResult', {})
+                        content = analyze_res.get('content', '')
+                        kvp_dict = {}
+                        kv_pairs = analyze_res.get('keyValuePairs', [])
+                        for kv in kv_pairs:
+                            k_str = (kv.get('key', {}).get('content') or '').strip().lower()
+                            v_str = (kv.get('value', {}).get('content') or '').strip()
+                            if k_str and v_str:
+                                kvp_dict[k_str] = v_str
+                        if content and len(content.strip()) > 0:
+                            print(f"[AZURE OCR] Extracted {len(content)} chars and {len(kvp_dict)} KV pairs via {model}.", flush=True)
+                            return content.strip(), kvp_dict
+                    elif status in ('failed', 'canceled'):
+                        break
+        return None, {}
     except Exception as e:
         print(f"[AZURE OCR] Exception: {e}", flush=True)
-        return None
+        return None, {}
+
+def extract_text_with_azure_document_intelligence(image_bytes):
+    text, _ = extract_text_and_kvp_with_azure(image_bytes)
+    return text
 
 
 
@@ -1972,22 +2138,24 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
     max_w = 1400 if 'INDIGENCY' in doc_type_upper else None
 
     raw_text = ""
+    azure_kvp = {}
     # For COR / COE / Enrollment / Registration documents, attempt Azure Document Intelligence API first
     is_cor_doc = any(k in doc_type_upper for k in ['COE', 'COR', 'ENROLLMENT', 'REGISTRATION', 'CERTIFICATE']) or not doc_type_upper or ('GRADES' not in doc_type_upper and 'INDIGENCY' not in doc_type_upper and 'ID' not in doc_type_upper)
+    
+    # Apply OpenCV Contour Auto-Crop & CLAHE Contrast Enhancement
+    enhanced_doc_bytes = enhance_and_autocrop_document(image_bytes) if is_cor_doc else image_bytes
+
     if is_cor_doc:
-        # Crop upper ~42% of COR document image (captures header, student info, & total units, excluding lower fee tables)
-        cor_image_bytes = crop_upper_document_region(image_bytes, crop_ratio=0.42)
         try:
-            azure_text = extract_text_with_azure_document_intelligence(cor_image_bytes)
+            azure_text, azure_kvp = extract_text_and_kvp_with_azure(enhanced_doc_bytes)
             if azure_text and len(azure_text.strip()) >= 10:
                 raw_text = azure_text
-                print(f"[OCR] Successfully extracted text using Azure Document Intelligence for COR/COE (cropped upper 42%)", flush=True)
+                print(f"[OCR] Successfully extracted text and {len(azure_kvp)} KVP using Azure Document Intelligence for COR/COE", flush=True)
         except Exception as az_err:
             print(f"[OCR] Azure extraction note: {az_err}", flush=True)
 
     if not raw_text or not raw_text.strip():
-        target_bytes = crop_upper_document_region(image_bytes, crop_ratio=0.42) if is_cor_doc else image_bytes
-        raw_text = extract_document_text(target_bytes, psm=3, max_width=max_w)
+        raw_text = extract_document_text(enhanced_doc_bytes, psm=3, max_width=max_w)
 
     if not raw_text.strip():
         return False, "Unable to extract readable text from document.", "", {}
@@ -2005,6 +2173,19 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
     else:
         # Default: COR / Registration
         parsed_fields = parse_cor_document(raw_text)
+        # Merge Azure KV Pairs into parsed fields if available
+        for k, v in azure_kvp.items():
+            if 'student' in k or 'id' in k or 'number' in k or 'no' in k:
+                if not parsed_fields.get('student_id'): parsed_fields['student_id'] = v
+            elif 'name' in k:
+                if not parsed_fields.get('name'): parsed_fields['name'] = v
+            elif 'course' in k or 'program' in k:
+                if not parsed_fields.get('course'): parsed_fields['course'] = v
+            elif 'year' in k or 'sem' in k:
+                if not parsed_fields.get('school_year_sem'): parsed_fields['school_year_sem'] = v
+            elif 'unit' in k:
+                if not parsed_fields.get('units'): parsed_fields['units'] = v
+
         success, msg, meta = verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs)
         return success, msg, raw_text, meta
 

@@ -3806,9 +3806,9 @@ const StudentInfo = () => {
             }
           }
 
-          // ⚡ COE/Grades: Single-pass mode at 1200px WITH GPU contrast filter & top 42% crop (Header + Student Info + Total Units, excluding fee table)
+          // ⚡ COE/Grades: Single-pass mode at 1200px WITH GPU contrast filter (Full 100% Document Image)
           if (isEnrollmentOrGrades) {
-            const enhancedUrl = await downscaleImageForFastOcr(scanInput, 1200, true, 0.42).catch(() => null);
+            const enhancedUrl = await downscaleImageForFastOcr(scanInput, 1200, true, 1.0).catch(() => null);
             const scanSrc = enhancedUrl || scanInput;
             const result = await worker.recognize(scanSrc).catch((e) => { console.warn('[OCR Engine] COE/Grades pass:', e); return null; });
             if (enhancedUrl && enhancedUrl.startsWith('blob:')) URL.revokeObjectURL(enhancedUrl);
