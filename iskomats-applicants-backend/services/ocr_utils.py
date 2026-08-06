@@ -1601,6 +1601,37 @@ def verify_academic_year_strict(expected_academic_year, found_ay_text, raw_text)
 
     return True, ""
 
+def extract_semester_from_ocr_text(text):
+    if not text:
+        return None
+    
+    # Strip footer fine print (e.g. "1st week of classes", "2nd week of classes", "within 2 weeks")
+    header_text = re.sub(r'.*(?:week\s*of\s*classes|refunds\s*and\s*other|withdrawal|within\s*(?:two|2)\s*weeks).*', '', str(text), flags=re.IGNORECASE)
+    header_text = re.sub(r'\b20\d{2}\s*[\-\/\.\:\+]\s*20\d{2}\b', '', header_text)
+    header_text = re.sub(r'\b(?:sy|ay)?\s*\d{2}\s*[\-\/\.\:\+]\s*\d{2}\b', '', header_text, flags=re.IGNORECASE)
+
+    # Normalize OCR misread semester digits/suffixes (e.g. "2na semester" -> "2nd semester")
+    norm_text = re.sub(r'\b2[a-z0-9]{1,2}\s*(?:sem|semester|semestral|term)\b', '2nd semester', header_text, flags=re.IGNORECASE)
+    norm_text = re.sub(r'\b1[a-z0-9]{1,2}\s*(?:sem|semester|semestral|term)\b', '1st semester', norm_text, flags=re.IGNORECASE)
+
+    for line in norm_text.splitlines():
+        if any(k in line.lower() for k in ['school year', 'academic year', 'sy', 'ay', 'sem', 'semester', 'term', 'registration']):
+            if re.search(r'\b(?:2nd|second|2na|2ng|2da|2rd|sem\s*2|semester\s*2)\b', line, re.I):
+                return 2
+            if re.search(r'\b(?:1st|first|1sa|15t|sem\s*1|semester\s*1)\b', line, re.I):
+                return 1
+            if re.search(r'\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b', line, re.I):
+                return 3
+
+    if re.search(r'\b(?:2nd|second|2na|2ng|2da|2rd|sem\s*2|semester\s*2)\b', norm_text, re.I):
+        return 2
+    if re.search(r'\b(?:1st|first|1sa|15t|sem\s*1|semester\s*1)\b', norm_text, re.I):
+        return 1
+    if re.search(r'\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b', norm_text, re.I):
+        return 3
+
+    return None
+
 def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs):
     """
     Multi-field validation for COR documents with robust OCR typo tolerance.

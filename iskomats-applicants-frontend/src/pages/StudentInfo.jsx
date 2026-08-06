@@ -1117,8 +1117,7 @@ function extractSemesterFromText(text) {
 
   const rawLines = String(text).split(/[\r\n]+/);
 
-  // 1. Vote-based approach: collect semester evidence from all relevant header lines
-  //    (ignoring footer fine print like "1st week of classes", "2nd week of classes")
+  // Collect semester evidence from header lines (excluding footer fine print like "1st week of classes")
   const votes = { 1: 0, 2: 0, 3: 0 };
 
   for (const rawLine of rawLines) {
@@ -1130,13 +1129,12 @@ function extractSemesterFromText(text) {
         .replace(/\b20\d{2}\s*[\-\/\.\:\+]\s*20\d{2}\b/g, '')
         .replace(/\b(?:sy|ay)?\s*\d{2}\s*[\-\/\.\:\+]\s*\d{2}\b/gi, '');
 
-      if (/\b(?:2nd|second|sem\s*2|2nd\s*sem|semester\s*2)\b/i.test(cleanLine)) votes[2]++;
-      else if (/\b(?:1st|first|15t|sem\s*1|1st\s*sem|semester\s*1)\b/i.test(cleanLine)) votes[1]++;
+      if (/\b(?:2nd|second|2na|2ng|2da|2rd|sem\s*2|2nd\s*sem|semester\s*2)\b/i.test(cleanLine)) votes[2]++;
+      else if (/\b(?:1st|first|1sa|15t|sem\s*1|1st\s*sem|semester\s*1)\b/i.test(cleanLine)) votes[1]++;
       else if (/\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b/i.test(cleanLine)) votes[3]++;
     }
   }
 
-  // Return the semester with the most votes (majority wins)
   const maxVotes = Math.max(votes[1], votes[2], votes[3]);
   if (maxVotes > 0) {
     if (votes[2] === maxVotes) return 2;
@@ -1144,57 +1142,35 @@ function extractSemesterFromText(text) {
     if (votes[3] === maxVotes) return 3;
   }
 
-  // 2. Fallback: Search full document text with fine print stripped
+  // Fallback: Search full document text with fine print stripped
   const cleaned = String(text)
-    .replace(/.*(?:week of classes|refunds and other charges|withdrawal).*/gi, '')
+    .replace(/.*(?:week\s*of\s*classes|refunds\s*and\s*other|withdrawal|within\s*(?:two|2)\s*weeks).*/gi, '')
     .replace(/\b20\d{2}\s*[\-\/\.\:\+]\s*20\d{2}\b/g, '')
     .replace(/\b(?:sy|ay)?\s*\d{2}\s*[\-\/\.\:\+]\s*\d{2}\b/gi, '')
     .replace(/\b15t\b/gi, '1st')
     .toLowerCase();
 
-  if (/\b(?:2nd|second|2nd\s*sem|2nd\s*semester)\b/i.test(cleaned)) return 2;
-  if (/\b(?:1st|first|15t|1st\s*sem|1st\s*semester)\b/i.test(cleaned)) return 1;
+  if (/\b(?:2nd|second|2na|2ng|2da|2rd|2nd\s*sem|2nd\s*semester)\b/i.test(cleaned)) return 2;
+  if (/\b(?:1st|first|1sa|15t|1st\s*sem|1st\s*semester)\b/i.test(cleaned)) return 1;
   if (/\b(?:3rd|third|summer|midyear|3rd\s*sem|3rd\s*semester)\b/i.test(cleaned)) return 3;
 
   return null;
 }
 
 function semesterMatchesText(text, expectedSemester, reqSemester) {
-  // Use reqSemester as a fallback if expectedSemester is falsy
   const semToCheck = expectedSemester || reqSemester;
   if (!semToCheck || !text) return true;
 
   const expNum = normalizeSemesterInt(semToCheck);
+  if (expNum === null) return true;
 
-  // Direct pattern check: does the expected semester pattern appear anywhere in the text?
-  // This is the primary check — if the expected semester pattern is present in doc, pass.
-  const lowerText = String(text).toLowerCase();
-  const sem2Pattern = /\b(?:2nd|second|2ng|2nd\s*sem(?:ester)?|sem(?:ester)?\s*2|2ndsem|inq\s*sem(?:ester)?|0a\s*sem(?:ester)?)\b/i;
-  const sem1Pattern = /\b(?:1st|first|15t|1st\s*sem(?:ester)?|sem(?:ester)?\s*1|1stsem)\b/i;
-  const sem3Pattern = /\b(?:3rd|third|summer|midyear|3rd\s*sem(?:ester)?|sem(?:ester)?\s*3|3rdsem)\b/i;
-
-  if (expNum === 2 && sem2Pattern.test(lowerText)) {
-    console.log(`[SEMESTER CHECK] Expected 2nd — found '2nd/second' in text ✓`);
-    return true;
-  }
-  if (expNum === 1 && sem1Pattern.test(lowerText)) {
-    console.log(`[SEMESTER CHECK] Expected 1st — found '1st/first' in text ✓`);
-    return true;
-  }
-  if (expNum === 3 && sem3Pattern.test(lowerText)) {
-    console.log(`[SEMESTER CHECK] Expected 3rd — found '3rd/summer' in text ✓`);
-    return true;
-  }
-
-  // Secondary: vote-based extraction
+  // Extract semester from document header text (stripping footer fine print)
   const foundNum = extractSemesterFromText(text);
-  console.log(`[SEMESTER CHECK] Vote-based: Found ${foundNum}, Expected ${expNum} (from '${semToCheck}')`);
 
-  if (expNum !== null && foundNum !== null) {
+  if (foundNum !== null) {
     return expNum === foundNum;
   }
 
-  // If we couldn't determine, don't penalize
   return true;
 }
 
