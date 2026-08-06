@@ -87,53 +87,95 @@ export const decryptDocument = async (blob, originalType = 'image/jpeg') => {
   }
 };
 
+// Simple Request Queue Limiter for decryptUrl to prevent flooding Render backend connection limits
+let activeDecryptFetches = 0;
+const decryptQueue = [];
+
+const processDecryptQueue = () => {
+  if (decryptQueue.length === 0 || activeDecryptFetches >= 2) return;
+  const next = decryptQueue.shift();
+  if (next) {
+    activeDecryptFetches++;
+    next().finally(() => {
+      activeDecryptFetches--;
+      processDecryptQueue();
+    });
+  }
+};
+
+const enqueueDecryptFetch = (fn) => {
+  return new Promise((resolve, reject) => {
+    decryptQueue.push(async () => {
+      try {
+        const res = await fn();
+        resolve(res);
+      } catch (err) {
+        reject(err);
+      }
+    });
+    processDecryptQueue();
+  });
+};
+
 /**
  * Helper to decrypt a URL (fetches, decrypts, and returns a local object URL)
  */
 export const decryptUrl = async (url, type = 'image/jpeg') => {
   if (!url || typeof url !== 'string' || !url.startsWith('http')) return url;
-  try {
-    const separator = url.includes('?') ? '&' : '?';
-    const fetchUrl = `${url}${separator}_cb=${Date.now()}`;
-    const headers = {};
-    const token = localStorage.getItem('authToken');
-    if (token && !url.includes('supabase.co')) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    let response = await fetch(fetchUrl, { headers });
-    if (!response.ok && Object.keys(headers).length > 0) {
-      // Retry without Authorization headers if rejected by public CORS storage
-      response = await fetch(fetchUrl);
-    }
-    if (!response.ok) return url;
-    const blob = await response.blob();
-    if (blob.size === 0) return url;
+  
+  return enqueueDecryptFetch(async () => {
+    try {
+      const separator = url.includes('?') ? '&' : '?';
+      const fetchUrl = `${url}${separator}_cb=${Date.now()}`;
+      const headers = {};
+      const token = localStorage.getItem('authToken');
+      if (token && !url.includes('supabase.co')) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
 
-    // Check if the payload is a base64 Data URI string
-    const sampleBuffer = await blob.slice(0, 100).arrayBuffer();
-    const sampleText = new TextDecoder().decode(sampleBuffer);
-    if (sampleText.startsWith('data:') && sampleText.includes(';base64,')) {
-      const fullText = await blob.text();
-      const res = await fetch(fullText);
-      const decBlob = await res.blob();
-      return URL.createObjectURL(decBlob);
-    }
+      let response = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await fetch(fetchUrl, { headers });
+          if (!response.ok && Object.keys(headers).length > 0) {
+            response = await fetch(fetchUrl);
+          }
+          if (response && response.ok) break;
+        } catch (fetchErr) {
+          if (attempt < 2) await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+        }
+      }
 
-    // Check if the payload is already an unencrypted image, video, or PDF
-    const headerBuffer = await blob.slice(0, 16).arrayBuffer();
-    const headerBytes = new Uint8Array(headerBuffer);
-    const isMkvWebm = headerBytes[0] === 0x1a && headerBytes[1] === 0x45 && headerBytes[2] === 0xdf && headerBytes[3] === 0xa3;
-    const isMp4 = String.fromCharCode(...headerBytes.slice(4, 8)) === 'ftyp';
-    const isPng = headerBytes[0] === 0x89 && headerBytes[1] === 0x50 && headerBytes[2] === 0x4e && headerBytes[3] === 0x47;
-    const isJpg = headerBytes[0] === 0xff && headerBytes[1] === 0xd8 && headerBytes[2] === 0xff;
-    const isPdf = headerBytes[0] === 0x25 && headerBytes[1] === 0x50 && headerBytes[2] === 0x44 && headerBytes[3] === 0x46;
+      if (!response || !response.ok) return url;
+      const blob = await response.blob();
+      if (blob.size === 0) return url;
 
-    let decryptedBlob = blob;
-    if (!isMkvWebm && !isMp4 && !isPng && !isJpg && !isPdf) {
-      decryptedBlob = await decryptDocument(blob, type);
+      // Check if the payload is a base64 Data URI string
+      const sampleBuffer = await blob.slice(0, 100).arrayBuffer();
+      const sampleText = new TextDecoder().decode(sampleBuffer);
+      if (sampleText.startsWith('data:') && sampleText.includes(';base64,')) {
+        const fullText = await blob.text();
+        const res = await fetch(fullText);
+        const decBlob = await res.blob();
+        return URL.createObjectURL(decBlob);
+      }
+
+      // Check if the payload is already an unencrypted image, video, or PDF
+      const headerBuffer = await blob.slice(0, 16).arrayBuffer();
+      const headerBytes = new Uint8Array(headerBuffer);
+      const isMkvWebm = headerBytes[0] === 0x1a && headerBytes[1] === 0x45 && headerBytes[2] === 0xdf && headerBytes[3] === 0xa3;
+      const isMp4 = String.fromCharCode(...headerBytes.slice(4, 8)) === 'ftyp';
+      const isPng = headerBytes[0] === 0x89 && headerBytes[1] === 0x50 && headerBytes[2] === 0x4e && headerBytes[3] === 0x47;
+      const isJpg = headerBytes[0] === 0xff && headerBytes[1] === 0xd8 && headerBytes[2] === 0xff;
+      const isPdf = headerBytes[0] === 0x25 && headerBytes[1] === 0x50 && headerBytes[2] === 0x44 && headerBytes[3] === 0x46;
+
+      let decryptedBlob = blob;
+      if (!isMkvWebm && !isMp4 && !isPng && !isJpg && !isPdf) {
+        decryptedBlob = await decryptDocument(blob, type);
+      }
+      return URL.createObjectURL(decryptedBlob);
+    } catch (error) {
+      return url;
     }
-    return URL.createObjectURL(decryptedBlob);
-  } catch (error) {
-    return url;
-  }
+  });
 };
