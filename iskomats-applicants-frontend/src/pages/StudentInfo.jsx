@@ -7586,7 +7586,16 @@ const StudentInfo = () => {
                   </div>
                   <div className="form-group">
                     <label>Parents' Gross Income <span style={{ color: '#e74c3c' }}>*</span></label>
-                    <input type="number" name="parentsGrossIncome" value={formData.parentsGrossIncome} onChange={handleInputChange} placeholder="30000" min="0" required={currentStep === 2} />
+                    <input
+                      type="number"
+                      name="parentsGrossIncome"
+                      value={formData.parentsGrossIncome}
+                      readOnly
+                      style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
+                      placeholder="30000"
+                      min="0"
+                      required={currentStep === 2}
+                    />
                   </div>
                 </div>
 
@@ -7682,13 +7691,8 @@ const StudentInfo = () => {
                       type="number"
                       name="gpa"
                       value={formData.gpa}
-                      onChange={handleInputChange}
-                      onBlur={e => {
-                        const v = parseFloat(e.target.value);
-                        if (!isNaN(v)) {
-                          setFormData(prev => ({ ...prev, gpa: (Math.round(v * 100) / 100).toFixed(2) }));
-                        }
-                      }}
+                      readOnly
+                      style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
                       placeholder="e.g. 3.44"
                       step="0.01"
                       min="1.00"
