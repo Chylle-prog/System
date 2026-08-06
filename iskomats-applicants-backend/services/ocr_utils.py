@@ -1530,13 +1530,37 @@ def preprocess_cor_lines(raw_text):
                 split_lines.append(s.strip())
     return split_lines
 
-def extract_total_units_from_text(raw_text):
+def extract_total_units_from_text(raw_text, azure_kvp=None):
+    """
+    Extracts total academic units from document text:
+    1. Priority 1: Azure Key-Value Pairs (e.g. 'total units': '12' or 'units enrolled': '12')
+    2. Priority 2: Direct line regex & Dash/Underscore/Line Sanitizer across next 5 lines
+    3. Priority 3: Subject Table Row Counter & Explicit Unit Summing
+    """
+    # 1. Azure Key-Value Priority Extraction
+    if azure_kvp and isinstance(azure_kvp, dict):
+        for k, v in azure_kvp.items():
+            k_lower = str(k).lower()
+            if any(term in k_lower for term in ['total unit', 'units enrolled', 'units completed', 'total no of units', 'enrolled units', 'total units', 'units']):
+                clean_v = re.sub(r'[\-\=\_\s\|]+', ' ', str(v)).strip()
+                m = re.search(r'\b(\d+(?:\.\d+)?)\b', clean_v)
+                if m:
+                    try:
+                        val = float(m.group(1))
+                        if 48 < val <= 4800:
+                            val = val / 100.0
+                        val = int(round(val))
+                        if 6 <= val <= 60:
+                            return val
+                    except ValueError:
+                        pass
+
     if not raw_text:
         return None
     text_str = str(raw_text)
     lines = text_str.splitlines()
 
-    # 1. Direct extraction right beside or below "TOTAL UNITS" before fee table headers
+    # 2. Direct extraction right beside or below "TOTAL UNITS" before fee table headers
     for i, line in enumerate(lines):
         line_clean = line.strip()
         if re.search(r'total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit', line_clean, re.IGNORECASE):
@@ -1548,19 +1572,23 @@ def extract_total_units_from_text(raw_text):
                     if 48 < val <= 4800:
                         val = val / 100.0
                     val = int(round(val))
-                    if 6 <= val <= 48:
+                    if 6 <= val <= 60:
                         return val
                 except ValueError:
                     pass
 
-            # Check next 4 lines, stopping before fee/assessment headers
-            for j in range(i + 1, min(len(lines), i + 5)):
+            # Check next 5 lines, stopping before fee/assessment headers
+            for j in range(i + 1, min(len(lines), i + 6)):
                 next_line = lines[j].strip()
                 if re.search(r'assessed\s*fees|schedule\s*of\s*payments|total\s*assessment|outstanding\s*balance|tuition|downpayment|reservation', next_line, re.IGNORECASE):
                     break
-                if re.match(r'^[\-\=\_\s\|]+$', next_line):
+
+                # Dash/Underscore/Line Sanitizer: remove surrounding lines/dashes (e.g., "--- 12 ---" becomes "12")
+                sanitized_next_line = re.sub(r'[\-\=\_\s\|]+', ' ', next_line).strip()
+                if not sanitized_next_line:
                     continue
-                digits = re.findall(r'(\d+(?:\.\d+)?)', next_line)
+
+                digits = re.findall(r'(\d+(?:\.\d+)?)', sanitized_next_line)
                 for d in digits:
                     try:
                         v = float(d)
@@ -1648,7 +1676,7 @@ def extract_total_units_from_text(raw_text):
 
     return None
 
-def parse_cor_document(raw_text):
+def parse_cor_document(raw_text, azure_kvp=None):
     """
     Structured parser for Official Certificate of Registration (COR).
     Extracts key-value fields while preventing adjacent column bleed.
@@ -1735,8 +1763,8 @@ def parse_cor_document(raw_text):
     elif any(k in raw_upper for k in ['UNIVERSITY OF THE PHILIPPINES', 'UP']):
         fields['school_name'] = 'University of the Philippines'
 
-    # Total Units extraction from COR/COE
-    units_val = extract_total_units_from_text(raw_text)
+    # Total Units extraction from COR/COE (checking Azure KVP first, then multi-line sanitizer)
+    units_val = extract_total_units_from_text(raw_text, azure_kvp=azure_kvp)
     if units_val is not None:
         fields['units'] = units_val
         fields['total_units'] = str(units_val)
@@ -2185,7 +2213,7 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
         return success, msg, raw_text, meta
     else:
         # Default: COR / Registration
-        parsed_fields = parse_cor_document(raw_text)
+        parsed_fields = parse_cor_document(raw_text, azure_kvp=azure_kvp)
         # Merge Azure KV Pairs into parsed fields if available
         for k, v in azure_kvp.items():
             if 'student' in k or 'id' in k or 'number' in k or 'no' in k:
