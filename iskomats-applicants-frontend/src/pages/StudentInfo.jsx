@@ -854,7 +854,7 @@ function sanitizeStudentIdCandidate(rawToken, targetId) {
   return digits;
 }
 
-function studentIdNoMatchesText(targetId, text) {
+function studentIdNoMatchesText(targetId, text, strict = false) {
   if (!targetId || !text) return true;
 
   const digitsOnly = (s) => String(s || '').replace(/[^0-9]/g, '');
@@ -901,7 +901,13 @@ function studentIdNoMatchesText(targetId, text) {
   const fullTextDigits = digitsOnly(text.replace(/\s+/g, ''));
   if (fullTextDigits.includes(tDigits) || fullTextMapped.includes(tDigits)) return true;
 
-  // 4. Fuzzy digit similarity matching (handles OCR digit misreads like 2021305751 -> 202303781)
+  // In strict mode (e.g. School ID verification), require exact digit sequence match.
+  // Bypass fuzzy Levenshtein digit substitution so that incorrect ID digits (e.g. 1500017171 vs 1500017172) are strictly rejected.
+  if (strict) {
+    return false;
+  }
+
+  // 4. Fuzzy digit similarity matching (for compressed COE photos with high digit misreads)
   if (tDigits.length >= 6) {
     const maxAllowedDist = tDigits.length >= 8 ? 3 : 2;
     for (const seq of ocrTokens) {
@@ -3900,7 +3906,7 @@ const StudentInfo = () => {
         const lastOk = nameMatchFront.details.last_ok || nameMatchBack.details.last_ok || nameMatchVid.details.last_ok;
         const nameOk = (firstOk && lastOk) || nameMatchFront.success || nameMatchBack.success || nameMatchVid.success;
 
-        const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, combinedFrontText) || studentIdNoMatchesText(idNumber, combinedBackText)) : true);
+        const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, combinedFrontText, true) || studentIdNoMatchesText(idNumber, combinedBackText, true)) : true);
         const schoolOk = schoolName ? (schoolNameMatchesText(allIdText, schoolName)) : true;
         const ayOk = isNationalId ? true : (academicYear ? (academic_year_matches_expected(combinedFrontText, academicYear) || academic_year_matches_expected(combinedBackText, academicYear)) : true);
 

@@ -2210,30 +2210,6 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
             raw_digits = re.sub(r'[^0-9]', '', str(raw_text or ''))
             if clean_expected_id in raw_digits:
                 id_ok = True
-            else:
-                def _lev_dist(s1, s2):
-                    if len(s1) > len(s2):
-                        s1, s2 = s2, s1
-                    distances = range(len(s1) + 1)
-                    for i2, c2 in enumerate(s2):
-                        distances_ = [i2+1]
-                        for i1, c1 in enumerate(s1):
-                            if c1 == c2:
-                                distances_.append(distances[i1])
-                            else:
-                                distances_.append(1 + min((distances[i1], distances[i1 + 1], distances_[-1])))
-                        distances = distances_
-                    return distances[-1]
-
-                max_dist = 3 if len(clean_expected_id) >= 8 else 2
-                all_cands = [re.sub(r'[^0-9]', '', str(tok or '')) for tok in tokens]
-                if found_id:
-                    all_cands.append(re.sub(r'[^0-9]', '', str(found_id)))
-                for cand in all_cands:
-                    if len(cand) >= len(clean_expected_id) - 2 and len(cand) <= len(clean_expected_id) + 2:
-                        if _lev_dist(clean_expected_id, cand) <= max_dist:
-                            id_ok = True
-                            break
 
         if not id_ok:
             failures.append(f"ID Number mismatch (Expected: '{expected_id_no}' on ID)")
