@@ -1533,11 +1533,19 @@ def preprocess_cor_lines(raw_text):
 def extract_total_units_from_text(raw_text, azure_kvp=None):
     """
     Extracts total academic units from document text:
-    1. Priority 1: Azure Key-Value Pairs (e.g. 'total units': '12' or 'units enrolled': '12')
-    2. Priority 2: Direct line regex & Dash/Underscore/Line Sanitizer across next 5 lines
-    3. Priority 3: Subject Table Row Counter & Explicit Unit Summing
+    1. Azure Key-Value Priority Extraction: Checks Azure AI KVP first.
+    2. Printed "TOTAL UNITS" Line Extraction + Dash/Underscore Sanitizer + Multi-Line Lookahead:
+       - If printed line is valid (>= 6 units), returns it directly.
+    3. Dynamic Subject Course Summing & Smart Discrepancy Override:
+       - If printed line reads an unnaturally low number (< 6, e.g. 2 when colon merges with 1 in ': 12'),
+         system automatically overrides misread line with the true course sum (12 Units).
     """
-    # 1. Azure Key-Value Priority Extraction
+    if not raw_text:
+        return None
+    text_str = str(raw_text)
+    lines = text_str.splitlines()
+
+    # 1. AZURE KEY-VALUE PRIORITY EXTRACTION
     if azure_kvp and isinstance(azure_kvp, dict):
         for k, v in azure_kvp.items():
             k_lower = str(k).lower()
@@ -1547,67 +1555,62 @@ def extract_total_units_from_text(raw_text, azure_kvp=None):
                 if m:
                     try:
                         val = float(m.group(1))
-                        if 48 < val <= 4800:
-                            val = val / 100.0
+                        if 48 < val <= 4800: val = val / 100.0
                         val = int(round(val))
                         if 6 <= val <= 60:
                             return val
                     except ValueError:
                         pass
 
-    if not raw_text:
-        return None
-    text_str = str(raw_text)
-    lines = text_str.splitlines()
-
-    # 2. Direct extraction right beside or below "TOTAL UNITS" before fee table headers
+    # 2. PRINTED "TOTAL UNITS" LINE EXTRACTION & DASH/UNDERSCORE SANITIZER
+    printed_line_units = None
     for i, line in enumerate(lines):
         line_clean = line.strip()
         if re.search(r'total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit', line_clean, re.IGNORECASE):
-            # Check current line
             m = re.search(r'(?:total\s*(?:no\.?\s*of\s*|enrolled\s*)?units?|units?\s*total|total\s*unit)[^\d]*(\d+(?:\.\d+)?)', line_clean, re.IGNORECASE)
             if m:
                 try:
                     val = float(m.group(1))
-                    if 48 < val <= 4800:
-                        val = val / 100.0
+                    if 48 < val <= 4800: val = val / 100.0
                     val = int(round(val))
-                    if 6 <= val <= 60:
-                        return val
+                    if 1 <= val <= 60:
+                        printed_line_units = val
+                        break
                 except ValueError:
                     pass
 
-            # Check next 5 lines, stopping before fee/assessment headers
             for j in range(i + 1, min(len(lines), i + 6)):
                 next_line = lines[j].strip()
                 if re.search(r'assessed\s*fees|schedule\s*of\s*payments|total\s*assessment|outstanding\s*balance|tuition|downpayment|reservation', next_line, re.IGNORECASE):
                     break
-
-                # Dash/Underscore/Line Sanitizer: remove surrounding lines/dashes (e.g., "--- 12 ---" becomes "12")
                 sanitized_next_line = re.sub(r'[\-\=\_\s\|]+', ' ', next_line).strip()
-                if not sanitized_next_line:
-                    continue
-
+                if not sanitized_next_line: continue
                 digits = re.findall(r'(\d+(?:\.\d+)?)', sanitized_next_line)
                 for d in digits:
                     try:
                         v = float(d)
-                        if 48 < v <= 4800:
-                            v = v / 100.0
+                        if 48 < v <= 4800: v = v / 100.0
                         v = int(round(v))
-                        if 6 <= v <= 60:
-                            return v
+                        if 1 <= v <= 60:
+                            printed_line_units = v
+                            break
                     except ValueError:
                         pass
+                if printed_line_units is not None:
+                    break
 
+    # If printed line is valid (>= 6 units), return it directly!
+    if printed_line_units is not None and printed_line_units >= 6:
+        return printed_line_units
+
+    # 3. DYNAMIC SUBJECT COURSE SUMMING & SMART DISCREPANCY OVERRIDE
     def _is_metadata(l):
         return bool(re.search(r'^\s*(?:course|name|student\s*(?:no|id)?|year\s*level|scholarship|pay\s*type|reg\s*no|tran\s*date|college)\s*[:=\-]', l, re.I) or
                     re.search(r'bachelor\s*of|bachelor\s*in|master\s*of|doctor\s*of', l, re.I))
 
-    # 2. Robust Subject Table Row Counter & Explicit Unit Summing
     in_subject_table = False
     subject_row_count = 0
-    explicit_units_sum = 0
+    explicit_units_sum = 0.0
 
     for line in lines:
         line_clean = line.strip()
@@ -1615,9 +1618,9 @@ def extract_total_units_from_text(raw_text, azure_kvp=None):
 
         if not in_subject_table:
             if not _is_metadata(lower):
-                if re.search(r'^\s*(?:subj(?:ect)?|sugect|suject|spect|course\s*code)\b', lower) or \
-                   (('subject' in lower or 'sugect' in lower or 'suject' in lower or 'spect' in lower) and any(k in lower for k in ['sec', 'section', 'faculty', 'room', 'days', 'time', 'bldg', 'units'])) or \
-                   ('units' in lower and any(k in lower for k in ['sec', 'section', 'faculty', 'room', 'days', 'time', 'bldg'])):
+                if re.search(r'^\s*(?:subj(?:ect)?s?|sugect|suject|spect|course\s*code)\b', lower) or \
+                   (('subject' in lower or 'course' in lower or 'code' in lower or 'sugect' in lower or 'suject' in lower or 'spect' in lower) and any(k in lower for k in ['sec', 'section', 'faculty', 'room', 'days', 'time', 'bldg', 'units', 'enrolled', 'description'])) or \
+                   ('units' in lower and any(k in lower for k in ['sec', 'section', 'faculty', 'room', 'days', 'time', 'bldg', 'code', 'description'])):
                     in_subject_table = True
                     continue
 
@@ -1632,49 +1635,31 @@ def extract_total_units_from_text(raw_text, azure_kvp=None):
                 continue
 
             subject_row_count += 1
-            unit_match = re.search(r'\b([1-6](?:\.0)?)\b', line_clean)
-            if unit_match:
+            row_digits = re.findall(r'\b([1-6](?:\.0)?)\b', line_clean)
+            if row_digits:
                 try:
-                    u = float(unit_match.group(1))
-                    if 1 <= u <= 6:
+                    u = float(row_digits[-1])
+                    if 1.0 <= u <= 6.0:
                         explicit_units_sum += u
                 except ValueError:
                     pass
 
-    if 6 <= explicit_units_sum <= 60:
-        return int(round(explicit_units_sum))
+    course_sum_units = int(round(explicit_units_sum)) if 6 <= explicit_units_sum <= 60 else None
+
+    # Smart Discrepancy Override: if printed line was < 6 (e.g. misread 2), override with course sum!
+    if printed_line_units is not None and printed_line_units < 6 and course_sum_units is not None:
+        print(f"[UNITS OVERRIDE] Misread printed line '{printed_line_units}' overridden by Dynamic Subject Course Sum '{course_sum_units}'", flush=True)
+        return course_sum_units
+
+    if course_sum_units is not None:
+        return course_sum_units
 
     if subject_row_count >= 2:
         estimated = subject_row_count * 3
         if 6 <= estimated <= 60:
             return estimated
 
-    # 3. Fallback row counter between Metadata and Assessed Fees
-    inside_body = False
-    fallback_count = 0
-    for line in lines:
-        line_clean = line.strip()
-        lower = line_clean.lower()
-        if re.search(r'year\s*level|student\s*(?:no|id)|ay\s*20\d{2}|semester', lower):
-            inside_body = True
-            continue
-        if inside_body:
-            if re.search(r'total\s*units|otl\s*uns|assessed\s*fees|schedule\s*of\s*pay|schedule\s*of\s*path|total\s*assessment', lower):
-                break
-            if re.match(r'^[\-\=\_\*\#\s\|]+$', line_clean) or len(line_clean) < 3:
-                continue
-            if _is_metadata(lower):
-                continue
-            if re.search(r'official|certificate|registration|enrollment|de\s*la\s*salle|batangas|university|student|page', lower):
-                continue
-            fallback_count += 1
-
-    if fallback_count >= 2:
-        estimated = fallback_count * 3
-        if 6 <= estimated <= 60:
-            return estimated
-
-    return None
+    return printed_line_units
 
 def parse_cor_document(raw_text, azure_kvp=None):
     """
