@@ -879,16 +879,21 @@ export const applicationAPI = {
    * @param {object} formData 
    */
   checkSibling: async (scholarshipId, formData) => {
-    return makeRequest('/student/applications/check-sibling', {
-      method: 'POST',
-      body: JSON.stringify({
-        scholarship_id: scholarshipId,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        fatherName: formData.fatherName,
-        motherName: formData.motherName
-      }),
-    });
+    try {
+      return await makeRequest('/student/applications/check-sibling', {
+        method: 'POST',
+        body: JSON.stringify({
+          scholarship_id: scholarshipId,
+          firstName: formData?.firstName,
+          lastName: formData?.lastName,
+          fatherName: formData?.fatherName,
+          motherName: formData?.motherName
+        }),
+      });
+    } catch (err) {
+      console.warn('[SIBLING CHECK] Network busy, fallback check:', err?.message || err);
+      return { success: false, blocked: false, message: null };
+    }
   },
 
 

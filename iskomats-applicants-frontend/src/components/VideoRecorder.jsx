@@ -18,22 +18,29 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
 
   // Sync with initialVideoUrl if provided (for loading from DB)
   useEffect(() => {
-    console.log('VideoRecorder useEffect triggered:', {
-      initialVideoUrl,
-      currentPreviewUrl: previewUrl,
-      label
-    });
-    
+    let isMounted = true;
     if (initialVideoUrl) {
-      console.log(`Setting preview URL for ${label}:`, initialVideoUrl);
-      setPreviewUrl(initialVideoUrl);
-      setFileName('Existing saved video');
       setVideoError(null);
+      setFileName('Saved video proof');
+      if (typeof initialVideoUrl === 'string' && initialVideoUrl.startsWith('http')) {
+        import('../services/CryptoService').then(({ decryptUrl }) => {
+          decryptUrl(initialVideoUrl, 'video/mp4').then(resolved => {
+            if (isMounted && resolved) {
+              setPreviewUrl(resolved);
+            }
+          }).catch(() => {
+            if (isMounted) setPreviewUrl(initialVideoUrl);
+          });
+        });
+      } else {
+        setPreviewUrl(initialVideoUrl);
+      }
     } else if (!previewUrl || !previewUrl.startsWith('blob:')) {
       setPreviewUrl(null);
       setFileName('');
       setVideoError(null);
     }
+    return () => { isMounted = false; };
   }, [initialVideoUrl]);
 
   const openFilePicker = () => {

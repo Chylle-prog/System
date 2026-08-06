@@ -169,9 +169,23 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
       const isJpg = headerBytes[0] === 0xff && headerBytes[1] === 0xd8 && headerBytes[2] === 0xff;
       const isPdf = headerBytes[0] === 0x25 && headerBytes[1] === 0x50 && headerBytes[2] === 0x44 && headerBytes[3] === 0x46;
 
+      let targetMimeType = type || 'image/jpeg';
+      if (url.includes('video') || url.includes('_vid')) {
+        targetMimeType = isMkvWebm ? 'video/webm' : 'video/mp4';
+      } else if (isPdf) {
+        targetMimeType = 'application/pdf';
+      } else if (isPng) {
+        targetMimeType = 'image/png';
+      } else if (isJpg) {
+        targetMimeType = 'image/jpeg';
+      }
+
       let decryptedBlob = blob;
       if (!isMkvWebm && !isMp4 && !isPng && !isJpg && !isPdf) {
-        decryptedBlob = await decryptDocument(blob, type);
+        decryptedBlob = await decryptDocument(blob, targetMimeType);
+      } else {
+        const correctType = isMkvWebm ? 'video/webm' : (isMp4 ? 'video/mp4' : (isPng ? 'image/png' : (isJpg ? 'image/jpeg' : (isPdf ? 'application/pdf' : targetMimeType))));
+        decryptedBlob = new Blob([blob], { type: correctType });
       }
       return URL.createObjectURL(decryptedBlob);
     } catch (error) {

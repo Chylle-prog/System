@@ -2886,16 +2886,16 @@ const StudentInfo = () => {
       if (reqNo && hasFamilyData) {
         try {
           const res = await applicationAPI.checkSibling(parseInt(reqNo), formData);
-          if (res.blocked) {
+          if (res && res.blocked) {
             showPromptMessage(`Restriction Notice: ${res.message}`);
           }
         } catch (err) {
-          console.error("Early sibling check failed:", err);
+          console.warn("Early sibling check note:", err);
         }
       }
     };
 
-    const timer = setTimeout(checkSiblingRestriction, 1000); // Debounce check
+    const timer = setTimeout(checkSiblingRestriction, 2500); // 2.5s debounce to let page mount settle
     return () => clearTimeout(timer);
   }, [formData.lastName, formData.fatherName, formData.motherName, searchParams]);
 
