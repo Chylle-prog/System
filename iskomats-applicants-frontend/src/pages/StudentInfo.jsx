@@ -2040,23 +2040,27 @@ const StudentInfo = () => {
 
         const checkPoints = [0.15, 0.45, 0.75];
         let currentCheckIndex = 0;
+        let isCapturing = false;
         let accumulatedText = [];
         let hasSeeked = false;
 
-        const captureFrame = () => {
-          if (ocrTriggered) return;
+        const captureFrame = async () => {
+          if (ocrTriggered || isCapturing) return;
+          isCapturing = true;
 
           const w = video.videoWidth;
           const h = video.videoHeight;
           if (!w || !h) {
+            isCapturing = false;
+            ocrTriggered = true;
             clearTimeout(timeout);
             cleanup();
-            resolve({ valid: false, isMatched: false, reason: "Video proof frame capture failed: invalid video dimensions.", detectedText: "Could not read video dimensions." });
+            resolve(evaluateVideoText(accumulatedText));
             return;
           }
 
           try {
-            const maxDim = 1200;
+            const maxDim = 1400;
             let targetW = w;
             let targetH = h;
             if (targetW > maxDim || targetH > maxDim) {
@@ -2072,128 +2076,105 @@ const StudentInfo = () => {
             const canvas = document.createElement('canvas');
             canvas.width = targetW;
             canvas.height = targetH;
-
             const ctx = canvas.getContext('2d');
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = "high";
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+            // Enhance contrast for OCR: grayscale + contrast boost
             try {
               const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
               const data = imgData.data;
 
-              // Fast variance check to skip pure black/white video padding frames
-              let sumG = 0, sumSqG = 0, sampleCount = 0;
+              // Variance check — skip only truly pure solid frames (< 1.5 stddev)
+              let sumG = 0, sumSqG = 0, n = 0;
               for (let i = 0; i < data.length; i += 16) {
                 const g = data[i];
                 sumG += g;
                 sumSqG += g * g;
-                sampleCount++;
+                n++;
               }
-              const meanG = sumG / sampleCount;
-              const stdDevG = Math.sqrt(Math.max(0, (sumSqG / sampleCount) - (meanG * meanG)));
+              const mean = sumG / n;
+              const stdDev = Math.sqrt(Math.max(0, (sumSqG / n) - (mean * mean)));
 
-              if (stdDevG < 2.0) {
-                // Skip OCR on pure solid black/white padding frames only
-                currentCheckIndex++;
-                if (currentCheckIndex < checkPoints.length && isFinite(video.duration) && video.duration > 0) {
-                  video.currentTime = video.duration * checkPoints[currentCheckIndex];
-                } else {
-                  ocrTriggered = true;
-                  clearTimeout(timeout);
-                  cleanup();
-                  resolve(evaluateVideoText(accumulatedText));
-                }
+              if (stdDev < 1.5) {
+                // Pure blank frame — skip silently
+                isCapturing = false;
+                await advanceToNextCheckpoint();
                 return;
               }
 
+              // Convert to grayscale + apply contrast stretch
               for (let i = 0; i < data.length; i += 4) {
                 const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-                data[i] = gray;
-                data[i + 1] = gray;
-                data[i + 2] = gray;
+                // Contrast stretch: shift toward extremes
+                const stretched = Math.min(255, Math.max(0, (gray - 80) * 1.8));
+                data[i] = stretched;
+                data[i + 1] = stretched;
+                data[i + 2] = stretched;
               }
               ctx.putImageData(imgData, 0, 0);
-            } catch (e) { }
+            } catch (e) { /* continue with unprocessed frame */ }
 
-            getTesseractWorker()
-              .then(async (worker) => {
-                if (!worker || ocrTriggered) return null;
-                try {
-                  return await worker.recognize(canvas);
-                } catch (e) {
-                  console.warn("[VIDEO OCR] Frame recognition skipped:", e?.message || e);
-                  return null;
-                }
-              })
-              .then(ocrResult => {
-                if (ocrTriggered || !ocrResult) {
-                  if (ocrTriggered) return;
-                  currentCheckIndex++;
-                  if (currentCheckIndex < checkPoints.length && isFinite(video.duration) && video.duration > 0) {
-                    video.currentTime = video.duration * checkPoints[currentCheckIndex];
-                  } else {
-                    ocrTriggered = true;
-                    clearTimeout(timeout);
-                    cleanup();
-                    resolve(evaluateVideoText(accumulatedText));
-                  }
-                  return;
-                }
+            // Run OCR
+            let ocrResult = null;
+            try {
+              const worker = await getTesseractWorker();
+              if (worker && !ocrTriggered) {
+                ocrResult = await worker.recognize(canvas);
+              }
+            } catch (e) {
+              console.warn("[VIDEO OCR] Frame recognition failed:", e?.message || e);
+            }
 
-                const extractedText = ocrResult?.data?.text || "";
-                const cleanExtracted = extractedText.trim().replace(/\s+/g, ' ');
-                if (cleanExtracted && cleanExtracted.length >= 3) {
-                  accumulatedText.push(`[Frame at ${(video.currentTime).toFixed(1)}s]: "${cleanExtracted}"`);
-                }
+            if (ocrTriggered) { isCapturing = false; return; }
 
-                // Fast early exit: if early frame text satisfies document keywords/name, finish immediately
-                const partialResult = evaluateVideoText(accumulatedText);
-                if (partialResult.isMatched) {
-                  ocrTriggered = true;
-                  clearTimeout(timeout);
-                  cleanup();
-                  resolve(partialResult);
-                  return;
-                }
+            if (ocrResult) {
+              const extractedText = ocrResult?.data?.text || "";
+              const cleanExtracted = extractedText.trim().replace(/\s+/g, ' ');
+              if (cleanExtracted && cleanExtracted.length >= 3) {
+                accumulatedText.push(`[Frame at ${video.currentTime.toFixed(1)}s]: "${cleanExtracted}"`);
+                console.log(`[VIDEO OCR] Frame text (${video.currentTime.toFixed(1)}s):`, cleanExtracted.substring(0, 120));
+              }
+            }
 
-                currentCheckIndex++;
-                if (currentCheckIndex < checkPoints.length && isFinite(video.duration) && video.duration > 0) {
-                  const nextTime = video.duration * checkPoints[currentCheckIndex];
-                  video.currentTime = nextTime;
-                } else {
-                  ocrTriggered = true;
-                  clearTimeout(timeout);
-                  cleanup();
-                  resolve(evaluateVideoText(accumulatedText));
-                }
-              })
-              .catch(err => {
-                currentCheckIndex++;
-                if (currentCheckIndex < checkPoints.length && isFinite(video.duration) && video.duration > 0) {
-                  video.currentTime = video.duration * checkPoints[currentCheckIndex];
-                } else {
-                  ocrTriggered = true;
-                  clearTimeout(timeout);
-                  cleanup();
-                  resolve(evaluateVideoText(accumulatedText));
-                }
-              });
-          } catch (err) {
-            currentCheckIndex++;
-            if (currentCheckIndex < checkPoints.length && isFinite(video.duration) && video.duration > 0) {
-              video.currentTime = video.duration * checkPoints[currentCheckIndex];
-            } else {
+            // Check if we already have a match
+            const partialResult = evaluateVideoText(accumulatedText);
+            if (partialResult.isMatched) {
+              isCapturing = false;
               ocrTriggered = true;
               clearTimeout(timeout);
               cleanup();
-              resolve(evaluateVideoText(accumulatedText));
+              resolve(partialResult);
+              return;
             }
+
+            isCapturing = false;
+            await advanceToNextCheckpoint();
+          } catch (err) {
+            console.warn("[VIDEO OCR] captureFrame error:", err?.message || err);
+            isCapturing = false;
+            await advanceToNextCheckpoint();
           }
         };
 
-        // Stall guard: if seek was initiated but onseeked never fires within 3s,
-        // capture whatever frame is available (common with Supabase-hosted blobs).
+        const advanceToNextCheckpoint = async () => {
+          if (ocrTriggered) return;
+          currentCheckIndex++;
+          if (currentCheckIndex < checkPoints.length && isFinite(video.duration) && video.duration > 0) {
+            // Seek to next checkpoint and wait for onseeked before capturing
+            const nextTime = video.duration * checkPoints[currentCheckIndex];
+            video.currentTime = nextTime;
+            // onseeked will trigger captureFrame
+          } else {
+            ocrTriggered = true;
+            clearTimeout(timeout);
+            cleanup();
+            resolve(evaluateVideoText(accumulatedText));
+          }
+        };
+
+        // Stall guard: if seek never fires within 4s, attempt capture anyway
         let stallGuardTimeout = null;
 
         const initiateSeek = () => {
@@ -2201,14 +2182,14 @@ const StudentInfo = () => {
           hasSeeked = true;
           if (isFinite(video.duration) && video.duration > 0) {
             video.currentTime = video.duration * checkPoints[0];
-            // Stall guard in case onseeked never fires
             stallGuardTimeout = setTimeout(() => {
               if (!ocrTriggered) {
                 console.warn('[VIDEO-OCR] Seek stalled — capturing current frame directly.');
                 captureFrame();
               }
-            }, 3000);
+            }, 4000);
           } else {
+            // Duration unknown (live stream / blob without metadata), capture immediately
             captureFrame();
           }
         };
@@ -2216,14 +2197,8 @@ const StudentInfo = () => {
         video.onloadedmetadata = () => initiateSeek();
         video.onloadeddata = () => initiateSeek();
         video.oncanplay = () => {
-          // Also try immediate capture if seek hasn't happened yet and video is playable
           if (!hasSeeked) {
             initiateSeek();
-          } else if (!ocrTriggered && video.readyState >= 3) {
-            // readyState HAVE_FUTURE_DATA or HAVE_ENOUGH_DATA means we can capture
-            setTimeout(() => {
-              if (!ocrTriggered && hasSeeked) captureFrame();
-            }, 800);
           }
         };
         video.onseeked = () => {
@@ -2231,17 +2206,22 @@ const StudentInfo = () => {
           captureFrame();
         };
 
-        video.onerror = () => {
+        video.onerror = (e) => {
+          console.warn('[VIDEO-OCR] video.onerror — trying fallback capture. Error:', e);
           if (stallGuardTimeout) clearTimeout(stallGuardTimeout);
           clearTimeout(timeout);
           cleanup();
-          // If video element fails to decode due to network connection reset (ERR_CONNECTION_CLOSED), do not penalize valid uploaded file
-          resolve({
-            valid: true,
-            isMatched: true,
-            reason: "Video Proof Verified (Server Video Attached)",
-            detectedText: "Video file attached and stored on server."
-          });
+          // If we captured any text at all, evaluate it; otherwise graceful pass for server-stored videos
+          if (accumulatedText.length > 0) {
+            resolve(evaluateVideoText(accumulatedText));
+          } else {
+            resolve({
+              valid: true,
+              isMatched: true,
+              reason: "Video Proof Verified (Server Video Attached)",
+              detectedText: "Video file attached and stored on server."
+            });
+          }
         };
 
         video.src = srcUrl;
