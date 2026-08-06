@@ -434,7 +434,7 @@ const getTesseractWorker = async () => {
       tessjs_create_box: '0',
       tessjs_create_unlv: '0',
       tessjs_create_osd: '0',
-      tessedit_pageseg_mode: '6'
+      tessedit_pageseg_mode: '3'
     });
   } catch (e) {
     console.log("Tesseract parameter set note:", e);
@@ -2048,7 +2048,7 @@ const StudentInfo = () => {
           }
 
           try {
-            const maxDim = 800;
+            const maxDim = 1200;
             let targetW = w;
             let targetH = h;
             if (targetW > maxDim || targetH > maxDim) {
@@ -2066,6 +2066,11 @@ const StudentInfo = () => {
             canvas.height = targetH;
 
             const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = "high";
+            if ('filter' in ctx) {
+              ctx.filter = 'contrast(180%) brightness(95%) grayscale(100%)';
+            }
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
             try {
