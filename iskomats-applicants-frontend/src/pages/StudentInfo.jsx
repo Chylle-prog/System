@@ -723,7 +723,8 @@ function studentNameMatchesText(text, first, middle, last) {
 
       const hasConflict = words.slice(1).some(secWord => {
         const normSec = normalizeForOcr(secWord);
-        const rxAfterPrimary = new RegExp('\\b' + normalizeForOcr(words[0]) + '\\s+([a-z]+)', 'i');
+        // Allow up to 2 intervening words between primary first name and next token
+        const rxAfterPrimary = new RegExp('\\b' + normalizeForOcr(words[0]) + '(?:\\s+[a-z]+){0,2}\\s+([a-z]+)', 'i');
         const mAfter = normTextLower.match(rxAfterPrimary);
         if (mAfter) {
           const nextTok = mAfter[1];
@@ -735,7 +736,9 @@ function studentNameMatchesText(text, first, middle, last) {
             !normLast.includes(nextTok) &&
             !normMid.includes(nextTok)
           ) {
-            return true;
+            // Check if secWord appears anywhere else in OCR text (e.g. Ysabel vs Ybabel)
+            const appearsAnywhere = ocrWords.some(ocrW => isSimilarWord(normSec, normalizeForOcr(ocrW)));
+            if (!appearsAnywhere) return true;
           }
         }
         return false;
