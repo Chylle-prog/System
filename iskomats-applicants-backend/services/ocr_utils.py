@@ -1378,11 +1378,19 @@ def enhance_and_autocrop_document(image_bytes):
         except Exception as crop_err:
             print(f"[OCR PREPROCESS] Auto-crop contour note: {crop_err}", flush=True)
 
-        # ── STEP 2: CLAHE Contrast Enhancement (LAB Color Space) ──
+        # ── STEP 2: 2x Bicubic Super-Scaling (2000px Max Width for Razor-Sharp OCR) ──
+        h_c, w_c = cropped_img.shape[:2]
+        if max(w_c, h_c) < 2000:
+            scale = 2000.0 / float(max(w_c, h_c))
+            target_w = int(w_c * scale)
+            target_h = int(h_c * scale)
+            cropped_img = cv2.resize(cropped_img, (target_w, target_h), interpolation=cv2.INTER_CUBIC)
+
+        # ── STEP 3: Balanced CLAHE Contrast Enhancement (clipLimit=1.8, LAB Color Space) ──
         try:
             lab = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2LAB)
             l, a, b_chan = cv2.split(lab)
-            clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+            clahe = cv2.createCLAHE(clipLimit=1.8, tileGridSize=(8, 8))
             cl = clahe.apply(l)
             limg = cv2.merge((cl, a, b_chan))
             enhanced_img = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
@@ -1654,11 +1662,6 @@ def extract_total_units_from_text(raw_text, azure_kvp=None):
     if course_sum_units is not None:
         return course_sum_units
 
-    if subject_row_count >= 2:
-        estimated = subject_row_count * 3
-        if 6 <= estimated <= 60:
-            return estimated
-
     return printed_line_units
 
 def parse_cor_document(raw_text, azure_kvp=None):
@@ -1671,19 +1674,19 @@ def parse_cor_document(raw_text, azure_kvp=None):
 
     label_patterns = {
         'name': [
-            r'name\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
-            r'student\s*name\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
-            r'pangalan\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]+)',
+            r'name\s*[:=\+\-1l\|\]\}\)\~]\s*([A-Za-z\s,\.\-]+)',
+            r'student\s*name\s*[:=\+\-1l\|\]\}\)\~]\s*([A-Za-z\s,\.\-]+)',
+            r'pangalan\s*[:=\+\-1l\|\]\}\)\~]\s*([A-Za-z\s,\.\-]+)',
             r'name\s+([A-Za-z\s,\.\-]+)'
         ],
         'student_id': [
-            r'student\s*(?:no|number|id)\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'id\s*(?:no|number)\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'reg\s*no\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'rug\s*no\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'rek\s*no\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'ref\s*no\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})',
-            r'sr\s*code\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})'
+            r'student\s*(?:no|number|id)\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})',
+            r'id\s*(?:no|number)\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})',
+            r'reg\s*no\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})',
+            r'rug\s*no\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})',
+            r'rek\s*no\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})',
+            r'ref\s*no\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})',
+            r'sr\s*code\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})'
         ],
         'school_year_sem': [
             r'school\s*year\s*(?:sem)?\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
