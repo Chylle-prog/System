@@ -1913,6 +1913,31 @@ def detect_document_tampering(image_bytes):
         print(f"[TAMPER DETECTOR] Error: {exc}", flush=True)
         return False, f"Tamper detection error: {exc}", 0
 
+def crop_upper_document_region(image_bytes, crop_ratio=0.42):
+    """
+    Crops top portion (default 42%) of document image to capture student info,
+    course list, and total units while excluding lower fee tables and background watermarks.
+    """
+    if not image_bytes:
+        return image_bytes
+    try:
+        data = decode_base64(image_bytes)
+        if not data or len(data) < 10:
+            return image_bytes
+        nparr = np.frombuffer(data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None or img.shape[0] < 100:
+            return image_bytes
+        h, w = img.shape[:2]
+        crop_h = max(300, int(h * crop_ratio))
+        cropped_img = img[0:crop_h, 0:w]
+        success, encoded_img = cv2.imencode('.jpg', cropped_img, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
+        if success:
+            return encoded_img.tobytes()
+    except Exception as e:
+        print(f"[OCR] Crop upper document region note: {e}", flush=True)
+    return image_bytes
+
 def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name=None, last_name=None, **kwargs):
     """
     Main entry point for document verification (COR, Grades, Indigency, ID).
@@ -1950,16 +1975,19 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
     # For COR / COE / Enrollment / Registration documents, attempt Azure Document Intelligence API first
     is_cor_doc = any(k in doc_type_upper for k in ['COE', 'COR', 'ENROLLMENT', 'REGISTRATION', 'CERTIFICATE']) or not doc_type_upper or ('GRADES' not in doc_type_upper and 'INDIGENCY' not in doc_type_upper and 'ID' not in doc_type_upper)
     if is_cor_doc:
+        # Crop upper ~42% of COR document image (captures header, student info, & total units, excluding lower fee tables)
+        cor_image_bytes = crop_upper_document_region(image_bytes, crop_ratio=0.42)
         try:
-            azure_text = extract_text_with_azure_document_intelligence(image_bytes)
+            azure_text = extract_text_with_azure_document_intelligence(cor_image_bytes)
             if azure_text and len(azure_text.strip()) >= 10:
                 raw_text = azure_text
-                print(f"[OCR] Successfully extracted text using Azure Document Intelligence for COR/COE", flush=True)
+                print(f"[OCR] Successfully extracted text using Azure Document Intelligence for COR/COE (cropped upper 42%)", flush=True)
         except Exception as az_err:
             print(f"[OCR] Azure extraction note: {az_err}", flush=True)
 
     if not raw_text or not raw_text.strip():
-        raw_text = extract_document_text(image_bytes, psm=3, max_width=max_w)
+        target_bytes = crop_upper_document_region(image_bytes, crop_ratio=0.42) if is_cor_doc else image_bytes
+        raw_text = extract_document_text(target_bytes, psm=3, max_width=max_w)
 
     if not raw_text.strip():
         return False, "Unable to extract readable text from document.", "", {}
