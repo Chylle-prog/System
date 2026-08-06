@@ -2475,6 +2475,8 @@ def extract_semantic_anchors_from_indigency(raw_text):
     if not raw_text:
         return {'candidate_name': None, 'candidate_town': None}
 
+    clean_text = str(raw_text)
+
     candidate_name = None
     candidate_town = None
 
@@ -2492,13 +2494,13 @@ def extract_semantic_anchors_from_indigency(raw_text):
     ]
 
     for p in name_anchor_patterns:
-        m = re.search(p, str(raw_text), re.IGNORECASE)
+        m = re.search(p, clean_text, re.IGNORECASE)
         if m:
             candidate_name = m.group(1).strip()
             break
 
     for p in town_anchor_patterns:
-        m = re.search(p, str(raw_text), re.IGNORECASE)
+        m = re.search(p, clean_text, re.IGNORECASE)
         if m:
             candidate_town = m.group(1).strip()
             break
