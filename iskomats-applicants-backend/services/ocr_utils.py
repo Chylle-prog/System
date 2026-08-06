@@ -1061,14 +1061,14 @@ def is_similar_name_word(w1, w2, strict_spelling=False):
     return False
 
 
-def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
+def verify_name_sequence_detailed(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
     """
-    Order-Flexible and Strict-Spelling Name Verifier for document text.
+    Detailed Order-Flexible and Strict-Spelling Name Verifier for document text.
     Handles both 'FIRSTNAME LASTNAME' and 'LASTNAME, FIRSTNAME' layouts.
     Enforces strict spelling matching on Last Name and complete First Name.
 
     Returns:
-        (first_ok, middle_ok, last_ok, sequence_ok)
+        (first_ok, middle_ok, last_ok, sequence_ok, errors_list)
     """
     first_clean = normalize_text(first_name or '')
     last_clean  = normalize_text(last_name  or '')
@@ -1079,6 +1079,7 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
     first_words = [w for w in first_clean.split() if len(w) >= 2]
     last_words  = [w for w in last_clean.split()  if len(w) >= 2]
     mid_words   = [w for w in mid_clean.split()   if len(w) >= 1]
+    errors = []
 
     # Address Noise Filtering: Strip place-related address phrases
     def sanitize_address_noise_from_text(txt):
@@ -1096,60 +1097,63 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
 
     sanitized_target = sanitize_address_noise_from_text(norm_target)
     sanitized_raw    = sanitize_address_noise_from_text(norm_raw)
-
-    target_tokens = (sanitized_target.split() if target_text else []) + (sanitized_raw.split() if full_raw_text else [])
+    target_tokens    = (sanitized_target.split() if target_text else []) + (sanitized_raw.split() if full_raw_text else [])
 
     def check_word_in_tokens(w, strict=False):
-        if not w: return True
-        return any(is_similar_name_word(w, tok, strict_spelling=strict) for tok in target_tokens)
+        if not w: return True, None, 1.0
+        best_tok = None
+        best_ratio = 0.0
+        for tok in target_tokens:
+            if is_similar_name_word(w, tok, strict_spelling=strict):
+                return True, tok, 1.0
+            r = difflib.SequenceMatcher(None, w.lower(), tok.lower()).ratio()
+            if r > best_ratio:
+                best_ratio = r
+                best_tok = tok
+        return False, best_tok, best_ratio
 
     # 1. FIRST NAME VALIDATION (Complete First Name & Strict Spelling)
-    def check_first_name_phrase(first_words_list, search_text):
-        """Requires all first name words to appear in contiguous order in search_text."""
-        if not first_words_list:
-            return True
-        if len(first_words_list) == 1:
-            return check_word_in_tokens(first_words_list[0], strict=False)
-        t_words = [w for w in normalize_text(search_text).split() if len(w) >= 1]
-        expected_idx = 0
-        last_found_idx = -1
-        for i, t_word in enumerate(t_words):
-            e_word = first_words_list[expected_idx]
-            is_match = is_similar_name_word(e_word, t_word, strict_spelling=False)
-            if is_match:
-                if last_found_idx != -1 and (i - last_found_idx) > 3:
-                    expected_idx = 0
-                    last_found_idx = -1
-                    if is_similar_name_word(first_words_list[0], t_word, strict_spelling=False):
-                        expected_idx = 1
-                        last_found_idx = i
-                    continue
-                expected_idx += 1
-                last_found_idx = i
-                if expected_idx >= len(first_words_list):
-                    return True
-        return False
+    missing_first_words = []
+    matched_first_words = []
+    for w in first_words:
+        ok, matched_tok, _ = check_word_in_tokens(w, strict=False)
+        if ok:
+            matched_first_words.append(w)
+        else:
+            missing_first_words.append(w)
 
-    if first_words:
-        first_ok = check_first_name_phrase(first_words, sanitized_target)
-        if not first_ok:
-            first_ok = check_first_name_phrase(first_words, sanitized_raw)
-    else:
-        first_ok = True
+    first_ok = (len(missing_first_words) == 0) if first_words else True
+    if not first_ok:
+        if missing_first_words:
+            missing_str = ", ".join(missing_first_words)
+            matched_str = " ".join(matched_first_words)
+            if matched_str:
+                errors.append(f"First Name Mismatch: Expected '{first_name}', found only '{matched_str}' (Missing: '{missing_str}')")
+            else:
+                errors.append(f"First Name Mismatch: Missing '{missing_str}'")
 
     # 2. LAST NAME VALIDATION (Strict Spelling & Order-Independent Token Search)
-    last_ok = all(check_word_in_tokens(w, strict=True) for w in last_words) if last_words else True
+    last_ok = True
+    for w in last_words:
+        ok, best_tok, best_ratio = check_word_in_tokens(w, strict=True)
+        if not ok:
+            last_ok = False
+            ratio_pct = int(round(best_ratio * 100))
+            if best_tok and ratio_pct >= 40:
+                errors.append(f"Last Name Mismatch: Expected '{last_name}', found '{best_tok}' (similarity: {ratio_pct}%)")
+            else:
+                errors.append("Last Name not found on applicant line")
 
     # 3. MIDDLE NAME VALIDATION
     middle_ok = True
     if mid_words:
-        mid_full_ok = all(check_word_in_tokens(w, strict=False) for w in mid_words if len(w) >= 2)
+        mid_full_ok = all(check_word_in_tokens(w, strict=False)[0] for w in mid_words if len(w) >= 2)
         if not mid_full_ok and mid_clean:
             initial = mid_clean[0]
             mid_full_ok = any(tok.startswith(initial) for tok in target_tokens)
         middle_ok = mid_full_ok
 
-    # 4. ORDER-INDEPENDENT SEQUENCE CHECK (FIRST LAST vs LAST FIRST vs LAST, FIRST)
+    # 4. ORDER-INDEPENDENT SEQUENCE CHECK
     def build_sequence_regex(name_str):
         words = [re.escape(w) for w in normalize_text(name_str).split() if len(w) >= 1]
         if not words:
@@ -1183,13 +1187,10 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         if not exp_words:
             return False
         t_words = [w for w in normalize_text(search_text).split() if len(w) >= 1]
-
         expected_idx = 0
         last_found_idx = -1
-
         for i, t_word in enumerate(t_words):
             e_word = exp_words[expected_idx]
-
             is_match = is_similar_name_word(e_word, t_word, strict_spelling=False) or (len(e_word) == 1 and (t_word == e_word or t_word == e_word + '.'))
             if is_match:
                 if last_found_idx != -1 and (i - last_found_idx) > 5:
@@ -1215,6 +1216,12 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
             sequence_ok = True
             break
 
+    return first_ok, middle_ok, last_ok, sequence_ok, errors
+
+def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
+    first_ok, middle_ok, last_ok, sequence_ok, _ = verify_name_sequence_detailed(
+        first_name, last_name, target_text, full_raw_text, middle_name
+    )
     return first_ok, middle_ok, last_ok, sequence_ok
 
 
@@ -2603,12 +2610,15 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     search_raw = candidate_name if candidate_name else raw_text
 
     # 1. NAME MATCHING — Step 2 & 3: Order-Flexible Token-Set Matching + 85% Levenshtein & Char Map
-    first_ok, middle_ok, last_ok, sequence_ok = verify_name_sequence(
+    first_ok, middle_ok, last_ok, sequence_ok, name_errors = verify_name_sequence_detailed(
         first_name, last_name, search_target, search_raw, middle_name
     )
 
     if not (first_ok and middle_ok and last_ok and sequence_ok):
-        failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}' in Indigency Certificate)")
+        if name_errors:
+            failures.extend(name_errors)
+        else:
+            failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}' in Indigency Certificate)")
 
     # 2. ADDRESS / TOWN MATCHING
     addr_ok = True
