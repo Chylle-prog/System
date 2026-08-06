@@ -1986,12 +1986,24 @@ const StudentInfo = () => {
           }
 
           const isCoeVideo = fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('mayorCOE') || fieldName?.includes('certificate');
+          const isSchoolIdVideo = fieldName?.includes('schoolId') || fieldName?.includes('schoolid') || fieldName?.includes('schoolIdFront') || fieldName?.includes('schoolIdBack') || fieldName?.includes('face_video') || fieldName?.includes('id_vid');
           const hasCoeTitleMatch = isCoeVideo ? (/certificate\s*o[fr]\s*(?:raguetration|registration|enrollment|reg)|enrollment|registration|\bcor\b|\bcoe\b/i.test(rawCombined) || cleanText.includes('enrollment') || cleanText.includes('registration')) : false;
 
           const targetBarangay = formData?.barangay || userProfile?.barangay || '';
           const hasNameMatch = allNameWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
           const hasAddressMatch = targetBarangay ? (cleanText.includes(targetBarangay.toLowerCase()) || rawCombined.includes(targetBarangay.toLowerCase())) : false;
           const hasKeywordMatch = targetKeywords.some(k => cleanText.includes(k) || rawCombined.includes(k));
+
+          if (isSchoolIdVideo) {
+            if (!hasNameMatch) {
+              return {
+                valid: false,
+                isMatched: false,
+                reason: `School ID video verification failed: Could not detect applicant name (${allNameWords.join(' ')}) in video frames.`,
+                detectedText: (textLogs || []).join("\n\n") || "No valid name text recognized in video frames."
+              };
+            }
+          }
 
           if (hasNameMatch || hasAddressMatch || hasKeywordMatch || hasCoeTitleMatch) {
             return {
