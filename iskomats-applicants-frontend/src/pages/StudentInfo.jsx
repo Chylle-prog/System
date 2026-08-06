@@ -548,14 +548,14 @@ function normalizeNameConfusions(s) {
     .replace(/5/g, 's')
     .replace(/3/g, 'e')
     .replace(/8/g, 'b')
+    .replace(/4/g, 'a')
     .replace(/rn/g, 'm')
     .replace(/cl/g, 'd')
-    .replace(/vv/g, 'w')   // must come before v→f to handle 'vv' first
-    .replace(/l/g, 'i')    // lowercase l ↔ uppercase I confusion in print OCR
-    .replace(/k/g, 'n')
-    .replace(/v/g, 'f')    // v/f visual confusion (v→f, then f→t below)
-    .replace(/f/g, 't')    // f→t (so both v and f normalize to t)
-    .replace(/x/g, 'k');
+    .replace(/vv/g, 'w')
+    .replace(/l/g, 'i')
+    .replace(/y/g, 'i')
+    .replace(/j/g, 'i')
+    .replace(/u/g, 'v');
 }
 
 function isSimilarWord(expected, actual) {
@@ -569,12 +569,9 @@ function isSimilarWord(expected, actual) {
   const actConf = normalizeNameConfusions(actNorm);
   if (expConf && expConf === actConf) return true;
 
-  // Levenshtein fuzzy match — ONLY for long names (≥ 8 chars).
-  // Short names (< 8) MUST match exactly or via the OCR confusion table above.
-  // This prevents e.g. "Magbhat" (7) from fuzzy-matching "Maguhat" (7) when the
-  // real name is "Magbuhat" (8). Long-name OCR drops like "Magbuhat"→"Maguhat"
-  // (dist=1, len=8) are still caught by the ≥ 8 rule below.
+  // 1-character OCR edit distance tolerance for names >= 5 chars (e.g. "ysabel" -> "ysabei", "mikaela" -> "mikaeia")
   const dist = getLevenshteinDistance(expNorm, actNorm);
+  if (expNorm.length >= 5 && actNorm.length >= 5 && dist <= 1) return true;
   if (expNorm.length >= 8 && dist <= 2) return true;
 
   return false;
@@ -1335,12 +1332,30 @@ function coe_type_matches_text(text) {
   const keywords = [
     'certificate of registration',
     'certificate of enrollment',
+    'certificate of enrolment',
+    'certification of registration',
+    'certification of enrollment',
+    'certification of enrolment',
+    'official registration',
+    'official enrollment',
+    'official enrolment',
     'registration',
     'enrollment',
+    'enrolment',
     'enrolled',
     'enroll',
+    'enrol',
+    'matriculation',
+    'matriculated',
+    'assessment',
+    'pagpapatala',
+    'katibayan ng pagpapatala',
     'cor',
-    'coe'
+    'coe',
+    'enroilment',
+    'ennollment',
+    'cnrollment',
+    'enrollnent'
   ];
   return keywords.some(kw => normText.includes(kw));
 }
@@ -1449,9 +1464,8 @@ function extractTotalUnitsFromText(text) {
     for (let k = allNums.length - 1; k >= 0; k--) {
       const v = parseUnitVal(allNums[k][1]);
       if (v !== null) {
-        // If Strategy 1 value matches subject count or subject count is unavailable, trust Strategy 1;
-        // if Strategy 1 disagrees with clear subject count (e.g. OCR misread '--- 12' as 18), prefer calculatedSubjectUnits
-        if (calculatedSubjectUnits !== null && Math.abs(v - calculatedSubjectUnits) >= 5) {
+        // Prefer calculatedSubjectUnits if explicit line has OCR misread (e.g. 9 instead of 12)
+        if (calculatedSubjectUnits !== null && Math.abs(v - calculatedSubjectUnits) >= 2) {
           return calculatedSubjectUnits;
         }
         return v;
@@ -1486,30 +1500,28 @@ function extractYearLevelFromText(text) {
   const s = String(text);
 
   // 1. Check section codes first (e.g. IT4B, IT3B, IT2B, IT1B, BSIT4)
-  if (/\bIT4B\b|\bBSIT4\b/i.test(s)) return '4th Year';
-  if (/\bIT3B\b|\bBSIT3\b/i.test(s)) return '3rd Year';
-  if (/\bIT2B\b|\bBSIT2\b/i.test(s)) return '2nd Year';
-  if (/\bIT1B\b|\bBSIT1\b/i.test(s)) return '1st Year';
+  if (/\bIT4B\b|\bBSIT4\b|\b4B\b/i.test(s)) return '4th Year';
+  if (/\bIT3B\b|\bBSIT3\b|\b3B\b/i.test(s)) return '3rd Year';
+  if (/\bIT2B\b|\bBSIT2\b|\b2B\b/i.test(s)) return '2nd Year';
+  if (/\bIT1B\b|\bBSIT1\b|\b1B\b/i.test(s)) return '1st Year';
 
-  // 2. Check year level header line (e.g. "Year Level : 4th Year", "Your Loved 4th")
-  const yearHeaderLineMatch = s.match(/(?:year\s*level|yr\s*level|your\s*loved|yr\s*lvl)\s*[:=\-]?\s*(?:the\s*)?([1-5])(?:st|nd|rd|th)?(?:\s*(?:year|yr|your))?\b/i);
+  // 2. Check year level header line (e.g. "Year Level : 4th Year", "Year Level : 4", "Yr Level : 4th")
+  const yearHeaderLineMatch = s.match(/(?:year\s*level|yr\s*level|your\s*loved|yr\s*lvl|grade\s*\/?\s*year\s*level|year)\s*[:=\-]?\s*(?:the\s*)?([1-5])(?:st|nd|rd|th)?(?:\s*(?:year|yr|your))?\b/i);
   if (yearHeaderLineMatch && yearHeaderLineMatch[1]) {
     const numMap = { '1': '1st Year', '2': '2nd Year', '3': '3rd Year', '4': '4th Year', '5': '5th Year' };
     if (numMap[yearHeaderLineMatch[1]]) return numMap[yearHeaderLineMatch[1]];
   }
 
-  // 3. Explicit ordinal matching (strictly preventing false match from "1st Semester" / "15 Serstr")
-  if (/\b(?:4th|fourth)\s*(?:year|yr|your)\b/i.test(s) || /\b4th\s*yr\b/i.test(s)) return '4th Year';
-  if (/\b(?:3rd|third)\s*(?:year|yr|your)\b/i.test(s) || /\b3rd\s*yr\b/i.test(s)) return '3rd Year';
-  if (/\b(?:2nd|second)\s*(?:year|yr|your)\b/i.test(s) || /\b2nd\s*yr\b/i.test(s)) return '2nd Year';
-  if (/\b(?:1st|first)\s*(?:year|yr|your)\b(?![\s\-\:]*(?:sem|semester|serstr))/i.test(s)) return '1st Year';
+  // 3. Explicit ordinal matching
+  if (/\b(?:4th|fourth)\s*(?:year|yr|your)?\b/i.test(s)) return '4th Year';
+  if (/\b(?:3rd|third)\s*(?:year|yr|your)?\b/i.test(s)) return '3rd Year';
+  if (/\b(?:2nd|second)\s*(?:year|yr|your)?\b/i.test(s)) return '2nd Year';
+  if (/\b(?:1st|first)\s*(?:year|yr|your)?\b(?![\s\-\:]*(?:sem|semester|serstr))/i.test(s)) return '1st Year';
 
-  // 4. Subject-based year level inference when header is heavily garbled by OCR
-  // 4th Year subjects: Elective 4, Capstone 2, Social & Professional Issues, Rizal
+  // 4. Subject-based year level inference
   if (/(?:elective\s*4|eiective\s*4|capstone\s*project\s*2|caproj2|social\s*and\s*profession|social\s*and\s*professional)/i.test(s)) {
     return '4th Year';
   }
-  // 3rd Year subjects: Elective 3, Capstone 1, System Integration, Networking 2, Fieldtrips
   if (/(?:elective\s*3|eiective\s*3|capstone\s*project\s*1|caproj1|system\s*integration|networking\s*2|fieldtrips)/i.test(s)) {
     return '3rd Year';
   }
@@ -1520,40 +1532,24 @@ function extractYearLevelFromText(text) {
 function yearLevelMatchesText(text, expectedYearLevel) {
   if (!expectedYearLevel || !text) return true;
 
+  const expNum = parseInt(String(expectedYearLevel).replace(/\D/g, ''), 10);
+  if (isNaN(expNum)) return true;
+
   const detected = extractYearLevelFromText(text);
   if (detected) {
-    const expNum = parseInt(String(expectedYearLevel).replace(/\D/g, ''), 10);
     const detNum = parseInt(String(detected).replace(/\D/g, ''), 10);
-    if (!isNaN(expNum) && !isNaN(detNum)) {
+    if (!isNaN(detNum)) {
       return expNum === detNum;
     }
   }
 
   const normText = normalizeForOcr(text);
-  const normLevel = normalizeForOcr(String(expectedYearLevel));
-
-  const numericMap = { '1st': 1, '2nd': 2, '3rd': 3, '4th': 4, '5th': 5, 'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5 };
-  let expNum = null;
-  for (const [key, num] of Object.entries(numericMap)) {
-    if (normLevel.includes(key)) {
-      expNum = num;
-      break;
-    }
-  }
-  if (!expNum) {
-    const digitMatch = normLevel.match(/\b([1-5])\b/);
-    if (digitMatch) expNum = parseInt(digitMatch[1], 10);
-  }
-
-  if (!expNum) return true;
-
-  // 1. Direct search for explicit ordinal year patterns
   const ordinalMap = [
-    { num: 4, regex: /\b(?:4th|fourth)\s*(?:year|yr|your)\b/i },
-    { num: 3, regex: /\b(?:3rd|third)\s*(?:year|yr|your)\b/i },
-    { num: 2, regex: /\b(?:2nd|second)\s*(?:year|yr|your)\b/i },
-    { num: 1, regex: /\b(?:1st|first)\s*(?:year|yr|your)\b(?![\s\-\:]*(?:sem|semester|serstr))/i },
-    { num: 5, regex: /\b(?:5th|fifth)\s*(?:year|yr|your)\b/i }
+    { num: 4, regex: /\b(?:4th|fourth)\s*(?:year|yr|your)?\b/i },
+    { num: 3, regex: /\b(?:3rd|third)\s*(?:year|yr|your)?\b/i },
+    { num: 2, regex: /\b(?:2nd|second)\s*(?:year|yr|your)?\b/i },
+    { num: 1, regex: /\b(?:1st|first)\s*(?:year|yr|your)?\b(?![\s\-\:]*(?:sem|semester|serstr))/i },
+    { num: 5, regex: /\b(?:5th|fifth)\s*(?:year|yr|your)?\b/i }
   ];
 
   for (const item of ordinalMap) {
@@ -1562,29 +1558,20 @@ function yearLevelMatchesText(text, expectedYearLevel) {
     }
   }
 
-  // 2. Direct check against extracted kv.yearLevel key-value
   const kv = extractOcrKeyValues(text);
   if (kv.yearLevel) {
     const s = String(kv.yearLevel).toLowerCase();
-    if (s.includes('1st') || s.includes('first') || s.includes('1')) return expNum === 1;
-    if (s.includes('2nd') || s.includes('second') || s.includes('2')) return expNum === 2;
-    if (s.includes('3rd') || s.includes('third') || s.includes('3')) return expNum === 3;
     if (s.includes('4th') || s.includes('fourth') || s.includes('4')) return expNum === 4;
+    if (s.includes('3rd') || s.includes('third') || s.includes('3')) return expNum === 3;
+    if (s.includes('2nd') || s.includes('second') || s.includes('2')) return expNum === 2;
+    if (s.includes('1st') || s.includes('first') || s.includes('1')) return expNum === 1;
     if (s.includes('5th') || s.includes('fifth') || s.includes('5')) return expNum === 5;
   }
 
-  // 3. Fallback header match requiring explicit ordinal or year level prefix
-  const yearHeaderMatch = String(text).match(/(?:year\s*level|yr\s*level|your\s*loved)\s*[\.\:\-\[\=\s]+\s*([1-5])(?:st|nd|rd|th)?\b/i);
+  const yearHeaderMatch = String(text).match(/(?:year\s*level|yr\s*level|your\s*loved|yr\s*lvl|year)\s*[:=\-]?\s*([1-5])(?:st|nd|rd|th)?\b/i);
   if (yearHeaderMatch && yearHeaderMatch[1]) {
     const foundNum = parseInt(yearHeaderMatch[1], 10);
     return foundNum === expNum;
-  }
-
-  // 4. Section code check (e.g. "IT3B", "BSIT3B", "IT4B")
-  const sectionMatch = String(text).match(/\b(?:IT|CS|BS|IS|SE|ECE|EE|IE|ACT)\-?([1-5])[A-Z0-9]{1,3}\b/i);
-  if (sectionMatch && sectionMatch[1]) {
-    const secNum = parseInt(sectionMatch[1], 10);
-    return secNum === expNum;
   }
 
   return true;

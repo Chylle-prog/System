@@ -891,9 +891,9 @@ def is_similar_name_word(w1, w2, strict_spelling=False):
     if w1_clean == w2_clean:
         return True
 
-    # Character OCR confusion map (0->o, 1->i, 5->s, 3->e, 8->b, rn->m, cl->d, vv->w)
+    # Character OCR confusion map (0->o, 1->i, 5->s, 3->e, 8->b, 4->a, rn->m, cl->d, vv->w, l->i, y->i, u->v)
     def _conf(s):
-        return re.sub(r'[^a-z0-9]', '', s).replace('1', 'i').replace('|', 'i').replace('0', 'o').replace('5', 's').replace('3', 'e').replace('8', 'b').replace('rn', 'm').replace('cl', 'd').replace('vv', 'w')
+        return re.sub(r'[^a-z0-9]', '', s).replace('1', 'i').replace('|', 'i').replace('0', 'o').replace('5', 's').replace('3', 'e').replace('8', 'b').replace('4', 'a').replace('rn', 'm').replace('cl', 'd').replace('vv', 'w').replace('l', 'i').replace('y', 'i').replace('j', 'i').replace('u', 'v')
 
     if _conf(w1_clean) == _conf(w2_clean):
         return True
@@ -905,7 +905,7 @@ def is_similar_name_word(w1, w2, strict_spelling=False):
     # For general words: allow 1-character OCR difference ONLY for longer words (>= 5 chars)
     if len(w1_clean) >= 5 and len(w2_clean) >= 5 and abs(len(w1_clean) - len(w2_clean)) <= 1:
         match_ratio = difflib.SequenceMatcher(None, w1_clean, w2_clean).ratio()
-        if match_ratio >= 0.88:
+        if match_ratio >= 0.82:
             return True
 
     return False

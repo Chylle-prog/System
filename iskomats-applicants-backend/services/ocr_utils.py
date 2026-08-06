@@ -1041,9 +1041,9 @@ def is_similar_name_word(w1, w2, strict_spelling=False):
     if w1_clean == w2_clean:
         return True
 
-    # Character OCR confusion map (0->o, 1->i, 5->s, 3->e, 8->b, rn->m, cl->d, vv->w)
+    # Character OCR confusion map (0->o, 1->i, 5->s, 3->e, 8->b, 4->a, rn->m, cl->d, vv->w, l->i, y->i, u->v)
     def _conf(s):
-        return re.sub(r'[^a-z0-9]', '', s).replace('1', 'i').replace('|', 'i').replace('0', 'o').replace('5', 's').replace('3', 'e').replace('8', 'b').replace('rn', 'm').replace('cl', 'd').replace('vv', 'w')
+        return re.sub(r'[^a-z0-9]', '', s).replace('1', 'i').replace('|', 'i').replace('0', 'o').replace('5', 's').replace('3', 'e').replace('8', 'b').replace('4', 'a').replace('rn', 'm').replace('cl', 'd').replace('vv', 'w').replace('l', 'i').replace('y', 'i').replace('j', 'i').replace('u', 'v')
 
     if _conf(w1_clean) == _conf(w2_clean):
         return True
@@ -1055,7 +1055,7 @@ def is_similar_name_word(w1, w2, strict_spelling=False):
     # For general words: allow 1-character OCR difference ONLY for longer words (>= 5 chars)
     if len(w1_clean) >= 5 and len(w2_clean) >= 5 and abs(len(w1_clean) - len(w2_clean)) <= 1:
         match_ratio = difflib.SequenceMatcher(None, w1_clean, w2_clean).ratio()
-        if match_ratio >= 0.88:
+        if match_ratio >= 0.82:
             return True
 
     return False
@@ -1983,10 +1983,6 @@ def extract_total_units_from_text(raw_text, azure_kvp=None):
                 if printed_line_units is not None:
                     break
 
-    # If printed line is valid (>= 6 units), return it directly!
-    if printed_line_units is not None and printed_line_units >= 6:
-        return printed_line_units
-
     # 3. DYNAMIC SUBJECT COURSE SUMMING & SMART DISCREPANCY OVERRIDE
     def _is_metadata(l):
         return bool(re.search(r'^\s*(?:course|name|student\s*(?:no|id)?|year\s*level|scholarship|pay\s*type|reg\s*no|tran\s*date|college)\s*[:=\-]', l, re.I) or
@@ -2019,11 +2015,9 @@ def extract_total_units_from_text(raw_text, azure_kvp=None):
                 continue
 
             subject_row_count += 1
-            # Sanitize row line with number typo sanitizer (e.g. 1S -> 15 or 3 -> 3)
             sanitized_row = sanitize_ocr_number_typos(line_clean)
             sanitized_row = re.sub(r'(?<![0-9])[:,;](?=[0-9])|(?<=[0-9])[:,;](?![0-9])', ' ', sanitized_row)
             sanitized_row = re.sub(r'\s+', ' ', sanitized_row).strip()
-            # Actual Column Summing — read actual unit values from subject table rows
             row_digits = re.findall(r'\b([1-6](?:\.0{1,2})?)\b', sanitized_row)
             if row_digits:
                 try:
@@ -2035,10 +2029,12 @@ def extract_total_units_from_text(raw_text, azure_kvp=None):
 
     course_sum_units = int(round(explicit_units_sum)) if 6 <= explicit_units_sum <= 60 else None
 
-    # Smart Discrepancy Override: if printed line was < 6 (e.g. misread 2), override with course sum!
-    if printed_line_units is not None and printed_line_units < 6 and course_sum_units is not None:
-        print(f"[UNITS OVERRIDE] Misread printed line '{printed_line_units}' overridden by Dynamic Subject Course Sum '{course_sum_units}'", flush=True)
-        return course_sum_units
+    # Smart Discrepancy Override: if printed line disagrees with course sum by >= 2 units (e.g. 9 vs 12), override with course sum!
+    if printed_line_units is not None and course_sum_units is not None:
+        if abs(printed_line_units - course_sum_units) >= 2 or printed_line_units < 6:
+            print(f"[UNITS OVERRIDE] Misread printed line '{printed_line_units}' overridden by Dynamic Subject Course Sum '{course_sum_units}'", flush=True)
+            return course_sum_units
+        return printed_line_units
 
     if course_sum_units is not None:
         return course_sum_units
