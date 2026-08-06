@@ -2011,16 +2011,6 @@ const StudentInfo = () => {
             };
           }
 
-          // For COE, National ID, and School ID video proofs, if a valid video recording is uploaded, pass video validation even if frame OCR was blurry
-          if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('mayorCOE') || fieldName?.includes('schoolId') || fieldName?.includes('Id') || fieldName?.includes('id') || fieldName?.includes('nationalId')) {
-            return {
-              valid: true,
-              isMatched: true,
-              reason: "Video Proof Verified (Video Attached)",
-              detectedText: (textLogs || []).join("\n\n") || "Video proof recording attached and verified."
-            };
-          }
-
           return {
             valid: false,
             isMatched: false,
