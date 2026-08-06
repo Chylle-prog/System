@@ -1973,6 +1973,7 @@ const StudentInfo = () => {
             ];
           } else if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('certificate') || fieldName?.includes('mayorCOE')) {
             targetKeywords = [
+              'certificate of registration', 'certificate of enrollment', 'official certificate of registration',
               'enrollment', 'registration', 'certificate', 'student', 'college', 'semester', 'academic',
               'official', 'course', 'school', 'university', 'whom', 'concern', 'certify', 'bonafide',
               'enrolled', 'registrar', 'dean', 'republic', 'philippines', 'department',
@@ -1997,12 +1998,15 @@ const StudentInfo = () => {
             ];
           }
 
+          const isCoeVideo = fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('mayorCOE') || fieldName?.includes('certificate');
+          const hasCoeTitleMatch = isCoeVideo ? (/certificate\s*o[fr]\s*(?:raguetration|registration|enrollment|reg)|enrollment|registration|\bcor\b|\bcoe\b/i.test(rawCombined) || cleanText.includes('enrollment') || cleanText.includes('registration')) : false;
+
           const targetBarangay = formData?.barangay || userProfile?.barangay || '';
           const hasNameMatch = allNameWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
           const hasAddressMatch = targetBarangay ? (cleanText.includes(targetBarangay.toLowerCase()) || rawCombined.includes(targetBarangay.toLowerCase())) : false;
           const hasKeywordMatch = targetKeywords.some(k => cleanText.includes(k) || rawCombined.includes(k));
 
-          if (hasNameMatch || hasAddressMatch || hasKeywordMatch) {
+          if (hasNameMatch || hasAddressMatch || hasKeywordMatch || hasCoeTitleMatch) {
             return {
               valid: true,
               isMatched: true,
