@@ -712,9 +712,39 @@ function studentNameMatchesText(text, first, middle, last) {
   const lastOk = checkNameWordGroup(last, targetText) || checkNameWordGroup(last, normText);
   const middleOk = middle ? (checkNameWordGroup(middle, targetText) || checkNameWordGroup(middle, normText)) : true;
 
-  const success = firstOk && lastOk && middleOk;
+  // --- Two-Way Reverse Candidate Name Check ---
+  // Extract candidate full name from document (e.g. kv.name or certificate anchor)
+  // and verify that every name word in document's candidate name is present in form input
+  let reverseCheckOk = true;
+  const candidateNameStr = kv.name || (function() {
+    const certM = text.match(/(?:certify|certifies)\s+that\s+([A-Za-z\s,\.\-]+?)(?=\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)/i);
+    return certM ? certM[1] : null;
+  })();
 
-  console.debug('[NAME CHECK]', { first, last, normText: normText.slice(0,200), targetText: targetText.slice(0,200), sequenceOk, firstOk, lastOk, success });
+  if (candidateNameStr) {
+    let cleanCandStr = candidateNameStr.replace(/(?:reg\s*no|student\s*no|id|tran\s*date|status|sec|bldg|college|pay|user|scholarship|discount|ref\s*no).*/i, '');
+    cleanCandStr = cleanCandStr.replace(/[^a-zA-Z\s]/g, ' ');
+    const normCand = normalizeForOcr(cleanCandStr);
+    const stopWords = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines'];
+    const candWords = normCand.split(/\s+/).filter(w => w.length >= 2 && !stopWords.includes(w.toLowerCase()));
+
+    const userInputNorm = normalizeForOcr(`${first || ''} ${middle || ''} ${last || ''}`);
+    const inputWords = userInputNorm.split(/\s+/).filter(w => w.length >= 1);
+
+    if (candWords.length >= 2) {
+      const missingDocWords = candWords.filter(docW => {
+        return !inputWords.some(inpW => isSimilarWord(docW, inpW) || isSimilarWord(inpW, docW));
+      });
+      if (missingDocWords.length > 0) {
+        console.debug('[REVERSE NAME CHECK FAILED] Candidate doc name has extra words not in form input:', missingDocWords);
+        reverseCheckOk = false;
+      }
+    }
+  }
+
+  const success = firstOk && lastOk && middleOk && reverseCheckOk;
+
+  console.debug('[NAME CHECK]', { first, last, normText: normText.slice(0,200), targetText: targetText.slice(0,200), sequenceOk, firstOk, lastOk, reverseCheckOk, success });
 
   return {
     success,
@@ -722,7 +752,7 @@ function studentNameMatchesText(text, first, middle, last) {
       first_ok: firstOk,
       middle_ok: middleOk,
       last_ok: lastOk,
-      sequence_ok: sequenceOk
+      sequence_ok: sequenceOk && reverseCheckOk
     }
   };
 }

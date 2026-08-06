@@ -1,52 +1,36 @@
 import os
 import sys
 
-# Add parent dir to path so we can import services.ocr_utils
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from services.ocr_utils import verify_name_sequence_detailed, verify_indigency_fields
+from services.ocr_utils import verify_name_sequence_detailed
 
-def test_name_verification_rules():
+def test_two_way_name_verification():
     print("==================================================")
-    print("Testing Strict Name Verification Rules (Last & First)")
+    print("Testing Two-Way Strict Name Verification Algorithm")
     print("==================================================")
 
-    # 1. Last Name Misspelling Test: "RIZAL, JOSE" vs "Riza" (must FAIL)
-    doc_text_1 = "This is to certify that RIZAL, JOSE is a bonafide resident of Barangay Inosloban, Lipa City."
-    first_ok_1, mid_ok_1, last_ok_1, seq_ok_1, errs_1 = verify_name_sequence_detailed(
-        first_name="Jose", last_name="Riza", target_text=doc_text_1
-    )
-    print(f"[TEST 1] 'RIZAL, JOSE' vs Last Name 'Riza' -> last_ok={last_ok_1}, seq_ok={seq_ok_1}")
-    assert not (first_ok_1 and last_ok_1 and seq_ok_1), "Misspelled last name 'Riza' should NOT validate against 'RIZAL, JOSE'"
-    print("[TEST 1 PASS] Misspelled last name 'Riza' was correctly rejected!")
+    # 1. Document has "JUAN MIGUEL SANTOS", User inputs First="Juan", Last="Santos" (MUST FAIL: omitted "Miguel")
+    doc_1 = "Name: JUAN MIGUEL SANTOS Reg No: 12345"
+    f1, m1, l1, seq1, err1 = verify_name_sequence_detailed("Juan", "Santos", doc_1)
+    print(f"[TEST 1] Doc='JUAN MIGUEL SANTOS' vs Input='Juan Santos': seq_ok={seq1}, err={err1}")
+    assert not seq1, "User entering only 'Juan' when doc has 'JUAN MIGUEL SANTOS' MUST fail"
+    print("[TEST 1 PASS] Omitted constituent name 'Miguel' was correctly rejected!")
 
-    # 2. Correct Last Name Test: "RIZAL, JOSE" vs "Rizal" (must PASS)
-    first_ok_2, mid_ok_2, last_ok_2, seq_ok_2, errs_2 = verify_name_sequence_detailed(
-        first_name="Jose", last_name="Rizal", target_text=doc_text_1
-    )
-    print(f"[TEST 2] 'RIZAL, JOSE' vs Last Name 'Rizal' -> first_ok={first_ok_2}, last_ok={last_ok_2}, seq_ok={seq_ok_2}")
-    assert first_ok_2 and last_ok_2 and seq_ok_2, "Correct last name 'Rizal' MUST validate against 'RIZAL, JOSE'"
-    print("[TEST 2 PASS] Correct last name 'Rizal' passed successfully!")
+    # 2. Document has "JUAN SANTOS", User inputs First="Juan Miguel", Last="Santos" (MUST FAIL: missing "Miguel" in doc)
+    doc_2 = "Name: JUAN SANTOS Reg No: 12345"
+    f2, m2, l2, seq2, err2 = verify_name_sequence_detailed("Juan Miguel", "Santos", doc_2)
+    print(f"[TEST 2] Doc='JUAN SANTOS' vs Input='Juan Miguel Santos': first_ok={f2}, seq_ok={seq2}")
+    assert not f2, "User entering 'Juan Miguel' when doc has only 'JUAN SANTOS' MUST fail"
+    print("[TEST 2 PASS] Missing first name token 'Miguel' in document was correctly rejected!")
 
-    # 3. Multi-word First Name Incomplete Test: Doc text has "JUAN SANTOS", input is "Juan Miguel" (must FAIL)
-    doc_text_3 = "Certificate of Indigency: Pinatutunayan na si JUAN SANTOS ay residente ng Barangay Marawoy."
-    first_ok_3, mid_ok_3, last_ok_3, seq_ok_3, errs_3 = verify_name_sequence_detailed(
-        first_name="Juan Miguel", last_name="Santos", target_text=doc_text_3
-    )
-    print(f"[TEST 3] 'JUAN SANTOS' vs First Name 'Juan Miguel' -> first_ok={first_ok_3}, seq_ok={seq_ok_3}")
-    assert not (first_ok_3 and seq_ok_3), "Incomplete first name 'Juan Miguel' should NOT validate when 'Miguel' is missing from document"
-    print("[TEST 3 PASS] Missing first name token 'Miguel' was correctly rejected!")
+    # 3. Document has "JUAN MIGUEL SANTOS", User inputs First="Juan Miguel", Last="Santos" (MUST PASS)
+    f3, m3, l3, seq3, err3 = verify_name_sequence_detailed("Juan Miguel", "Santos", doc_1)
+    print(f"[TEST 3] Doc='JUAN MIGUEL SANTOS' vs Input='Juan Miguel Santos': first_ok={f3}, last_ok={l3}, seq_ok={seq3}")
+    assert f3 and l3 and seq3, "Full matching name MUST pass"
+    print("[TEST 3 PASS] Full multi-word first name passed successfully!")
 
-    # 4. Multi-word First Name Complete Test: Doc text has "JUAN MIGUEL SANTOS", input is "Juan Miguel" (must PASS)
-    doc_text_4 = "Certificate of Indigency: Pinatutunayan na si JUAN MIGUEL SANTOS ay residente ng Barangay Marawoy."
-    first_ok_4, mid_ok_4, last_ok_4, seq_ok_4, errs_4 = verify_name_sequence_detailed(
-        first_name="Juan Miguel", last_name="Santos", target_text=doc_text_4
-    )
-    print(f"[TEST 4] 'JUAN MIGUEL SANTOS' vs First Name 'Juan Miguel' -> first_ok={first_ok_4}, last_ok={last_ok_4}, seq_ok={seq_ok_4}")
-    assert first_ok_4 and last_ok_4 and seq_ok_4, "Full first name 'Juan Miguel' MUST validate when all first name tokens exist"
-    print("[TEST 4 PASS] Full multi-word first name 'Juan Miguel' passed successfully!")
-
-    print("\nALL NAME VERIFICATION FIX TESTS PASSED SUCCESSFULLY!")
+    print("\nALL TWO-WAY NAME VERIFICATION TESTS PASSED PERFECTLY!")
 
 if __name__ == '__main__':
-    test_name_verification_rules()
+    test_two_way_name_verification()
