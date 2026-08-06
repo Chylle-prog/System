@@ -1020,14 +1020,15 @@ def normalize_id_number(s):
     return normalized
 
 
-def is_similar_name_word(w1, w2):
+def is_similar_name_word(w1, w2, strict_spelling=False):
     """
-    Returns True if name word w1 is equal to or highly similar to token w2,
-    allowing single-character OCR typos (e.g. Mikaela vs Mikarla, Lantafe vs Lantave).
-
-    Fix: Removed loose substring check (w1 in w2 / w2 in w1) that caused
-    partial name words like 'JUAN' to match 'JUANITA' or 'JUANCHO'.
-    Now only exact match or Levenshtein ≥ 85% similarity is accepted.
+    Returns True if name word w1 matches token w2.
+    If strict_spelling is True (used for Last Name & strict First Name verification):
+      - Accepts exact match or OCR character substitutions (0/O, 1/I, 5/S, 8/B, etc.).
+      - Rejects misspelled names (e.g., SANTOS vs DELA CRUZ, or SANTUZ vs SANTOS).
+    If strict_spelling is False:
+      - Allows 1-character OCR typo tolerance for longer words (>= 5 chars) with ratio >= 0.88.
+      - Requires exact match or OCR substitution for short words (<= 4 chars).
     """
     if not w1 or not w2:
         return False
@@ -1035,24 +1036,36 @@ def is_similar_name_word(w1, w2):
     w2_clean = re.sub(r'[^a-z0-9]', '', str(w2).lower())
     if not w1_clean or not w2_clean:
         return False
-    # Fix (Full-Phrase Matching): exact match only — no raw substring check.
-    # "juan" in "juanita" would previously return True but is now REJECTED.
+
+    # Exact match
     if w1_clean == w2_clean:
         return True
-    if len(w1_clean) >= 3 and len(w2_clean) >= 3 and abs(len(w1_clean) - len(w2_clean)) <= 2:
-        match_ratio = difflib.SequenceMatcher(None, w1_clean, w2_clean).ratio()
-        if match_ratio >= 0.85:
-            return True
+
+    # Character OCR confusion map (0->o, 1->i, 5->s, 3->e, 8->b, rn->m, cl->d, vv->w)
     def _conf(s):
         return re.sub(r'[^a-z0-9]', '', s).replace('1', 'i').replace('|', 'i').replace('0', 'o').replace('5', 's').replace('3', 'e').replace('8', 'b').replace('rn', 'm').replace('cl', 'd').replace('vv', 'w')
-    return _conf(w1_clean) == _conf(w2_clean)
+
+    if _conf(w1_clean) == _conf(w2_clean):
+        return True
+
+    # If strict spelling requested (e.g. Last Name), do not allow arbitrary character edits
+    if strict_spelling:
+        return False
+
+    # For general words: allow 1-character OCR difference ONLY for longer words (>= 5 chars)
+    if len(w1_clean) >= 5 and len(w2_clean) >= 5 and abs(len(w1_clean) - len(w2_clean)) <= 1:
+        match_ratio = difflib.SequenceMatcher(None, w1_clean, w2_clean).ratio()
+        if match_ratio >= 0.88:
+            return True
+
+    return False
 
 
 def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
     """
-    Verifies that the student's FULL name (first + last + middle together) appears as a
-    contiguous or near-contiguous sequence in the document text — not just each
-    word independently.
+    Order-Flexible and Strict-Spelling Name Verifier for document text.
+    Handles both 'FIRSTNAME LASTNAME' and 'LASTNAME, FIRSTNAME' layouts.
+    Enforces strict spelling matching on Last Name and complete First Name.
 
     Returns:
         (first_ok, middle_ok, last_ok, sequence_ok)
@@ -1067,8 +1080,7 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
     last_words  = [w for w in last_clean.split()  if len(w) >= 2]
     mid_words   = [w for w in mid_clean.split()   if len(w) >= 1]
 
-    # Address Noise Filtering: Strip place-related address phrases (e.g. "San Pedro", "San Juan", "Purok", "Zone", "Lipa City")
-    # from full_raw_text so address words cannot falsely match applicant name words.
+    # Address Noise Filtering: Strip place-related address phrases
     def sanitize_address_noise_from_text(txt):
         if not txt: return ""
         cleaned = str(txt)
@@ -1085,50 +1097,30 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
     sanitized_target = sanitize_address_noise_from_text(norm_target)
     sanitized_raw    = sanitize_address_noise_from_text(norm_raw)
 
-    # Individual word presence with OCR typo tolerance & address noise excluded
     target_tokens = (sanitized_target.split() if target_text else []) + (sanitized_raw.split() if full_raw_text else [])
 
-    def is_similar_name_word(e_word, t_word):
-        if not e_word or not t_word: return False
-        e_clean, t_clean = e_word.lower().strip(), t_word.lower().strip()
-        if e_clean == t_clean: return True
-        if len(e_clean) >= 3 and len(t_clean) >= 3 and abs(len(e_clean) - len(t_clean)) <= 2:
-            if difflib.SequenceMatcher(None, e_clean, t_clean).ratio() >= 0.85:
-                return True
-        def _conf(s):
-            return re.sub(r'[^a-z0-9]', '', s).replace('1', 'i').replace('|', 'i').replace('0', 'o').replace('5', 's').replace('3', 'e').replace('8', 'b').replace('rn', 'm').replace('cl', 'd').replace('vv', 'w')
-        return _conf(e_clean) == _conf(t_clean)
-
-    def check_word_in_tokens(w):
+    def check_word_in_tokens(w, strict=False):
         if not w: return True
-        return any(is_similar_name_word(w, tok) for tok in target_tokens)
+        return any(is_similar_name_word(w, tok, strict_spelling=strict) for tok in target_tokens)
 
-    # Fix (Complete First Name Verification): For multi-word first names, enforce that ALL
-    # words appear in sequence on the applicant name line — not just scattered across the document.
-    # For single-word first names, the token check (with ≥85% similarity) is sufficient.
+    # 1. FIRST NAME VALIDATION (Complete First Name & Strict Spelling)
     def check_first_name_phrase(first_words_list, search_text):
         """Requires all first name words to appear in contiguous order in search_text."""
         if not first_words_list:
             return True
         if len(first_words_list) == 1:
-            # Single word: token check is sufficient
-            return check_word_in_tokens(first_words_list[0])
-        # Multi-word: enforce sequence presence using check_word_sequence_fuzzy
-        # Build the phrase and require it to appear as a sequence in the text
-        first_phrase = ' '.join(first_words_list)
-        # check_word_sequence_fuzzy is defined below; use inline sequential check here
+            return check_word_in_tokens(first_words_list[0], strict=False)
         t_words = [w for w in normalize_text(search_text).split() if len(w) >= 1]
         expected_idx = 0
         last_found_idx = -1
         for i, t_word in enumerate(t_words):
             e_word = first_words_list[expected_idx]
-            is_match = is_similar_name_word(e_word, t_word)
+            is_match = is_similar_name_word(e_word, t_word, strict_spelling=False)
             if is_match:
                 if last_found_idx != -1 and (i - last_found_idx) > 3:
-                    # Too far apart — reset sequence
                     expected_idx = 0
                     last_found_idx = -1
-                    if is_similar_name_word(first_words_list[0], t_word):
+                    if is_similar_name_word(first_words_list[0], t_word, strict_spelling=False):
                         expected_idx = 1
                         last_found_idx = i
                     continue
@@ -1139,37 +1131,40 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         return False
 
     if first_words:
-        # Try phrase check first on candidate_name/target_text, then on sanitized_raw
         first_ok = check_first_name_phrase(first_words, sanitized_target)
         if not first_ok:
             first_ok = check_first_name_phrase(first_words, sanitized_raw)
     else:
         first_ok = True
 
-    last_ok  = all(check_word_in_tokens(w) for w in last_words) if last_words else True
+    # 2. LAST NAME VALIDATION (Strict Spelling & Order-Independent Token Search)
+    last_ok = all(check_word_in_tokens(w, strict=True) for w in last_words) if last_words else True
+
+    # 3. MIDDLE NAME VALIDATION
     middle_ok = True
     if mid_words:
-        mid_full_ok = all(check_word_in_tokens(w) for w in mid_words if len(w) >= 2)
+        mid_full_ok = all(check_word_in_tokens(w, strict=False) for w in mid_words if len(w) >= 2)
         if not mid_full_ok and mid_clean:
             initial = mid_clean[0]
             mid_full_ok = any(tok.startswith(initial) for tok in target_tokens)
         middle_ok = mid_full_ok
 
-    # ---- Full-name sequence check (the key anti-spoofing step) ----
+    # 4. ORDER-INDEPENDENT SEQUENCE CHECK (FIRST LAST vs LAST FIRST vs LAST, FIRST)
     def build_sequence_regex(name_str):
-        """Build a regex that requires all name words in order, with OCR noise allowed between."""
         words = [re.escape(w) for w in normalize_text(name_str).split() if len(w) >= 1]
         if not words:
             return None
-        pattern = r'[^a-z0-9]{0,4}'.join(words)
+        pattern = r'[^a-z0-9]{0,6}'.join(words)
         return re.compile(r'\b' + pattern + r'\b')
 
+    sequences_to_check = []
     if mid_clean:
-        sequences_to_check = [
+        sequences_to_check.extend([
             f'{first_clean} {mid_clean} {last_clean}',
             f'{last_clean} {first_clean} {mid_clean}',
-            f'{last_clean} {mid_clean} {first_clean}'
-        ]
+            f'{last_clean} {mid_clean} {first_clean}',
+            f'{first_clean} {last_clean}'
+        ])
         mid_initial = mid_clean[0]
         if mid_initial:
             sequences_to_check.extend([
@@ -1183,7 +1178,6 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
             f'{last_clean} {first_clean}'
         ]
 
-
     def check_word_sequence_fuzzy(name_str, search_text):
         exp_words = [w for w in normalize_text(name_str).split() if len(w) >= 1]
         if not exp_words:
@@ -1196,14 +1190,12 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         for i, t_word in enumerate(t_words):
             e_word = exp_words[expected_idx]
 
-            is_match = is_similar_name_word(e_word, t_word) or (len(e_word) == 1 and (t_word == e_word or t_word == e_word + '.'))
+            is_match = is_similar_name_word(e_word, t_word, strict_spelling=False) or (len(e_word) == 1 and (t_word == e_word or t_word == e_word + '.'))
             if is_match:
-                # Fix 3: Increase word gap tolerance from 2 to 5 to handle LASTNAME, FIRSTNAME MIDDLENAME
-                # with commas, middle names, suffixes, or other words between last and first name.
                 if last_found_idx != -1 and (i - last_found_idx) > 5:
                     expected_idx = 0
                     last_found_idx = -1
-                    if is_similar_name_word(exp_words[0], t_word):
+                    if is_similar_name_word(exp_words[0], t_word, strict_spelling=False):
                         expected_idx = 1
                         last_found_idx = i
                     continue
