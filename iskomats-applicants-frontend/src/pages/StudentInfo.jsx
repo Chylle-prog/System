@@ -1961,19 +1961,22 @@ const StudentInfo = () => {
               'purok', 'bonafide', 'family', 'families', 'sangguniang', 'kagawad', 'lubi', 'moises',
               'republic', 'philippines', 'province', 'municipality', 'seal'
             ];
-          } else if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('certificate') || fieldName?.includes('mayorCOE')) {
+          } else if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('certificate') || fieldName?.includes('mayorCOE') || fieldName?.includes('cor')) {
             targetKeywords = [
               'certificate of registration', 'certificate of enrollment', 'official certificate of registration',
               'enrollment', 'registration', 'certificate', 'student', 'college', 'semester', 'academic',
               'official', 'course', 'school', 'university', 'whom', 'concern', 'certify', 'bonafide',
               'enrolled', 'registrar', 'dean', 'republic', 'philippines', 'department',
               'dlsl', 'lipa', 'salle', 'bsit', 'units', 'cor', 'coe', 'total', 'pathfi', 'coprog',
-              'coworld', 'dismath', 'intcom', 'itbupro', 'nstp', 'purpcom', 'readphi', '2025', '2026'
+              'coworld', 'dismath', 'intcom', 'itbupro', 'nstp', 'purpcom', 'readphi', '2025', '2026',
+              'form', 'year', 'level', 'fee', 'tuition', 'subject', 'grades'
             ];
-          } else if (fieldName?.includes('Grades') || fieldName?.includes('grades')) {
+          } else if (fieldName?.includes('Grades') || fieldName?.includes('grades') || fieldName?.includes('mayorGrades') || fieldName?.includes('reportCard')) {
             targetKeywords = [
-              'grade', 'transcript', 'gpa', 'academic', 'rating', 'remarks', 'passed', 'subject',
-              'units', 'evaluation', 'record', 'scholastic', 'gwa', 'registrar', 'certified', 'true', 'copy'
+              'grade', 'grades', 'transcript', 'gpa', 'gwa', 'academic', 'rating', 'remarks', 'passed',
+              'subject', 'subjects', 'units', 'evaluation', 'record', 'scholastic', 'registrar',
+              'certified', 'true', 'copy', 'student', 'school', 'college', 'course', 'term', 'semester',
+              'year', 'tor', 'card', 'report'
             ];
           } else if (fieldName?.includes('schoolId') || fieldName?.includes('Id') || fieldName?.includes('id') || fieldName?.includes('nationalId')) {
             targetKeywords = [
@@ -1984,11 +1987,11 @@ const StudentInfo = () => {
           } else {
             targetKeywords = [
               'certificate', 'official', 'document', 'school', 'student', 'republic', 'barangay',
-              'whom', 'concern', 'certify', 'philippines', 'province', 'office'
+              'whom', 'concern', 'certify', 'philippines', 'province', 'office', 'grade', 'transcript', 'registration'
             ];
           }
 
-          const isCoeVideo = fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('mayorCOE') || fieldName?.includes('certificate');
+          const isCoeVideo = fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('mayorCOE') || fieldName?.includes('certificate') || fieldName?.includes('cor');
           const isSchoolIdVideo = fieldName?.includes('schoolId') || fieldName?.includes('schoolid') || fieldName?.includes('schoolIdFront') || fieldName?.includes('schoolIdBack') || fieldName?.includes('face_video') || fieldName?.includes('id_vid');
           const hasCoeTitleMatch = isCoeVideo ? (/certificate\s*o[fr]\s*(?:raguetration|registration|enrollment|reg)|enrollment|registration|\bcor\b|\bcoe\b/i.test(rawCombined) || cleanText.includes('enrollment') || cleanText.includes('registration')) : false;
 
@@ -2025,8 +2028,7 @@ const StudentInfo = () => {
           };
         };
 
-        const isGradesVideo = fieldName?.includes('Grades') || fieldName?.includes('grades');
-        const videoTimeout = isGradesVideo ? 8000 : 20000;
+        const videoTimeout = 20000;
 
         const timeout = setTimeout(() => {
           if (!ocrTriggered) {
@@ -2036,7 +2038,7 @@ const StudentInfo = () => {
           }
         }, videoTimeout);
 
-        const checkPoints = isGradesVideo ? [0.4] : [0.2, 0.5, 0.8];
+        const checkPoints = [0.15, 0.45, 0.75];
         let currentCheckIndex = 0;
         let accumulatedText = [];
         let hasSeeked = false;
@@ -2074,16 +2076,13 @@ const StudentInfo = () => {
             const ctx = canvas.getContext('2d');
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = "high";
-            if ('filter' in ctx) {
-              ctx.filter = 'contrast(180%) brightness(95%) grayscale(100%)';
-            }
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
             try {
               const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
               const data = imgData.data;
 
-              // Fast variance check to skip blank black/white video padding frames
+              // Fast variance check to skip pure black/white video padding frames
               let sumG = 0, sumSqG = 0, sampleCount = 0;
               for (let i = 0; i < data.length; i += 16) {
                 const g = data[i];
@@ -2094,8 +2093,8 @@ const StudentInfo = () => {
               const meanG = sumG / sampleCount;
               const stdDevG = Math.sqrt(Math.max(0, (sumSqG / sampleCount) - (meanG * meanG)));
 
-              if (stdDevG < 7.0) {
-                // Skip OCR on blank/solid-color video padding frames
+              if (stdDevG < 2.0) {
+                // Skip OCR on pure solid black/white padding frames only
                 currentCheckIndex++;
                 if (currentCheckIndex < checkPoints.length && isFinite(video.duration) && video.duration > 0) {
                   video.currentTime = video.duration * checkPoints[currentCheckIndex];
