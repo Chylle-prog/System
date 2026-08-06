@@ -2533,13 +2533,20 @@ const StudentInfo = () => {
         const token = localStorage.getItem('authToken');
         const apiOrigin = API_ORIGIN;
 
+        const hasFaceVid = profile.has_id_vid || profile.id_vid_url || profile.face_video;
+        const hasIndigencyVid = profile.has_indigency_vid || profile.indigency_vid_url || profile.mayorIndigency_video;
+        const hasGradesVid = profile.has_grades_vid || profile.grades_vid_url || profile.mayorGrades_video;
+        const hasCoeVid = profile.has_enrollment_certificate_vid || profile.enrollment_certificate_vid_url || profile.mayorCOE_video;
+        const hasSchoolIdFrontVid = profile.has_schoolid_front_vid || profile.schoolid_front_vid_url || profile.schoolIdFront_video;
+        const hasSchoolIdBackVid = profile.has_schoolid_back_vid || profile.schoolid_back_vid_url || profile.schoolIdBack_video;
+
         const rawVideos = {
-          face_video: profile.id_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/face_video?token=${token}` : null,
-          mayorIndigency_video: profile.indigency_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null,
-          mayorGrades_video: profile.grades_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorGrades_video?token=${token}` : null,
-          mayorCOE_video: profile.enrollment_certificate_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorCOE_video?token=${token}` : null,
-          schoolIdFront_video: profile.schoolid_front_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdFront_video?token=${token}` : null,
-          schoolIdBack_video: profile.schoolid_back_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null
+          face_video: hasFaceVid ? `${apiOrigin}/api/student/applicant/document/raw/face_video?token=${token}` : null,
+          mayorIndigency_video: hasIndigencyVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null,
+          mayorGrades_video: hasGradesVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorGrades_video?token=${token}` : null,
+          mayorCOE_video: hasCoeVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorCOE_video?token=${token}` : null,
+          schoolIdFront_video: hasSchoolIdFrontVid ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdFront_video?token=${token}` : null,
+          schoolIdBack_video: hasSchoolIdBackVid ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null
         };
 
         const activeVids = {};
