@@ -718,8 +718,19 @@ function studentNameMatchesText(text, first, middle, last) {
   let reverseFirstOk = true;
   let candidateNameStr = kv.name || null;
   if (!candidateNameStr) {
-    const certM = text.match(/(?:certify|certifies)\s+that\s+([A-Za-z\s,\.\-]+?)(?=\s+\d+\s+years|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)/i);
-    if (certM) candidateNameStr = certM[1];
+    const certPatterns = [
+      /(?:certify|certifies|cently|certifye|certiy|patunay|katibayan)\s+(?:that\s+)?([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years|yr|yo)|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)/i,
+      /(?:this\s+is\s+to|sto)\s+[a-z]{3,10}\s+that\s+([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years|yr|yo)|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)/i,
+      /that\s+([A-Z\s,\.\-]{5,60}?)(?=\s+\d+\s*(?:years|yr|yo|\s+years\s+of\s+age)|\s+is\s+a\s+resident|\s+a\s+bonafide|\n|$)/i,
+      /(?:name|pangalan)\s*[:\-]?\s*([A-Za-z\s,\.\-]+?)(?=\s+reg|\s+student|\s+id|\n|$)/i
+    ];
+    for (const pat of certPatterns) {
+      const m = text.match(pat);
+      if (m && m[1] && m[1].trim().length >= 3 && m[1].trim().includes(' ')) {
+        candidateNameStr = m[1].trim();
+        break;
+      }
+    }
   }
 
   if (candidateNameStr) {

@@ -25,7 +25,14 @@ def test_mikaela_ysabel_case():
     assert f2 and l2 and seq2, "Full first name 'Mikaela Ysabel' MUST pass"
     print("[CASE 2 PASS] Full first name 'Mikaela Ysabel' passed successfully!")
 
-    print("\nMIKAELA YSABEL TEST CASE COMPLETED PERFECTLY!")
+    # Case 3: OCR Typo in certification header ("This sto cently that MIKAELA YSABEL L LANTAFE 23 years of age")
+    ocr_typo_doc = "This sto cently that MIKAELA YSABEL L LANTAFE 23 years of age is a resident of PUROK 2, BRGY. INOSLUBAN, LIPA CITY."
+    f3, m3, l3, seq3, err3 = verify_name_sequence_detailed("Mikaela", "Lantafe", ocr_typo_doc)
+    print(f"[CASE 3] Input 'Mikaela' vs Typo Doc 'sto cently that MIKAELA YSABEL...': first_ok={f3}, last_ok={l3}, seq_ok={seq3}, err={err3}")
+    assert not f3, "first_ok MUST be False even when OCR reads header as 'sto cently that'"
+    print("[CASE 3 PASS] OCR typo header 'sto cently that' correctly extracted candidate name and rejected incomplete first name!")
+
+    print("\nALL MIKAELA YSABEL TEST CASES COMPLETED PERFECTLY!")
 
 if __name__ == '__main__':
     test_mikaela_ysabel_case()

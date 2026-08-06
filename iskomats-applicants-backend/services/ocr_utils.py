@@ -1222,10 +1222,20 @@ def verify_name_sequence_detailed(first_name, last_name, target_text, full_raw_t
     candidate_name = None
     if target_text and target_text != full_raw_text and len(target_text.strip()) > 3 and len(target_text.strip()) < 80 and not any(kw in target_text.lower() for kw in ['certify', 'resident', 'barangay', 'office']):
         candidate_name = target_text
-    else:
-        cert_m = re.search(r'(?:certify|certifies)\s+that\s+([A-Za-z\s,\.\-]+?)(?=\s+\d+\s+years|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)', full_raw_text or target_text or '', re.I)
-        if cert_m:
-            candidate_name = cert_m.group(1)
+
+    if not candidate_name:
+        text_to_search = full_raw_text or target_text or ''
+        cert_patterns = [
+            r'(?:certify|certifies|cently|certifye|certiy|patunay|katibayan)\s+(?:that\s+)?([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years|yr|yo)|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)',
+            r'(?:this\s+is\s+to|sto)\s+[a-z]{3,10}\s+that\s+([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years|yr|yo)|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)',
+            r'that\s+([A-Z\s,\.\-]{5,60}?)(?=\s+\d+\s*(?:years|yr|yo|\s+years\s+of\s+age)|\s+is\s+a\s+resident|\s+a\s+bonafide|\n|$)',
+            r'(?:name|pangalan)\s*[:\-]?\s*([A-Za-z\s,\.\-]+?)(?=\s+reg|\s+student|\s+id|\n|$)'
+        ]
+        for pat in cert_patterns:
+            cert_m = re.search(pat, text_to_search, re.I)
+            if cert_m and cert_m.group(1) and len(cert_m.group(1).strip()) >= 3 and ' ' in cert_m.group(1).strip():
+                candidate_name = cert_m.group(1).strip()
+                break
 
     if candidate_name:
         clean_cand = re.sub(r'(?:reg\s*no|student\s*no|id|tran\s*date|status|sec|bldg|college|pay|user|scholarship|discount|ref\s*no).*', '', candidate_name, flags=re.I)
