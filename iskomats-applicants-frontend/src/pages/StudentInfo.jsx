@@ -4948,8 +4948,8 @@ const StudentInfo = () => {
           motherName: profile.mother_name || '',
           motherOccupation: profile.mother_occupation || '',
           motherPhoneNumber: profile.mother_phone_no || '',
-          parentsGrossIncome: profile.financial_income_of_parents || urlIncome || scholarshipSearchProfile?.income || '',
-          gpa: profile.overall_gpa || savedDraft?.formData?.gpa || urlGpa || scholarshipSearchProfile?.gpa || '',
+          parentsGrossIncome: urlIncome || scholarshipSearchProfile?.income || profile.financial_income_of_parents || '',
+          gpa: urlGpa || scholarshipSearchProfile?.gpa || profile.overall_gpa || savedDraft?.formData?.gpa || '',
           numberOfSiblings: profile.sibling_no || '',
           course: profile.course || '',
           meritsAwardsReceived: profile.merits_awards_received || ''
@@ -5049,9 +5049,14 @@ const StudentInfo = () => {
 
         setFormData(prev => {
           const merged = mergeMeaningfulValues(prev, updates);
-          const preservedGpa = (prev.gpa && String(prev.gpa).trim()) ? prev.gpa : (savedDraft?.formData?.gpa || updates.gpa);
+          const activeUrlOrSearchGpa = urlGpa || scholarshipSearchProfile?.gpa;
+          const activeUrlOrSearchIncome = urlIncome || scholarshipSearchProfile?.income;
+          const preservedGpa = activeUrlOrSearchGpa || (prev.gpa && String(prev.gpa).trim() ? prev.gpa : (savedDraft?.formData?.gpa || updates.gpa));
+          const preservedIncome = activeUrlOrSearchIncome || (prev.parentsGrossIncome && String(prev.parentsGrossIncome).trim() ? prev.parentsGrossIncome : updates.parentsGrossIncome);
+
           return {
             ...merged,
+            parentsGrossIncome: preservedIncome,
             gpa: preservedGpa,
             firstName: targetFirstName,
             lastName: targetLastName,
@@ -5292,6 +5297,17 @@ const StudentInfo = () => {
           if (savedDraft.currentStep) {
             setCurrentStep(savedDraft.currentStep);
           }
+        }
+
+        // Ensure URL / Find Scholarship search inputs take priority for parentsGrossIncome and gpa over Supabase / draft values
+        const activeUrlOrSearchIncome = urlIncome || scholarshipSearchProfile?.income;
+        const activeUrlOrSearchGpa = urlGpa || scholarshipSearchProfile?.gpa;
+        if (activeUrlOrSearchIncome || activeUrlOrSearchGpa) {
+          setFormData(prev => ({
+            ...prev,
+            ...(activeUrlOrSearchIncome ? { parentsGrossIncome: activeUrlOrSearchIncome } : {}),
+            ...(activeUrlOrSearchGpa ? { gpa: activeUrlOrSearchGpa } : {})
+          }));
         }
 
         setIsInitialLoading(false);
