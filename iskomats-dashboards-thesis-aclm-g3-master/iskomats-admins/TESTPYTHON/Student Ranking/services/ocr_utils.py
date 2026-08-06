@@ -1040,6 +1040,293 @@ def _run_tesseract_on_image(img, psm=3):
         print(f"[OCR] Tesseract error: {e}", flush=True)
         return ""
 
+def sanitize_ocr_number_typos(text):
+    """
+    Robust OCR Typo Sanitizer for small printed numbers & letters:
+    Corrects common OCR misreads on numbers:
+    - 1B -> 18, 2O -> 20, 1S -> 15, 0B -> 08, O5 -> 05
+    - I8/l8 -> 18, S5 -> 55, I5/l5 -> 15, Z0 -> 20, 1O -> 10, O0 -> 00
+    - 3O -> 30, 4O -> 40, 5O -> 50
+    - Fixes letter O/I/S/B inside numeric strings (e.g., "20213O5751" -> "2021305751")
+    """
+    if not text:
+        return ""
+    text_str = str(text)
+
+    # 1. Standalone pattern replacements
+    typo_replacements = [
+        (r'\b1[Bb]\b', '18'),
+        (r'\b2[Oo]\b', '20'),
+        (r'\b1[Ss]\b', '15'),
+        (r'\b0[Bb]\b', '08'),
+        (r'\b[Oo]5\b', '05'),
+        (r'\b[Ii|l]8\b', '18'),
+        (r'\b[Ss]5\b', '55'),
+        (r'\b[Ii|l]5\b', '15'),
+        (r'\b[Zz]0\b', '20'),
+        (r'\b1[Oo]\b', '10'),
+        (r'\b[Oo]0\b', '00'),
+        (r'\b3[Oo]\b', '30'),
+        (r'\b4[Oo]\b', '40'),
+        (r'\b5[Oo]\b', '50'),
+    ]
+    for pat, repl in typo_replacements:
+        text_str = re.sub(pat, repl, text_str)
+
+    # 2. Contextual letter fixes inside numeric sequences (e.g. 20213O5751 -> 2021305751)
+    def _fix_digit_sequence(match):
+        seq = match.group(0)
+        seq = seq.replace('O', '0').replace('o', '0')
+        seq = seq.replace('I', '1').replace('l', '1')
+        seq = seq.replace('S', '5').replace('s', '5')
+        seq = seq.replace('B', '8').replace('b', '8')
+        seq = seq.replace('Z', '2').replace('z', '2')
+        return seq
+
+    text_str = re.sub(r'\b(?:\d+[OoSsIiLlBbZz]\d+|\d+[OoSsIiLlBbZz]|\d{2,}[OoSsIiLlBbZz]\d{2,})\b', _fix_digit_sequence, text_str)
+    return text_str
+
+def enhance_cor_document_super_resolution(image_bytes, scale_factor=3.5):
+    """
+    3x-4x Bicubic Super-Resolution & Sharpness Enhancement before OCR (Azure & Tesseract).
+    1. Resizes using Bicubic Interpolation (cv2.INTER_CUBIC) to 3x-4x scale (target width ~3500px).
+    2. Applies CLAHE (clipLimit=2.5, tileGridSize=(8,8)) for local contrast.
+    3. Applies Unsharp Masking filter to sharpen small printed letters and digits.
+    Returns: (enhanced_jpg_bytes, enhanced_cv_img)
+    """
+    if not image_bytes:
+        return image_bytes, None
+    try:
+        data = decode_base64(image_bytes) if isinstance(image_bytes, str) else image_bytes
+        if not data:
+            return image_bytes, None
+        nparr = np.frombuffer(data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return image_bytes, None
+
+        h, w = img.shape[:2]
+        target_w = max(2800, min(4000, int(w * scale_factor)))
+        scale = float(target_w) / float(w)
+        target_h = int(h * scale)
+
+        # 3x-4x Bicubic Upscaling
+        resized = cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_CUBIC)
+
+        # Convert to Grayscale for CLAHE & Unsharp Masking
+        gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+
+        # CLAHE (Local Contrast Enhancement)
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+        contrast_enhanced = clahe.apply(gray)
+
+        # Unsharp Masking (Sharpness Enhancement)
+        blurred = cv2.GaussianBlur(contrast_enhanced, (3, 3), 0)
+        sharpened = cv2.addWeighted(contrast_enhanced, 1.6, blurred, -0.6, 0)
+
+        # Encode back to high-quality JPG bytes
+        success, encoded = cv2.imencode('.jpg', sharpened, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+        if success:
+            return encoded.tobytes(), sharpened
+        return image_bytes, img
+    except Exception as e:
+        print(f"[COR SUPER-RES] Error enhancing image: {e}", flush=True)
+        return image_bytes, None
+
+def extract_cor_roi_crops(img_cv):
+    """
+    Region-of-Interest (ROI) Regional Crop Scanning for COR:
+    - Header ROI Scan (Top 38%): Focused on Student Name, Student ID, School Name, Course.
+    - Footer/Table ROI Scan (Bottom 45%): Focused on Total Units and subject table summary.
+    Returns: (header_crop_bytes, footer_crop_bytes)
+    """
+    if img_cv is None:
+        return None, None
+    try:
+        h, w = img_cv.shape[:2]
+
+        # Header ROI (Top 38%)
+        header_img = img_cv[0 : int(h * 0.38), 0 : w]
+        # Footer ROI (Bottom 45%)
+        footer_img = img_cv[int(h * 0.55) : h, 0 : w]
+
+        s1, enc_header = cv2.imencode('.jpg', header_img, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+        s2, enc_footer = cv2.imencode('.jpg', footer_img, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+
+        header_bytes = enc_header.tobytes() if s1 else None
+        footer_bytes = enc_footer.tobytes() if s2 else None
+
+        return header_bytes, footer_bytes
+    except Exception as e:
+        print(f"[COR ROI CROPS] Error cropping regions: {e}", flush=True)
+        return None, None
+
+def extract_text_multi_pass_tesseract(img_cv_or_bytes, psms=[6, 11, 3]):
+    """
+    Multi-Pass OCR & Sparse Text Extraction (--psm 6 & --psm 11 & --psm 3):
+    Runs multiple Tesseract passes with different Page Segmentation Modes (PSMs)
+    and combines distinct lines to capture scattered small words & digits.
+    """
+    if img_cv_or_bytes is None or pytesseract is None:
+        return ""
+    _init_tesseract()
+    
+    img_cv = img_cv_or_bytes
+    if isinstance(img_cv_or_bytes, (bytes, str)):
+        data = decode_base64(img_cv_or_bytes) if isinstance(img_cv_or_bytes, str) else img_cv_or_bytes
+        if data:
+            nparr = np.frombuffer(data, np.uint8)
+            img_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+    if img_cv is None:
+        return ""
+
+    combined_lines = []
+    seen_lines_normalized = set()
+
+    for psm in psms:
+        try:
+            txt = pytesseract.image_to_string(img_cv, config=f'--psm {psm} --oem 1')
+            if txt:
+                for line in txt.splitlines():
+                    l_clean = line.strip()
+                    if not l_clean:
+                        continue
+                    l_norm = re.sub(r'\s+', ' ', l_clean).lower()
+                    if l_norm not in seen_lines_normalized:
+                        seen_lines_normalized.add(l_norm)
+                        combined_lines.append(l_clean)
+        except Exception as e:
+            print(f"[MULTI-PASS OCR] Pass psm {psm} note: {e}", flush=True)
+
+    return "\n".join(combined_lines)
+
+def extract_text_and_kvp_with_azure(image_bytes):
+    """
+    Extracts text and Key-Value Pairs from document using Azure Document Intelligence REST API.
+    Attempts prebuilt-document model first (for structured KVP), falling back to prebuilt-layout.
+    """
+    key = os.environ.get('AZURE_DOC_INTEL_KEY', '').strip()
+    endpoint = os.environ.get('AZURE_DOC_INTEL_ENDPOINT', '').strip().rstrip('/')
+
+    if not key or not endpoint:
+        return None, {}
+
+    try:
+        data = decode_base64(image_bytes) if isinstance(image_bytes, str) else image_bytes
+        if not data or len(data) < 10:
+            return None, {}
+
+        import requests
+        headers = {
+            'Ocp-Apim-Subscription-Key': key,
+            'Content-Type': 'application/octet-stream'
+        }
+
+        models = ['prebuilt-document', 'prebuilt-layout']
+        for model in models:
+            analyze_url = f"{endpoint}/formrecognizer/documentModels/{model}:analyze?api-version=2023-07-31"
+            resp = requests.post(analyze_url, headers=headers, data=data, timeout=15)
+            if resp.status_code != 202:
+                continue
+
+            op_location = resp.headers.get('Operation-Location')
+            if not op_location:
+                continue
+
+            for _ in range(30):
+                time.sleep(0.4)
+                poll_resp = requests.get(op_location, headers={'Ocp-Apim-Subscription-Key': key}, timeout=10)
+                if poll_resp.status_code == 200:
+                    result_json = poll_resp.json()
+                    status = result_json.get('status')
+                    if status == 'succeeded':
+                        analyze_res = result_json.get('analyzeResult', {})
+                        content = analyze_res.get('content', '')
+                        kvp_dict = {}
+                        kv_pairs = analyze_res.get('keyValuePairs', [])
+                        for kv in kv_pairs:
+                            k_str = (kv.get('key', {}).get('content') or '').strip().lower()
+                            v_str = (kv.get('value', {}).get('content') or '').strip()
+                            if k_str and v_str:
+                                kvp_dict[k_str] = v_str
+                        if content and len(content.strip()) > 0:
+                            print(f"[AZURE OCR] Extracted {len(content)} chars and {len(kvp_dict)} KV pairs via {model}.", flush=True)
+                            return content.strip(), kvp_dict
+                    elif status in ('failed', 'canceled'):
+                        break
+        return None, {}
+    except Exception as e:
+        print(f"[AZURE OCR] Exception: {e}", flush=True)
+        return None, {}
+
+def extract_text_with_azure_document_intelligence(image_bytes):
+    text, _ = extract_text_and_kvp_with_azure(image_bytes)
+    return text
+
+def extract_cor_document_text_multi_pass(image_bytes):
+    """
+    Comprehensive COR OCR processing pipeline incorporating:
+    1. 3x-4x Bicubic Super-Scaling + CLAHE + Sharpness Enhancement
+    2. Azure Document Intelligence extraction on high-res super-scaled image
+    3. Header ROI (Top 38%) and Footer ROI (Bottom 45%) Regional Crops
+    4. Multi-Pass Tesseract OCR (--psm 6, --psm 11, --psm 3) on Full Image, Header ROI, and Footer ROI
+    5. Robust OCR Typo Sanitizer (e.g. 1B -> 18, 2O -> 20, 1S -> 15)
+    Returns: (raw_text, azure_kvp)
+    """
+    if not image_bytes:
+        return "", {}
+
+    # Step 1: 3x-4x Bicubic Super-Scaling + CLAHE + Unsharp Masking
+    enhanced_bytes, enhanced_img = enhance_cor_document_super_resolution(image_bytes, scale_factor=3.5)
+    if not enhanced_bytes:
+        enhanced_bytes = image_bytes
+
+    raw_text_parts = []
+    azure_kvp = {}
+
+    # Step 2: Pass super-resolution enhanced photo to Azure Document Intelligence
+    try:
+        azure_text, az_kvp = extract_text_and_kvp_with_azure(enhanced_bytes)
+        if azure_text and len(azure_text.strip()) >= 10:
+            raw_text_parts.append(azure_text.strip())
+            azure_kvp = az_kvp or {}
+            print(f"[COR OCR] Azure extracted {len(azure_text)} chars & {len(azure_kvp)} KVP on Super-Resolution COR", flush=True)
+    except Exception as az_err:
+        print(f"[COR OCR] Azure extraction note: {az_err}", flush=True)
+
+    # Step 3: Region-of-Interest (ROI) Header & Footer Crop Scanning
+    header_crop_bytes, footer_crop_bytes = extract_cor_roi_crops(enhanced_img)
+
+    # Step 4: Multi-Pass OCR (--psm 6 & --psm 11 & --psm 3)
+    full_multi_pass = extract_text_multi_pass_tesseract(enhanced_img, psms=[6, 11, 3])
+    if full_multi_pass:
+        raw_text_parts.append(full_multi_pass)
+
+    if header_crop_bytes:
+        header_text = extract_text_multi_pass_tesseract(header_crop_bytes, psms=[6, 11])
+        if header_text:
+            raw_text_parts.append("[HEADER ROI CROP]\n" + header_text)
+
+    if footer_crop_bytes:
+        footer_text = extract_text_multi_pass_tesseract(footer_crop_bytes, psms=[6, 11])
+        if footer_text:
+            raw_text_parts.append("[FOOTER ROI CROP]\n" + footer_text)
+
+    # Combine all extracted text
+    combined_raw_text = "\n".join(raw_text_parts)
+
+    # Step 5: Apply Robust OCR Typo Sanitizer
+    sanitized_text = sanitize_ocr_number_typos(combined_raw_text)
+
+    # Also sanitize Azure KVP values
+    sanitized_azure_kvp = {}
+    for k, v in azure_kvp.items():
+        sanitized_azure_kvp[k] = sanitize_ocr_number_typos(str(v))
+
+    return sanitized_text, sanitized_azure_kvp
+
+
 def extract_document_text(image_bytes, psm=3, max_width=None, prefer_fast_layout=False, crop_percent=None, is_id_back=False, return_tuple=False, **kwargs):
     should_return_tuple = return_tuple or (
         max_width is not None or crop_percent is not None or is_id_back or prefer_fast_layout
