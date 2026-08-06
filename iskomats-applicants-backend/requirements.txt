@@ -1,4 +1,5 @@
 # Requires Python 3.10
+gunicorn
 flask
 fastapi
 uvicorn
