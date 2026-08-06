@@ -272,11 +272,8 @@ const makeRequest = async (endpoint, options = {}) => {
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        if (attempt === 0) {
-          await warmBackendConnection();
-        } else {
-          await warmBackendConnection({ force: true });
-          await new Promise(r => setTimeout(r, 3500));
+        if (attempt > 0) {
+          await new Promise(r => setTimeout(r, 1000 * attempt));
         }
 
         response = await executeRequest();
