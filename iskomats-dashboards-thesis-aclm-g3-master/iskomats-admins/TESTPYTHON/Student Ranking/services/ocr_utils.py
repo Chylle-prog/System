@@ -1040,6 +1040,56 @@ def _run_tesseract_on_image(img, psm=3):
         print(f"[OCR] Tesseract error: {e}", flush=True)
         return ""
 
+def auto_adjust_luminance_and_gamma(gray_img):
+    """
+    1. Automatic Luminance Detection and Gamma Correction:
+    Analyzes overall brightness (average luminance). If the document is detected
+    as too dark or dim (< 145 mean luminance), automatically adjusts gamma and brightness levels
+    to improve visibility before OCR processing.
+    """
+    if gray_img is None:
+        return gray_img
+    try:
+        mean_val = float(np.mean(gray_img))
+        if mean_val >= 145.0:
+            return gray_img
+        
+        # Determine gamma scaling dynamically (range: 0.40 to 0.70 for dark photos)
+        # Gamma < 1.0 brightens shadows and expands dark tone ranges
+        gamma = max(0.40, min(0.70, mean_val / 180.0))
+        table = np.array([((i / 255.0) ** gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+        brightened = cv2.LUT(gray_img, table)
+
+        # Boost contrast & brightness further if mean is very low (< 110)
+        if mean_val < 110.0:
+            alpha = 1.25
+            beta = int((110.0 - mean_val) * 0.4)
+            brightened = cv2.convertScaleAbs(brightened, alpha=alpha, beta=beta)
+        
+        print(f"[DARK DOC ENHANCE] Image mean luminance={mean_val:.1f} < 145 -> Auto-applied Gamma Correction (gamma={gamma:.2f})", flush=True)
+        return brightened
+    except Exception as e:
+        print(f"[DARK DOC ENHANCE] Gamma correction error: {e}", flush=True)
+        return gray_img
+
+def create_shadow_removed_binarized_image(gray_img):
+    """
+    3. Adaptive Thresholding for Background and Shadow Removal:
+    Uses adaptive thresholding to convert the document into a clean, high-contrast image
+    by whitening uneven shadows (from hands/phones/lighting) and darkening text/numbers.
+    """
+    if gray_img is None:
+        return gray_img
+    try:
+        blurred = cv2.GaussianBlur(gray_img, (5, 5), 0)
+        binarized = cv2.adaptiveThreshold(
+            blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 25, 11
+        )
+        return binarized
+    except Exception as e:
+        print(f"[DARK DOC ENHANCE] Shadow removal error: {e}", flush=True)
+        return gray_img
+
 def sanitize_ocr_number_typos(text):
     """
     Robust OCR Typo Sanitizer for small printed numbers & letters:
@@ -1090,7 +1140,7 @@ def enhance_cor_document_super_resolution(image_bytes, scale_factor=3.5):
     """
     3x-4x Bicubic Super-Resolution & Sharpness Enhancement before OCR (Azure & Tesseract).
     1. Resizes using Bicubic Interpolation (cv2.INTER_CUBIC) to 3x-4x scale (target width ~3500px).
-    2. Applies CLAHE (clipLimit=2.5, tileGridSize=(8,8)) for local contrast.
+    2. Applies CLAHE (clipLimit=3.0, tileGridSize=(8,8)) for local contrast.
     3. Applies Unsharp Masking filter to sharpen small printed letters and digits.
     Returns: (enhanced_jpg_bytes, enhanced_cv_img)
     """
@@ -1115,10 +1165,11 @@ def enhance_cor_document_super_resolution(image_bytes, scale_factor=3.5):
 
         # Convert to Grayscale for CLAHE & Unsharp Masking
         gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+        brightened_gray = auto_adjust_luminance_and_gamma(gray)
 
         # CLAHE (Local Contrast Enhancement)
-        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-        contrast_enhanced = clahe.apply(gray)
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        contrast_enhanced = clahe.apply(brightened_gray)
 
         # Unsharp Masking (Sharpness Enhancement)
         blurred = cv2.GaussianBlur(contrast_enhanced, (3, 3), 0)
@@ -1163,9 +1214,10 @@ def extract_cor_roi_crops(img_cv):
 
 def extract_text_multi_pass_tesseract(img_cv_or_bytes, psms=[6, 11, 3]):
     """
-    Multi-Pass OCR & Sparse Text Extraction (--psm 6 & --psm 11 & --psm 3):
+    Multi-Pass Dual-Engine OCR & Sparse Text Extraction (--psm 6 & --psm 11 & --psm 3):
     Runs multiple Tesseract passes with different Page Segmentation Modes (PSMs)
-    and combines distinct lines to capture scattered small words & digits.
+    across two enhanced versions (CLAHE brightened + shadow-removed binarized) to capture
+    scattered small words, numbers, and text under poor/shadowy lighting.
     """
     if img_cv_or_bytes is None or pytesseract is None:
         return ""
@@ -1181,23 +1233,34 @@ def extract_text_multi_pass_tesseract(img_cv_or_bytes, psms=[6, 11, 3]):
     if img_cv is None:
         return ""
 
+    gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY) if len(img_cv.shape) == 3 else img_cv.copy()
+    brightened_gray = auto_adjust_luminance_and_gamma(gray)
+    
+    # Version 1: Brightened + CLAHE local contrast
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    img_pass1 = clahe.apply(brightened_gray)
+    
+    # Version 2: Shadow-removed Adaptive Thresholding Binarization
+    img_pass2 = create_shadow_removed_binarized_image(brightened_gray)
+
     combined_lines = []
     seen_lines_normalized = set()
 
     for psm in psms:
-        try:
-            txt = pytesseract.image_to_string(img_cv, config=f'--psm {psm} --oem 1')
-            if txt:
-                for line in txt.splitlines():
-                    l_clean = line.strip()
-                    if not l_clean:
-                        continue
-                    l_norm = re.sub(r'\s+', ' ', l_clean).lower()
-                    if l_norm not in seen_lines_normalized:
-                        seen_lines_normalized.add(l_norm)
-                        combined_lines.append(l_clean)
-        except Exception as e:
-            print(f"[MULTI-PASS OCR] Pass psm {psm} note: {e}", flush=True)
+        for pass_img in [img_pass1, img_pass2]:
+            try:
+                txt = pytesseract.image_to_string(pass_img, config=f'--psm {psm} --oem 1')
+                if txt:
+                    for line in txt.splitlines():
+                        l_clean = line.strip()
+                        if not l_clean:
+                            continue
+                        l_norm = re.sub(r'\s+', ' ', l_clean).lower()
+                        if l_norm not in seen_lines_normalized:
+                            seen_lines_normalized.add(l_norm)
+                            combined_lines.append(l_clean)
+            except Exception as e:
+                print(f"[MULTI-PASS OCR] Pass psm {psm} note: {e}", flush=True)
 
     return "\n".join(combined_lines)
 
