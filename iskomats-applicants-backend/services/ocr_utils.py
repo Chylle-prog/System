@@ -1024,6 +1024,10 @@ def is_similar_name_word(w1, w2):
     """
     Returns True if name word w1 is equal to or highly similar to token w2,
     allowing single-character OCR typos (e.g. Mikaela vs Mikarla, Lantafe vs Lantave).
+
+    Fix: Removed loose substring check (w1 in w2 / w2 in w1) that caused
+    partial name words like 'JUAN' to match 'JUANITA' or 'JUANCHO'.
+    Now only exact match or Levenshtein ≥ 85% similarity is accepted.
     """
     if not w1 or not w2:
         return False
@@ -1031,13 +1035,17 @@ def is_similar_name_word(w1, w2):
     w2_clean = re.sub(r'[^a-z0-9]', '', str(w2).lower())
     if not w1_clean or not w2_clean:
         return False
-    if w1_clean == w2_clean or w1_clean in w2_clean or w2_clean in w1_clean:
+    # Fix (Full-Phrase Matching): exact match only — no raw substring check.
+    # "juan" in "juanita" would previously return True but is now REJECTED.
+    if w1_clean == w2_clean:
         return True
     if len(w1_clean) >= 3 and len(w2_clean) >= 3 and abs(len(w1_clean) - len(w2_clean)) <= 2:
         match_ratio = difflib.SequenceMatcher(None, w1_clean, w2_clean).ratio()
-        if match_ratio >= 0.78:
+        if match_ratio >= 0.85:
             return True
-    return False
+    def _conf(s):
+        return re.sub(r'[^a-z0-9]', '', s).replace('1', 'i').replace('|', 'i').replace('0', 'o').replace('5', 's').replace('3', 'e').replace('8', 'b').replace('rn', 'm').replace('cl', 'd').replace('vv', 'w')
+    return _conf(w1_clean) == _conf(w2_clean)
 
 
 def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
@@ -1095,7 +1103,49 @@ def verify_name_sequence(first_name, last_name, target_text, full_raw_text=None,
         if not w: return True
         return any(is_similar_name_word(w, tok) for tok in target_tokens)
 
-    first_ok = all(check_word_in_tokens(w) for w in first_words) if first_words else True
+    # Fix (Complete First Name Verification): For multi-word first names, enforce that ALL
+    # words appear in sequence on the applicant name line — not just scattered across the document.
+    # For single-word first names, the token check (with ≥85% similarity) is sufficient.
+    def check_first_name_phrase(first_words_list, search_text):
+        """Requires all first name words to appear in contiguous order in search_text."""
+        if not first_words_list:
+            return True
+        if len(first_words_list) == 1:
+            # Single word: token check is sufficient
+            return check_word_in_tokens(first_words_list[0])
+        # Multi-word: enforce sequence presence using check_word_sequence_fuzzy
+        # Build the phrase and require it to appear as a sequence in the text
+        first_phrase = ' '.join(first_words_list)
+        # check_word_sequence_fuzzy is defined below; use inline sequential check here
+        t_words = [w for w in normalize_text(search_text).split() if len(w) >= 1]
+        expected_idx = 0
+        last_found_idx = -1
+        for i, t_word in enumerate(t_words):
+            e_word = first_words_list[expected_idx]
+            is_match = is_similar_name_word(e_word, t_word)
+            if is_match:
+                if last_found_idx != -1 and (i - last_found_idx) > 3:
+                    # Too far apart — reset sequence
+                    expected_idx = 0
+                    last_found_idx = -1
+                    if is_similar_name_word(first_words_list[0], t_word):
+                        expected_idx = 1
+                        last_found_idx = i
+                    continue
+                expected_idx += 1
+                last_found_idx = i
+                if expected_idx >= len(first_words_list):
+                    return True
+        return False
+
+    if first_words:
+        # Try phrase check first on candidate_name/target_text, then on sanitized_raw
+        first_ok = check_first_name_phrase(first_words, sanitized_target)
+        if not first_ok:
+            first_ok = check_first_name_phrase(first_words, sanitized_raw)
+    else:
+        first_ok = True
+
     last_ok  = all(check_word_in_tokens(w) for w in last_words) if last_words else True
     middle_ok = True
     if mid_words:
