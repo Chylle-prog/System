@@ -402,6 +402,21 @@ const splitFullName = (fullName) => {
   };
 };
 
+const visionOcrCache = new Map();
+
+const getOcrCacheKey = (imageInput, resolvedBlob, base64Image) => {
+  if (resolvedBlob) {
+    return `blob_${resolvedBlob.size}_${resolvedBlob.type}`;
+  }
+  if (base64Image) {
+    return `b64_${base64Image.length}_${base64Image.substring(0, 60)}_${base64Image.substring(Math.max(0, base64Image.length - 60))}`;
+  }
+  if (typeof imageInput === 'string') {
+    return `str_${imageInput.length}_${imageInput.substring(0, 60)}`;
+  }
+  return null;
+};
+
 const performGoogleVisionOcrScan = async (imageInput) => {
   if (!imageInput) return "";
 
@@ -428,6 +443,13 @@ const performGoogleVisionOcrScan = async (imageInput) => {
     } else {
       base64Image = imageInput;
     }
+  }
+
+  // 1. Session Cache Check: Prevent duplicate GCP Vision API calls for identical files/frames
+  const cacheKey = getOcrCacheKey(imageInput, resolvedBlob, base64Image);
+  if (cacheKey && visionOcrCache.has(cacheKey)) {
+    console.log(`[GOOGLE CLOUD VISION CLIENT] Cache hit for image (${cacheKey}). Skipping Vision API request.`);
+    return visionOcrCache.get(cacheKey);
   }
 
   // Filter backend candidates based on execution environment
@@ -474,7 +496,10 @@ const performGoogleVisionOcrScan = async (imageInput) => {
       if (resp.ok) {
         const data = await resp.json();
         const text = String(data.text || "").trim();
-        if (text) return text;
+        if (text) {
+          if (cacheKey) visionOcrCache.set(cacheKey, text);
+          return text;
+        }
       } else {
         console.warn(`[GOOGLE CLOUD VISION CLIENT] Origin ${cleanOrigin} returned HTTP status ${resp.status}`);
       }
@@ -1950,7 +1975,8 @@ const StudentInfo = () => {
       }
 
       // --- NEW SEEK-BASED VIDEO FRAME EXTRACTOR (FROM TEST FOLDER) ---
-      const sampleRatios = [0.15, 0.35, 0.60, 0.85];
+      // Quota Optimization: 2 strategic frames max
+      const sampleRatios = [0.25, 0.65];
       const maxDim = 1600;
 
       const extractedFrames = await new Promise((resolveFrames) => {
@@ -2061,30 +2087,7 @@ const StudentInfo = () => {
         video.load();
       });
 
-      // --- RUN GOOGLE CLOUD VISION API OCR ON SEEKED FRAMES ---
-      const accumulatedText = [];
-      try {
-        if (extractedFrames.length > 0) {
-          for (let i = 0; i < extractedFrames.length; i++) {
-            const { time, canvas } = extractedFrames[i];
-            const frameDataUrl = canvas.toDataURL('image/jpeg', 0.90);
-            const frameText = await performGoogleVisionOcrScan(frameDataUrl);
-
-            if (frameText && frameText.length >= 3) {
-              accumulatedText.push(`[Frame at ${time.toFixed(1)}s]: "${frameText}"`);
-              console.log(`[VIDEO OCR VISION API] Frame (${time.toFixed(1)}s) text:`, frameText.substring(0, 120));
-            }
-          }
-        }
-      } catch (ocrErr) {
-        console.warn('[VIDEO OCR VISION API] Recognition error:', ocrErr);
-      }
-
-      if (createdBlobUrl) {
-        URL.revokeObjectURL(createdBlobUrl);
-      }
-
-      // --- EVALUATE EXTRACTED TEXT ---
+      // --- EVALUATE EXTRACTED TEXT FUNCTION ---
       const evaluateVideoText = (textLogs) => {
         const rawCombined = (textLogs || []).join(" ").toLowerCase();
         const cleanText = normalizeForOcr(rawCombined);
@@ -2209,6 +2212,36 @@ const StudentInfo = () => {
           detectedText: (textLogs || []).join("\n\n") || "No valid text recognized in video frames."
         };
       };
+
+      // --- RUN GOOGLE CLOUD VISION API OCR ON SEEKED FRAMES WITH EARLY MATCH EXIT ---
+      const accumulatedText = [];
+      try {
+        if (extractedFrames.length > 0) {
+          for (let i = 0; i < extractedFrames.length; i++) {
+            const { time, canvas } = extractedFrames[i];
+            const frameDataUrl = canvas.toDataURL('image/jpeg', 0.90);
+            const frameText = await performGoogleVisionOcrScan(frameDataUrl);
+
+            if (frameText && frameText.length >= 3) {
+              accumulatedText.push(`[Frame at ${time.toFixed(1)}s]: "${frameText}"`);
+              console.log(`[VIDEO OCR VISION API] Frame ${i + 1} (${time.toFixed(1)}s) text:`, frameText.substring(0, 120));
+
+              // Check if accumulated text satisfies validation early to stop unnecessary GCP Vision API requests
+              const earlyEval = evaluateVideoText(accumulatedText);
+              if (earlyEval && earlyEval.valid && earlyEval.isMatched) {
+                console.log(`[VIDEO OCR VISION API] Early match confirmed on frame ${i + 1} (${time.toFixed(1)}s). Stopping further frame scans to conserve GCP quota.`);
+                break;
+              }
+            }
+          }
+        }
+      } catch (ocrErr) {
+        console.warn('[VIDEO OCR VISION API] Recognition error:', ocrErr);
+      }
+
+      if (createdBlobUrl) {
+        URL.revokeObjectURL(createdBlobUrl);
+      }
 
       return evaluateVideoText(accumulatedText);
     } catch (err) {
