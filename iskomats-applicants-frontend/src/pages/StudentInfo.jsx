@@ -402,45 +402,54 @@ const splitFullName = (fullName) => {
   };
 };
 
-let tesseractWorkerSingleton = null;
-let activeOcrLogger = null;
-
-const getTesseractWorker = async () => {
-  if (tesseractWorkerSingleton) {
-    return tesseractWorkerSingleton;
-  }
-
-  if (!window.Tesseract) {
-    throw new Error("WebAssembly OCR Engine (Tesseract.js) failed to load. Please check your internet connection.");
-  }
-
-  tesseractWorkerSingleton = await window.Tesseract.createWorker('eng', 1, {
-    workerPath: 'https://unpkg.com/tesseract.js@5.1.0/dist/worker.min.js',
-    corePath: 'https://unpkg.com/tesseract.js-core@5.1.0/tesseract-core.wasm.js',
-    langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-    // Cache the language model in IndexedDB so it's only downloaded once.
-    cacheMethod: 'write',
-    logger: (m) => {
-      if (activeOcrLogger) {
-        activeOcrLogger(m);
-      }
-    }
-  });
-
+const performGoogleVisionOcrScan = async (imageInput) => {
+  if (!imageInput) return "";
   try {
-    await tesseractWorkerSingleton.setParameters({
-      tessjs_create_hocr: '0',
-      tessjs_create_tsv: '0',
-      tessjs_create_box: '0',
-      tessjs_create_unlv: '0',
-      tessjs_create_osd: '0',
-      tessedit_pageseg_mode: '3'
-    });
-  } catch (e) {
-    console.log("Tesseract parameter set note:", e);
-  }
+    const apiOrigin = API_ORIGIN;
+    const token = localStorage.getItem('authToken');
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  return tesseractWorkerSingleton;
+    let requestBody = null;
+    let isFormData = false;
+
+    if (imageInput instanceof Blob || imageInput instanceof File) {
+      const formData = new FormData();
+      formData.append('file', imageInput);
+      requestBody = formData;
+      isFormData = true;
+    } else if (typeof imageInput === 'string' && (imageInput.startsWith('data:') || imageInput.startsWith('blob:'))) {
+      if (imageInput.startsWith('blob:')) {
+        const blobResp = await fetch(imageInput);
+        const blob = await blobResp.blob();
+        const formData = new FormData();
+        formData.append('file', blob);
+        requestBody = formData;
+        isFormData = true;
+      } else {
+        headers['Content-Type'] = 'application/json';
+        requestBody = JSON.stringify({ image: imageInput });
+      }
+    } else {
+      headers['Content-Type'] = 'application/json';
+      requestBody = JSON.stringify({ image: imageInput });
+    }
+
+    const fetchOptions = {
+      method: 'POST',
+      headers: isFormData ? (token ? { 'Authorization': `Bearer ${token}` } : {}) : headers,
+      body: requestBody
+    };
+
+    const resp = await fetch(`${apiOrigin}/api/student/verification/ocr-scan`, fetchOptions);
+    if (resp.ok) {
+      const data = await resp.json();
+      return String(data.text || "").trim();
+    }
+  } catch (err) {
+    console.warn("[GOOGLE CLOUD VISION CLIENT] Scan error:", err);
+  }
+  return "";
 };
 
 
@@ -2019,28 +2028,23 @@ const StudentInfo = () => {
         video.load();
       });
 
-      // --- RUN TESSERACT OCR ON SEEKED FRAMES ---
+      // --- RUN GOOGLE CLOUD VISION API OCR ON SEEKED FRAMES ---
       const accumulatedText = [];
       try {
-        const worker = await getTesseractWorker();
-        if (worker && extractedFrames.length > 0) {
+        if (extractedFrames.length > 0) {
           for (let i = 0; i < extractedFrames.length; i++) {
-            const { time, canvas, headerCanvas } = extractedFrames[i];
-            const res1 = await worker.recognize(canvas).catch(() => null);
-            const t1 = String(res1?.data?.text || "").trim();
+            const { time, canvas } = extractedFrames[i];
+            const frameDataUrl = canvas.toDataURL('image/jpeg', 0.90);
+            const frameText = await performGoogleVisionOcrScan(frameDataUrl);
 
-            const res2 = await worker.recognize(headerCanvas).catch(() => null);
-            const t2 = String(res2?.data?.text || "").trim();
-
-            const frameCombined = [t1, t2].filter(Boolean).join(" ").replace(/\s+/g, ' ');
-            if (frameCombined && frameCombined.length >= 3) {
-              accumulatedText.push(`[Frame at ${time.toFixed(1)}s]: "${frameCombined}"`);
-              console.log(`[VIDEO OCR SEEK] Frame (${time.toFixed(1)}s) text:`, frameCombined.substring(0, 120));
+            if (frameText && frameText.length >= 3) {
+              accumulatedText.push(`[Frame at ${time.toFixed(1)}s]: "${frameText}"`);
+              console.log(`[VIDEO OCR VISION API] Frame (${time.toFixed(1)}s) text:`, frameText.substring(0, 120));
             }
           }
         }
       } catch (ocrErr) {
-        console.warn('[VIDEO OCR SEEK] Recognition error:', ocrErr);
+        console.warn('[VIDEO OCR VISION API] Recognition error:', ocrErr);
       }
 
       if (createdBlobUrl) {
@@ -3698,27 +3702,9 @@ const StudentInfo = () => {
 
       const runOcrOnImage = async (imgSource, stepName = "") => {
         if (!imgSource) return "";
-        if (!silent) setStatus(`Scanning ${stepName} image with WebAssembly Worker...`);
-
-        let lastProgressPct = -1;
-        activeOcrLogger = (m) => {
-          if (!silent && m.status === 'recognizing text') {
-            const pct = Math.round(m.progress * 20) * 5;
-            if (pct !== lastProgressPct) {
-              lastProgressPct = pct;
-              setScanProgress(pct);
-            }
-          }
-        };
-
-        const isIdDoc = stepName.includes('ID') || stepName.includes('Back') || stepName.includes('Front');
-        const isEnrollmentOrGrades = docType === 'Enrollment' || docType === 'Grades';
-        const isIndigencyOrResidency = stepName.includes('Indigency') || stepName.includes('Residency') || docType === 'Indigency' || docType === 'Residency';
+        if (!silent) setStatus(`Scanning ${stepName} image with Google Cloud Vision API...`);
 
         try {
-          const worker = await getTesseractWorker();
-          if (!worker) return "";
-
           let realScanBlobUrl = null;
           let scanInput = imgSource;
           if (typeof imgSource === 'string' && imgSource.startsWith('http')) {
@@ -3731,141 +3717,13 @@ const StudentInfo = () => {
             }
           }
 
-          // ⚡ COE/Grades: Single-pass mode at 1200px WITH GPU contrast filter (Full 100% Document Image)
-          if (isEnrollmentOrGrades) {
-            const enhancedUrl = await downscaleImageForFastOcr(scanInput, 1200, true, 1.0).catch(() => null);
-            const scanSrc = enhancedUrl || scanInput;
-            const result = await worker.recognize(scanSrc).catch((e) => { console.warn('[OCR Engine] COE/Grades pass:', e); return null; });
-            if (enhancedUrl && enhancedUrl.startsWith('blob:')) URL.revokeObjectURL(enhancedUrl);
-            if (realScanBlobUrl && realScanBlobUrl !== imgSource && realScanBlobUrl.startsWith('blob:')) URL.revokeObjectURL(realScanBlobUrl);
-            return (result?.data?.text || '').trim();
+          const visionText = await performGoogleVisionOcrScan(scanInput);
+          if (realScanBlobUrl && realScanBlobUrl !== imgSource && realScanBlobUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(realScanBlobUrl);
           }
-
-          // ⚡ Indigency / Residency: Single-pass mode at 1000px WITH GPU contrast filter
-          // Large printed body text — no header crop, table crop, or enhanced fallback needed
-          if (isIndigencyOrResidency) {
-            const enhancedUrl = await downscaleImageForFastOcr(scanInput, 1000, true).catch(() => null);
-            const scanSrc = enhancedUrl || scanInput;
-            const result = await worker.recognize(scanSrc).catch((e) => { console.warn('[OCR Engine] Indigency/Residency pass:', e); return null; });
-            if (enhancedUrl && enhancedUrl.startsWith('blob:')) URL.revokeObjectURL(enhancedUrl);
-            if (realScanBlobUrl && realScanBlobUrl !== imgSource && realScanBlobUrl.startsWith('blob:')) URL.revokeObjectURL(realScanBlobUrl);
-            return (result?.data?.text || '').trim();
-          }
-
-          // ⚡ ID Documents (School ID / National ID): Single-pass mode at 1200px WITH GPU contrast filter
-          if (isIdDoc) {
-            const enhancedUrl = await downscaleImageForFastOcr(scanInput, 1200, true, 1.0).catch(() => null);
-            const stickerUrl = await createStickerRegionCropBlob(scanInput).catch(() => null);
-            const scanSrc = enhancedUrl || scanInput;
-
-            const [primaryRes, stickerRes] = await Promise.all([
-              worker.recognize(scanSrc).catch((e) => { console.warn('[OCR Engine] ID primary pass:', e); return null; }),
-              stickerUrl ? worker.recognize(stickerUrl).catch((e) => { console.warn('[OCR Engine] ID sticker pass:', e); return null; }) : Promise.resolve(null)
-            ]);
-
-            if (enhancedUrl && enhancedUrl.startsWith('blob:')) URL.revokeObjectURL(enhancedUrl);
-            if (stickerUrl && stickerUrl.startsWith('blob:')) URL.revokeObjectURL(stickerUrl);
-            if (realScanBlobUrl && realScanBlobUrl !== imgSource && realScanBlobUrl.startsWith('blob:')) URL.revokeObjectURL(realScanBlobUrl);
-
-            const pText = (primaryRes?.data?.text || '').trim();
-            const sText = (stickerRes?.data?.text || '').trim();
-            return [pText, sText].filter(Boolean).join("\n");
-          }
-
-          // ID/Other docs: Use a smaller downscale dim for faster Tesseract execution
-          const downscaleDim = 1600;
-
-          // Parallel cropping streams
-          const [fastImgUrl, headerBlobUrl, tableBlobUrl] = await Promise.all([
-            downscaleImageForFastOcr(scanInput, downscaleDim).catch(() => null),
-            createHeaderRegionCropBlob(scanInput).catch(() => null),
-            (isIndigency || isIdDoc) ? Promise.resolve(null) : createTableRegionCropBlob(scanInput).catch(() => null)
-          ]);
-
-          const scanSource = fastImgUrl || scanInput;
-
-          // Run Primary Pass, Header Pass, AND Table Pass CONCURRENTLY
-          const [primaryRes, headerRes, tableRes] = await Promise.all([
-            worker.recognize(scanSource).catch((e) => { console.warn(`[OCR Engine] Primary pass note:`, e); return null; }),
-            headerBlobUrl ? worker.recognize(headerBlobUrl).catch((e) => { console.warn(`[OCR Engine] Header crop pass note:`, e); return null; }) : Promise.resolve(null),
-            tableBlobUrl ? worker.recognize(tableBlobUrl).catch((e) => { console.warn(`[OCR Engine] Table crop pass note:`, e); return null; }) : Promise.resolve(null)
-          ]);
-
-          if (fastImgUrl && fastImgUrl !== scanInput && fastImgUrl.startsWith('blob:')) URL.revokeObjectURL(fastImgUrl);
-          if (headerBlobUrl && headerBlobUrl.startsWith('blob:')) URL.revokeObjectURL(headerBlobUrl);
-          if (tableBlobUrl && tableBlobUrl.startsWith('blob:')) URL.revokeObjectURL(tableBlobUrl);
-          if (realScanBlobUrl && realScanBlobUrl !== imgSource && realScanBlobUrl.startsWith('blob:')) URL.revokeObjectURL(realScanBlobUrl);
-
-          const primaryText = primaryRes?.data?.text || "";
-          const headerText = headerRes?.data?.text || "";
-          const tableText = tableRes?.data?.text || "";
-          let baseText = (primaryText + "\n" + headerText + "\n" + tableText).trim();
-
-          const userLastName = String(formData?.lastName || userProfile?.last_name || '').toLowerCase();
-          const userFirstName = String(formData?.firstName || userProfile?.first_name || '').toLowerCase();
-
-          const lowerBase = baseText.toLowerCase();
-          const hasLastName = userLastName && lowerBase.includes(userLastName);
-          const hasFirstName = userFirstName && lowerBase.includes(userFirstName);
-          const hasIdNum = idNumber && lowerBase.includes(String(idNumber).toLowerCase());
-          const hasIndigencyKeyword = isIndigency && (
-            lowerBase.includes('indigency') || lowerBase.includes('residency') ||
-            lowerBase.includes('barangay') || lowerBase.includes('kawalang') ||
-            lowerBase.includes('katibayan') || lowerBase.includes('resident')
-          );
-
-          // ⚡ Fast Exit for all: Return immediately if name/ID/indigency keyword found in base text
-          if ((hasLastName || hasFirstName || hasIndigencyKeyword) && (hasIdNum || hasIndigencyKeyword || baseText.length > 120)) {
-            return baseText;
-          }
-
-          // Selective Secondary Enhanced Pass: Runs only if image is dark or blurry (non-COE docs)
-          let enhancedText = "";
-          try {
-            const enhancedBlobUrl = await createEnhancedOcrImageBlob(imgSource);
-            if (enhancedBlobUrl) {
-              const enhancedResult = await worker.recognize(enhancedBlobUrl);
-              enhancedText = enhancedResult?.data?.text || "";
-              URL.revokeObjectURL(enhancedBlobUrl);
-            }
-          } catch (e) {
-            console.warn(`[OCR Engine] Enhanced pass note:`, e);
-          }
-
-          const combinedFallback = (baseText + "\n" + enhancedText).toLowerCase();
-
-          // Inverted and sticker passes only for ID documents
-          let invertedText = "";
-          if (isIdDoc && userLastName && !combinedFallback.includes(userLastName)) {
-            const invertedUrl = await createInvertedImageBlob(imgSource);
-            if (invertedUrl) {
-              try {
-                const invResult = await worker.recognize(invertedUrl);
-                invertedText = invResult?.data?.text || "";
-                URL.revokeObjectURL(invertedUrl);
-              } catch (invErr) {
-                console.warn(`[OCR Engine] Inverted pass note:`, invErr);
-              }
-            }
-          }
-
-          let stickerText = "";
-          if (isIdDoc && !combinedFallback.includes('202')) {
-            const stickerCropUrl = await createStickerRegionCropBlob(imgSource);
-            if (stickerCropUrl) {
-              try {
-                const stickerRes = await worker.recognize(stickerCropUrl);
-                stickerText = stickerRes?.data?.text || "";
-                URL.revokeObjectURL(stickerCropUrl);
-              } catch (e) {
-                console.warn(`[OCR Engine] Sticker crop pass note:`, e);
-              }
-            }
-          }
-
-          return (baseText + "\n" + enhancedText + "\n" + invertedText + "\n" + stickerText).trim();
+          return visionText || "";
         } catch (err) {
-          console.warn(`[OCR Engine] Image recognition skipped on ${stepName}:`, err?.message || err);
+          console.warn(`[GOOGLE CLOUD VISION] Image recognition error on ${stepName}:`, err?.message || err);
           return "";
         }
       };

@@ -3502,6 +3502,44 @@ def get_verification_status():
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
+@student_api_bp.route('/verification/ocr-scan', methods=['POST'])
+def ocr_scan():
+    """
+    High-Precision Document & Frame Scan Endpoint powered by Google Cloud Vision API.
+    Accepts raw file uploads, base64 data URIs, or JSON payloads.
+    """
+    try:
+        from services.ocr_utils import extract_text_with_google_cloud_vision, resolve_verification_image_bytes
+        image_bytes = None
+
+        if 'file' in request.files:
+            file_obj = request.files['file']
+            if file_obj:
+                image_bytes = file_obj.read()
+        elif request.is_json:
+            data = request.get_json(silent=True) or {}
+            image_data = data.get('image') or data.get('image_data') or data.get('frame')
+            if image_data:
+                image_bytes = resolve_verification_image_bytes(image_data)
+        else:
+            image_data = request.form.get('image') or request.form.get('image_data') or request.form.get('frame')
+            if image_data:
+                image_bytes = resolve_verification_image_bytes(image_data)
+
+        if not image_bytes:
+            return jsonify({'success': False, 'message': 'No image data provided for OCR scan.', 'text': ''}), 400
+
+        extracted_text = extract_text_with_google_cloud_vision(image_bytes)
+        return jsonify({
+            'success': True,
+            'text': extracted_text or "",
+            'length': len(extracted_text or "")
+        }), 200
+    except Exception as e:
+        print(f"[OCR SCAN API EXCEPTION] {e}", flush=True)
+        return jsonify({'success': False, 'message': str(e), 'text': ''}), 500
+
+
 @student_api_bp.route('/verification/ocr-check', methods=['POST'])
 @token_required
 def ocr_check():
