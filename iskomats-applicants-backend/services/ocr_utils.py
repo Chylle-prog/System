@@ -1317,16 +1317,18 @@ def verify_name_sequence_detailed(first_name, last_name, target_text, full_raw_t
     if not candidate_name:
         text_to_search = full_raw_text or target_text or ''
         cert_patterns = [
-            r'(?:certify|certifies|cently|certifye|certiy|patunay|katibayan)\s+(?:that\s+)?([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years|yr|yo)|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)',
-            r'(?:this\s+is\s+to|sto)\s+[a-z]{3,10}\s+that\s+([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years|yr|yo)|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)',
-            r'that\s+([A-Z\s,\.\-]{5,60}?)(?=\s+\d+\s*(?:years|yr|yo|\s+years\s+of\s+age)|\s+is\s+a\s+resident|\s+a\s+bonafide|\n|$)',
+            r'(?:certify|certifies|cently|certifye|certiy|patunay|katibayan)\s+(?:that\s+)?[_\W]*([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years|yr|yo|\s+years\s+of\s+age)|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)',
+            r'(?:this\s+is\s+to|sto)\s+[a-z]{3,10}\s+that\s+[_\W]*([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years|yr|yo|\s+years\s+of\s+age)|\s+is\s+a\s+resident|\s+a\s+bonafide|\n|$)',
+            r'that\s+[_\W]*([A-Z\s,\.\-]{5,60}?)(?=\s+\d+\s*(?:years|yr|yo|\s+years\s+of\s+age)|\s+is\s+a\s+resident|\s+a\s+bonafide|\n|$)',
             r'(?:name|pangalan)\s*[:\-]?\s*([A-Za-z\s,\.\-]+?)(?=\s+reg|\s+student|\s+id|\n|$)'
         ]
         for pat in cert_patterns:
             cert_m = re.search(pat, text_to_search, re.I)
-            if cert_m and cert_m.group(1) and len(cert_m.group(1).strip()) >= 3 and ' ' in cert_m.group(1).strip():
-                candidate_name = cert_m.group(1).strip()
-                break
+            if cert_m and cert_m.group(1):
+                raw_cand = re.sub(r'^[^a-zA-Z]+', '', cert_m.group(1).strip())
+                if len(raw_cand) >= 3 and ' ' in raw_cand:
+                    candidate_name = raw_cand
+                    break
 
     if candidate_name:
         clean_cand = re.sub(r'(?:reg\s*no|student\s*no|id|tran\s*date|status|sec|bldg|college|pay|user|scholarship|discount|ref\s*no).*', '', candidate_name, flags=re.I)
