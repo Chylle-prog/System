@@ -3928,6 +3928,7 @@ const StudentInfo = () => {
           // Use full name (including middle) with the same strict reverse-candidate check as COR
           const nameCheck = studentNameMatchesText(docOnlyText, firstName, middleName, lastName);
           const addrOk = targetBarangay ? addressMatchesText(docOnlyText, targetBarangay) : true;
+          const townCityOk = townCity ? addressMatchesText(docOnlyText, townCity) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
 
           const imgDocText = (detectedText || "").toLowerCase();
@@ -3977,13 +3978,13 @@ const StudentInfo = () => {
           // Use nameCheck.success (includes two-way reverse first name check) — same as COR
           const nameOk = nameCheck.success;
 
-          isSuccess = nameOk && addrOk && effectiveVideoOk && imageHasKeyword;
+          isSuccess = nameOk && addrOk && townCityOk && effectiveVideoOk && imageHasKeyword;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
             "Middle Name": middleName ? nameCheck.details.middle_ok : null,
             "Last Name": nameCheck.details.last_ok,
             "Barangay Address": targetBarangay ? addrOk : null,
-            "Town / City": townCity ? true : null,
+            "Town / City": townCity ? townCityOk : null,
             "Document Type": imageHasKeyword,
             "Video Proof": effectiveVideoOk
           };
