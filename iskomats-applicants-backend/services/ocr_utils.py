@@ -1061,6 +1061,44 @@ def is_similar_name_word(w1, w2, strict_spelling=False):
     return False
 
 
+def compute_token_sort_fuzzy_score(cor_extracted_name, user_profile_name, threshold=80.0):
+    """
+    Token-Sort Fuzzy Matcher for Name Verification (ignores word order and duplicate words/initials).
+    
+    - Handles null/empty values cleanly.
+    - Uses token sorting to prevent false failures when word order differs (e.g. LAST, FIRST M. vs FIRST M. LAST).
+    - Logs name mismatches with exact similarity scores for audit trails.
+    """
+    if not cor_extracted_name or not user_profile_name:
+        logger.info(f"[FUZZY MATCH] Reject - Empty value provided. Extracted: '{cor_extracted_name}', Profile: '{user_profile_name}'")
+        return 0.0, False
+
+    t1 = normalize_text(str(cor_extracted_name))
+    t2 = normalize_text(str(user_profile_name))
+
+    w1 = sorted(set(t1.split()))
+    w2 = sorted(set(t2.split()))
+
+    if not w1 or not w2:
+        logger.info(f"[FUZZY MATCH] Reject - No valid text tokens")
+        return 0.0, False
+
+    s1 = " ".join(w1)
+    s2 = " ".join(w2)
+
+    ratio = difflib.SequenceMatcher(None, s1, s2).ratio()
+    score = round(ratio * 100.0, 1)
+    is_match = score >= threshold
+
+    if not is_match:
+        logger.info(f"[FUZZY MATCH MISMATCH] Extracted: '{cor_extracted_name}' | Profile: '{user_profile_name}' | Score: {score}% (Threshold: {threshold}%)")
+    else:
+        logger.info(f"[FUZZY MATCH SUCCESS] Extracted: '{cor_extracted_name}' | Profile: '{user_profile_name}' | Score: {score}%")
+
+    return score, is_match
+
+
+
 def verify_name_sequence_detailed(first_name, last_name, target_text, full_raw_text=None, middle_name=None):
     """
     Detailed Order-Flexible and Strict-Spelling Name Verifier for document text.
