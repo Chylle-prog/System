@@ -157,6 +157,25 @@ def _run_tesseract_fallback(img_cv_or_bytes, psm=6):
         print(f"[OCR FALLBACK] Tesseract error: {e}", flush=True)
         return ""
 
+def _run_tesseract_fallback(image_input):
+    """Fallback OCR using PyTesseract if available."""
+    if not image_input or pytesseract is None:
+        return ""
+    try:
+        raw_bytes = resolve_verification_image_bytes(image_input)
+        if not raw_bytes:
+            return ""
+        nparr = np.frombuffer(raw_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return ""
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        text = pytesseract.image_to_string(gray)
+        return text.strip() if text else ""
+    except Exception as te:
+        logger.warning(f"[TESSERACT FALLBACK EXCEPTION] {te}")
+        return ""
+
 def extract_text_with_google_cloud_vision(image_input):
     """
     High-Fidelity Document Text Extraction using Google Cloud Vision API (DOCUMENT_TEXT_DETECTION).
@@ -167,10 +186,15 @@ def extract_text_with_google_cloud_vision(image_input):
         return ""
 
     # Support raw JSON string in environment variable (e.g. on Render / Cloud Host)
-    if "GOOGLE_CLOUD_VISION_KEY_JSON" in os.environ and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+    gcp_creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if "GOOGLE_CLOUD_VISION_KEY_JSON" in os.environ and (not gcp_creds_path or not os.path.exists(gcp_creds_path)):
         try:
             import tempfile, json
-            key_data = json.loads(os.environ["GOOGLE_CLOUD_VISION_KEY_JSON"])
+            raw_json_str = os.environ["GOOGLE_CLOUD_VISION_KEY_JSON"].strip()
+            key_data = json.loads(raw_json_str)
+            if isinstance(key_data, dict) and "private_key" in key_data:
+                if "\\n" in key_data["private_key"] and "\n" not in key_data["private_key"]:
+                    key_data["private_key"] = key_data["private_key"].replace("\\n", "\n")
             with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tf:
                 json.dump(key_data, tf)
                 temp_key_path = tf.name
@@ -178,7 +202,7 @@ def extract_text_with_google_cloud_vision(image_input):
         except Exception as json_e:
             logger.warning(f"[GOOGLE CLOUD VISION] Failed parsing env JSON key: {json_e}")
 
-    if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ:
+    if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ or not os.path.exists(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")):
         base_dir = os.path.dirname(__file__)
         candidate_paths = [
             os.path.join(base_dir, "gcp-vision-key.json"),
