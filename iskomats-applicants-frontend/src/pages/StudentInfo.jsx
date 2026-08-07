@@ -404,50 +404,59 @@ const splitFullName = (fullName) => {
 
 const performGoogleVisionOcrScan = async (imageInput) => {
   if (!imageInput) return "";
-  try {
-    const apiOrigin = API_ORIGIN;
-    const token = localStorage.getItem('authToken');
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
+  const originsToTry = [
+    API_ORIGIN,
+    'https://iskomats-backend.onrender.com',
+    'http://localhost:5000'
+  ].filter((v, i, a) => v && a.indexOf(v) === i);
 
-    let requestBody = null;
-    let isFormData = false;
+  for (const origin of originsToTry) {
+    try {
+      const token = localStorage.getItem('authToken');
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    if (imageInput instanceof Blob || imageInput instanceof File) {
-      const formData = new FormData();
-      formData.append('file', imageInput);
-      requestBody = formData;
-      isFormData = true;
-    } else if (typeof imageInput === 'string' && (imageInput.startsWith('data:') || imageInput.startsWith('blob:'))) {
-      if (imageInput.startsWith('blob:')) {
-        const blobResp = await fetch(imageInput);
-        const blob = await blobResp.blob();
+      let requestBody = null;
+      let isFormData = false;
+
+      if (imageInput instanceof Blob || imageInput instanceof File) {
         const formData = new FormData();
-        formData.append('file', blob);
+        formData.append('file', imageInput);
         requestBody = formData;
         isFormData = true;
+      } else if (typeof imageInput === 'string' && (imageInput.startsWith('data:') || imageInput.startsWith('blob:'))) {
+        if (imageInput.startsWith('blob:')) {
+          const blobResp = await fetch(imageInput);
+          const blob = await blobResp.blob();
+          const formData = new FormData();
+          formData.append('file', blob);
+          requestBody = formData;
+          isFormData = true;
+        } else {
+          headers['Content-Type'] = 'application/json';
+          requestBody = JSON.stringify({ image: imageInput });
+        }
       } else {
         headers['Content-Type'] = 'application/json';
         requestBody = JSON.stringify({ image: imageInput });
       }
-    } else {
-      headers['Content-Type'] = 'application/json';
-      requestBody = JSON.stringify({ image: imageInput });
-    }
 
-    const fetchOptions = {
-      method: 'POST',
-      headers: isFormData ? (token ? { 'Authorization': `Bearer ${token}` } : {}) : headers,
-      body: requestBody
-    };
+      const fetchOptions = {
+        method: 'POST',
+        headers: isFormData ? (token ? { 'Authorization': `Bearer ${token}` } : {}) : headers,
+        body: requestBody
+      };
 
-    const resp = await fetch(`${apiOrigin}/api/student/verification/ocr-scan`, fetchOptions);
-    if (resp.ok) {
-      const data = await resp.json();
-      return String(data.text || "").trim();
+      const cleanOrigin = origin.replace(/\/+$/, '');
+      const resp = await fetch(`${cleanOrigin}/api/student/verification/ocr-scan`, fetchOptions);
+      if (resp.ok) {
+        const data = await resp.json();
+        const text = String(data.text || "").trim();
+        if (text) return text;
+      }
+    } catch (err) {
+      console.warn(`[GOOGLE CLOUD VISION CLIENT] Scan error on origin (${origin}):`, err?.message || err);
     }
-  } catch (err) {
-    console.warn("[GOOGLE CLOUD VISION CLIENT] Scan error:", err);
   }
   return "";
 };
