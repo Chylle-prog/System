@@ -32,14 +32,14 @@ def fetch_google_access_token():
     try:
         with urllib_request.urlopen(token_request, timeout=30) as response:
             payload = json.loads(response.read().decode('utf-8'))
-            print("✅ Successfully fetched access token!")
+            print("[SUCCESS] Successfully fetched access token!")
             return True
     except urllib_error.HTTPError as exc:
         response_body = exc.read().decode('utf-8', errors='replace')
-        print(f"❌ Google token exchange failed: {response_body}")
+        print(f"[FAIL] Google token exchange failed: {response_body}")
         return False
     except Exception as exc:
-        print(f"❌ Error: {str(exc)}")
+        print(f"[ERROR] Error: {str(exc)}")
         return False
 
 if __name__ == "__main__":

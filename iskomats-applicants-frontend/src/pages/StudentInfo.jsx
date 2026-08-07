@@ -163,6 +163,31 @@ const getVerificationDocumentSource = (localValue, ...persistedValues) => {
   return resolvePersistedDocumentUrl(localValue, ...persistedValues) || null;
 };
 
+const getVerificationVideoSource = (...sources) => {
+  const candidates = sources.filter(Boolean);
+
+  // Priority 1: Newly recorded/selected Blob or File objects (safest — fresh in-memory)
+  const blobObject = candidates.find(v => typeof v === 'object' && (v instanceof Blob || v instanceof File));
+  if (blobObject) return blobObject;
+
+  // Priority 2: Direct Supabase CDN URLs (will be fetched+decrypted fresh in validateVideoLiveness)
+  // Preferred over cached blob: URLs which may be stale or revoked
+  const supabaseUrl = candidates.find(v => typeof v === 'string' && v.includes('supabase.co'));
+  if (supabaseUrl) return supabaseUrl;
+
+  // Priority 3: Fresh blob: URLs from handleVideoUpload localUrl (only if no Supabase URL found)
+  // Note: blob: URLs from loadSavedVideos may be stale — avoid using them for verification
+  const localUrl = candidates.find(v => typeof v === 'string' && (v.startsWith('blob:') || v.startsWith('data:')));
+  if (localUrl) return localUrl;
+
+  // Priority 4: Any other direct HTTP URL (non-proxy)
+  const directHttpUrl = candidates.find(v => typeof v === 'string' && v.startsWith('http') && !v.includes('/document/raw/'));
+  if (directHttpUrl) return directHttpUrl;
+
+  return candidates[0] || null;
+};
+
+
 const STEP_FIELDS = {
   1: [
     'lastName', 'firstName', 'middleName', 'maidenName', 'dateOfBirth', 'placeOfBirth',
@@ -1984,23 +2009,32 @@ const StudentInfo = () => {
             const token = localStorage.getItem('authToken');
             const apiOrigin = API_ORIGIN;
 
-            // If trimmed is already a direct playable video URL, try using it directly first
-            if (trimmed.startsWith('http') && !trimmed.includes('/api/') && !trimmed.includes('/document/raw/')) {
-              srcUrl = trimmed;
-            } else {
+            // All remote video URLs (including direct Supabase CDN URLs) must be fetched
+            // and decrypted — videos are AES-GCM encrypted before upload to Supabase.
+            // Do NOT set srcUrl = trimmed directly, as the encrypted binary will fail to play.
+            {
               let fetchUrl = trimmed;
-              if (fieldName && !trimmed.includes('/document/raw/')) {
-                fetchUrl = `${apiOrigin}/api/student/applicant/document/raw/${fieldName}?token=${token}`;
-              } else if (!trimmed.includes('token=')) {
-                fetchUrl = `${trimmed}${trimmed.includes('?') ? '&' : '?'}token=${token}`;
-              }
-
-              if (fetchUrl.startsWith('/')) {
-                fetchUrl = `${apiOrigin}${fetchUrl}`;
-              }
-
               const headers = {};
-              if (token) headers['Authorization'] = `Bearer ${token}`;
+
+              const isSupabaseDirect = trimmed.includes('supabase.co');
+
+              if (isSupabaseDirect) {
+                // Supabase CDN: fetch directly, no auth header, no proxy
+                fetchUrl = trimmed;
+              } else if (trimmed.includes('/document/raw/')) {
+                // Already a Render proxy URL — add token if missing
+                if (!trimmed.includes('token=')) {
+                  fetchUrl = `${trimmed}${trimmed.includes('?') ? '&' : '?'}token=${token}`;
+                }
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+              } else if (fieldName) {
+                // Fall back to Render proxy only if we have no better URL
+                fetchUrl = `${apiOrigin}/api/student/applicant/document/raw/${fieldName}?token=${token}`;
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+              } else {
+                if (trimmed.startsWith('/')) fetchUrl = `${apiOrigin}${trimmed}`;
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+              }
 
               const cbSep = fetchUrl.includes('?') ? '&' : '?';
 
@@ -2454,6 +2488,7 @@ const StudentInfo = () => {
       .then(result => {
         const publicUrl = result.publicUrl;
         setFormData(prev => ({ ...prev, [fieldName]: publicUrl }));
+        setDocumentVideos(prev => ({ ...prev, [fieldName]: publicUrl }));
 
         // Remove from uploading state
         setUploadingFields(prev => {
@@ -4323,7 +4358,7 @@ const StudentInfo = () => {
     );
     const townCity = formData.townCityMunicipality || '';
     const barangay = formData.barangay || '';
-    const videoUrl = documentVideos.mayorIndigency_video || formData.mayorIndigency_video;
+    const videoUrl = getVerificationVideoSource(documentVideos.mayorIndigency_video, formData.mayorIndigency_video, userProfile?.indigency_vid_url);
 
     // Skip if nothing changed (doc/video)
     const last = lastIndigencyScanRef.current;
@@ -4388,7 +4423,7 @@ const StudentInfo = () => {
     const idNumber = formData.schoolIdNumber || '';
     const yearLevel = formData.yearLevel || '';
     const course = formData.course || '';
-    const videoUrl = documentVideos.mayorCOE_video || formData.mayorCOE_video;
+    const videoUrl = getVerificationVideoSource(documentVideos.mayorCOE_video, formData.mayorCOE_video, userProfile?.enrollment_certificate_vid_url);
     const year = formData.year || '';
     const semester = scholarshipDetails?.semester || scholarshipDetails?.sem || formData.semester || '1st Semester';
 
@@ -4450,7 +4485,7 @@ const StudentInfo = () => {
     const idNumber = formData.schoolIdNumber || '';
     const yearLevel = formData.yearLevel || '';
     const gpa = formData.gpa || '';
-    const videoUrl = documentVideos.mayorGrades_video || formData.mayorGrades_video;
+    const videoUrl = getVerificationVideoSource(documentVideos.mayorGrades_video, formData.mayorGrades_video, userProfile?.grades_vid_url);
     const currentSem = scholarshipDetails?.semester || scholarshipDetails?.sem || formData.semester || '1st Semester';
     const expectedGradesSemester = scholarshipDetails?.grades_sem || scholarshipDetails?.gradesSem || (currentSem === '2nd' || currentSem === '2nd Semester' || currentSem === '2' ? '1st Semester' : '2nd Semester');
     const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
@@ -4523,8 +4558,8 @@ const StudentInfo = () => {
       schoolIdPhotos.back,
       formData.schoolIdBack
     );
-    const frontVideoUrl = documentVideos.schoolIdFront_video || formData.schoolIdFront_video;
-    const backVideoUrl = isNationalId ? frontVideoUrl : (documentVideos.schoolIdBack_video || formData.schoolIdBack_video);
+    const frontVideoUrl = getVerificationVideoSource(documentVideos.schoolIdFront_video, formData.schoolIdFront_video, userProfile?.schoolid_front_vid_url);
+    const backVideoUrl = isNationalId ? frontVideoUrl : getVerificationVideoSource(documentVideos.schoolIdBack_video, formData.schoolIdBack_video, userProfile?.schoolid_back_vid_url);
 
     // Skip if nothing changed (images/videos)
     const last = lastIdScanRef.current;

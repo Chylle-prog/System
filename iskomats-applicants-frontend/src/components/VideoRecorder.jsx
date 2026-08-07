@@ -23,15 +23,19 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
       setVideoError(null);
       setFileName('Saved video proof');
       if (typeof initialVideoUrl === 'string' && (initialVideoUrl.startsWith('http://') || initialVideoUrl.startsWith('https://'))) {
-        import('../services/CryptoService').then(({ decryptUrl }) => {
-          decryptUrl(initialVideoUrl, 'video/mp4').then(resolved => {
-            if (isMounted && resolved) {
-              setPreviewUrl(resolved);
-            }
-          }).catch(() => {
-            if (isMounted) setPreviewUrl(initialVideoUrl);
+        if (!initialVideoUrl.includes('/document/raw/')) {
+          setPreviewUrl(initialVideoUrl);
+        } else {
+          import('../services/CryptoService').then(({ decryptUrl }) => {
+            decryptUrl(initialVideoUrl, 'video/mp4').then(resolved => {
+              if (isMounted && resolved) {
+                setPreviewUrl(resolved);
+              }
+            }).catch(() => {
+              if (isMounted) setPreviewUrl(initialVideoUrl);
+            });
           });
-        });
+        }
       } else {
         setPreviewUrl(initialVideoUrl);
       }
