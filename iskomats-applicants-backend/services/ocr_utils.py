@@ -108,6 +108,59 @@ def resolve_verification_image_bytes(image_data):
                 return None
     return None
 
+def extract_text_with_google_cloud_vision(image_input):
+    """
+    High-Fidelity Document Text Extraction using Google Cloud Vision API (DOCUMENT_TEXT_DETECTION).
+    Optimized for dense printed document tables (COR, Grades Transcripts, Barangay Indigency, IDs).
+    """
+    if image_input is None:
+        return ""
+
+    if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ:
+        base_dir = os.path.dirname(__file__)
+        candidate_paths = [
+            os.path.join(base_dir, "gcp-vision-key.json"),
+            os.path.join(os.path.dirname(base_dir), "gcp-vision-key.json"),
+            "gcp-vision-key.json"
+        ]
+        for cp in candidate_paths:
+            if os.path.exists(cp):
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.abspath(cp)
+                break
+
+    try:
+        raw_bytes = None
+        if isinstance(image_input, np.ndarray):
+            success, encoded_img = cv2.imencode('.jpg', image_input)
+            if success:
+                raw_bytes = encoded_img.tobytes()
+        elif isinstance(image_input, str) and os.path.isfile(image_input):
+            with open(image_input, 'rb') as f:
+                raw_bytes = f.read()
+        else:
+            raw_bytes = resolve_verification_image_bytes(image_input)
+
+        if not raw_bytes:
+            return ""
+
+        from google.cloud import vision
+        client = vision.ImageAnnotatorClient()
+        image = vision.Image(content=raw_bytes)
+
+        response = client.document_text_detection(image=image)
+        if response.error and response.error.message:
+            logger.warning(f"[GOOGLE CLOUD VISION] API Error: {response.error.message}")
+            return ""
+
+        full_text = response.full_text_annotation.text or ""
+        if full_text:
+            logger.info(f"[GOOGLE CLOUD VISION] Successfully extracted {len(full_text)} chars from document.")
+            return full_text.strip()
+    except Exception as e:
+        logger.warning(f"[GOOGLE CLOUD VISION EXCEPTION] {e}")
+
+    return ""
+
 def decode_signature(value, fernet_instance=None):
     """Safely decode signature image data (handles base64 URIs, raw bytes, URLs, and optional Fernet decryption)."""
     if not value:
