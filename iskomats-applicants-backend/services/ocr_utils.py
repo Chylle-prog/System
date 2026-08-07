@@ -185,35 +185,47 @@ def extract_text_with_google_cloud_vision(image_input):
     if image_input is None:
         return ""
 
-    # Support raw JSON string in environment variable (e.g. on Render / Cloud Host)
-    gcp_creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-    if "GOOGLE_CLOUD_VISION_KEY_JSON" in os.environ and (not gcp_creds_path or not os.path.exists(gcp_creds_path)):
+    from google.cloud import vision
+    from google.oauth2 import service_account
+
+    client = None
+
+    # Priority 1: Direct JSON in environment variable (Render / Cloud environment)
+    if "GOOGLE_CLOUD_VISION_KEY_JSON" in os.environ:
         try:
-            import tempfile, json
             raw_json_str = os.environ["GOOGLE_CLOUD_VISION_KEY_JSON"].strip()
             key_data = json.loads(raw_json_str)
             if isinstance(key_data, dict) and "private_key" in key_data:
                 if "\\n" in key_data["private_key"] and "\n" not in key_data["private_key"]:
                     key_data["private_key"] = key_data["private_key"].replace("\\n", "\n")
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tf:
-                json.dump(key_data, tf)
-                temp_key_path = tf.name
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_key_path
+            credentials = service_account.Credentials.from_service_account_info(key_data)
+            client = vision.ImageAnnotatorClient(credentials=credentials)
+            logger.info("[GOOGLE CLOUD VISION] Client initialized directly from GOOGLE_CLOUD_VISION_KEY_JSON env var.")
         except Exception as json_e:
-            logger.warning(f"[GOOGLE CLOUD VISION] Failed parsing env JSON key: {json_e}")
+            logger.warning(f"[GOOGLE CLOUD VISION] Failed initializing from GOOGLE_CLOUD_VISION_KEY_JSON: {json_e}")
 
-    if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ or not os.path.exists(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")):
-        base_dir = os.path.dirname(__file__)
-        candidate_paths = [
-            os.path.join(base_dir, "gcp-vision-key.json"),
-            os.path.join(os.path.dirname(base_dir), "gcp-vision-key.json"),
-            "/etc/secrets/gcp-vision-key.json",
-            "gcp-vision-key.json"
-        ]
-        for cp in candidate_paths:
-            if os.path.exists(cp):
-                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.abspath(cp)
-                break
+    # Priority 2: File path in GOOGLE_APPLICATION_CREDENTIALS or candidate paths
+    if client is None:
+        if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ or not os.path.exists(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")):
+            base_dir = os.path.dirname(__file__)
+            candidate_paths = [
+                os.path.join(base_dir, "gcp-vision-key.json"),
+                os.path.join(os.path.dirname(base_dir), "gcp-vision-key.json"),
+                "/etc/secrets/gcp-vision-key.json",
+                "gcp-vision-key.json"
+            ]
+            for cp in candidate_paths:
+                if os.path.exists(cp):
+                    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.abspath(cp)
+                    break
+        try:
+            client = vision.ImageAnnotatorClient()
+        except Exception as client_e:
+            logger.warning(f"[GOOGLE CLOUD VISION] Failed default client initialization: {client_e}")
+
+    if client is None:
+        logger.warning("[GOOGLE CLOUD VISION] No valid GCP Vision credentials found. Running Tesseract fallback.")
+        return _run_tesseract_fallback(image_input)
 
     try:
         raw_bytes = None
@@ -230,10 +242,7 @@ def extract_text_with_google_cloud_vision(image_input):
         if not raw_bytes:
             return ""
 
-        from google.cloud import vision
-        client = vision.ImageAnnotatorClient()
         image = vision.Image(content=raw_bytes)
-
         response = client.document_text_detection(image=image)
         if response.error and response.error.message:
             logger.warning(f"[GOOGLE CLOUD VISION] API Error: {response.error.message}")
