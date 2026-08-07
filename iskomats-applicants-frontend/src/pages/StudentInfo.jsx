@@ -681,8 +681,161 @@ function extractOcrKeyValues(rawText) {
       }
     }
   }
+  // Fallbacks for column-separated OCR text layouts (where labels and values appear in separate column blocks)
+  if (!fields.name) {
+    const fnMatch = rawText.match(/\b([A-Z]{2,20}\s*,\s*[A-Z\s]{3,40})\b/);
+    if (fnMatch && fnMatch[1] && !/OFFICIAL|CERTIFICATE|REGISTRATION|COLLEGE|UNIVERSITY|ENGINEERING|INFORMATION|BACHELOR/i.test(fnMatch[1])) {
+      fields.name = fnMatch[1].trim();
+    }
+  }
+  if (!fields.studentId) {
+    const idMatch = rawText.match(/\b((?:120|20)\d{7,8}|\b\d{9,11}\b)\b/);
+    if (idMatch) fields.studentId = idMatch[1];
+  }
+  if (!fields.course) {
+    const crsMatch = rawText.match(/(BACHELOR\s+(?:OF\s+SCIENCE|OF\s+ARTS|IN)\s+[A-Z\s]{4,50}|BS[A-Z]{2,6})/i);
+    if (crsMatch) fields.course = crsMatch[1].trim();
+  }
 
   return fields;
+}
+
+function formatExtractedRequirementsSummary(rawText) {
+  if (!rawText) return "";
+
+  const kv = extractOcrKeyValues(rawText);
+
+  // 1. Full Name Extraction
+  let fullName = kv.name;
+  if (!fullName) {
+    const nameMatch = rawText.match(/\b([A-Z]{2,20}\s*,\s*[A-Z\s]{3,40})\b/);
+    if (nameMatch && nameMatch[1] && !/OFFICIAL|CERTIFICATE|REGISTRATION|COLLEGE|UNIVERSITY|ENGINEERING|INFORMATION/i.test(nameMatch[1])) {
+      fullName = nameMatch[1].trim();
+    }
+  }
+  if (!fullName) {
+    const inlineMatch = rawText.match(/(?:name|student\s*name|pangalan)\s*[:\-]\s*(.+)/i);
+    if (inlineMatch && inlineMatch[1]) fullName = inlineMatch[1].trim();
+  }
+  fullName = fullName || "Not detected";
+
+  // 2. Student No Extraction
+  let studentNo = kv.studentId;
+  if (!studentNo || studentNo === 'No' || !/\d/.test(studentNo)) {
+    const idMatch = rawText.match(/\b(12\d{9}|20\d{8,9}|\d{9,11})\b/);
+    if (idMatch) studentNo = idMatch[1];
+  }
+  if (!studentNo || studentNo === 'No') studentNo = "Not detected";
+
+  // 3. Course Extraction
+  let course = kv.course;
+  if (!course) {
+    const courseMatch = rawText.match(/(?:BACHELOR\s+(?:OF\s+SCIENCE|OF\s+ARTS|IN)|BS|BA|BEED|BSED)\s+[A-Z\s]{4,60}/i);
+    if (courseMatch) course = courseMatch[0].trim();
+  }
+  course = course || "Not detected";
+
+  // 4. Year Level Extraction
+  const yearLevel = extractYearLevelFromText(rawText) || kv.yearLevel || "Not detected";
+
+  // 5. Academic Year & Semester Extraction
+  let academicYrSem = kv.schoolYearSem;
+  if (!academicYrSem) {
+    const ayMatch = rawText.match(/(?:AY|SY|School\s*Year\s*Sem|School\s*Year)?\s*[:\-]?\s*(\d{4}[\-\s]\d{4}\s*[\-\|]?\s*(?:1st|2nd|3rd|1|2|3)?\s*(?:Semester|Sem)?)/i);
+    if (ayMatch) academicYrSem = ayMatch[1].trim();
+  }
+  academicYrSem = academicYrSem || "Not detected";
+
+  // 6. Enrolled Subjects & Units Extraction
+  const subjectRows = [];
+  const lines = String(rawText).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+  // Strategy A: Row-based subject matcher
+  for (const line of lines) {
+    if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(line)) break;
+
+    const subMatch = line.match(/^([A-Za-z0-9]{3,12})\s+(.+?)\s+([1-6])\s+(?:IT[1-4]B|MB|JRF|[A-Z]{2,4}\d{0,3})/i) ||
+                     line.match(/^([A-Za-z0-9]{3,12})\s+(.+?)\s+([1-6])\b/i);
+    if (subMatch) {
+      const code = subMatch[1].trim();
+      const desc = subMatch[2].trim().slice(0, 32);
+      const units = subMatch[3].trim();
+      if (!/total|official|certificate|registration|enrolled|run\s*date|user|student|assessed|fees/i.test(code)) {
+        subjectRows.push({ code, desc, units });
+      }
+    }
+  }
+
+  // Strategy B: Column-separated fallback (DLSL column block format)
+  if (subjectRows.length === 0) {
+    const knownCodes = [];
+    const knownDescs = [];
+    
+    // Find subject code blocks (e.g. ITCaproj2, Itelect4, Itsopri, Liferiz)
+    for (const l of lines) {
+      if (/assessed\s*fees|schedule\s*of/i.test(l)) break;
+      if (/^(?:ITCaproj2|Itelect4|Itsopri|Liferiz|IT\w+|CS\w+|IS\w+|CPE\w+|ENG\w+|MATH\w+|PHYS\w+)/i.test(l)) {
+        knownCodes.push(l);
+      } else if (/^(?:Capstone\s*Project|IT\s*Elective|IT\s*Social|The\s*Life\s*and\s*Works|General\s*Psychology|Calculus|Physics|Chemistry)/i.test(l)) {
+        knownDescs.push(l);
+      }
+    }
+
+    if (knownCodes.length > 0) {
+      for (let i = 0; i < knownCodes.length; i++) {
+        const code = knownCodes[i];
+        const desc = knownDescs[i] || "Enrolled Subject";
+        subjectRows.push({ code, desc, units: "3" });
+      }
+    }
+  }
+
+  const totalUnits = extractTotalUnitsFromText(rawText) || (subjectRows.length > 0 ? subjectRows.length * 3 : "Not detected");
+
+  // Extract Financial Summary
+  const totalAssessmentMatch = rawText.match(/(?:total\s*assessment|total\s*assasament|total\s*amount)\s*[:\-]?\s*([0-9\.\,]+)/i);
+  const downpaymentMatch = rawText.match(/downpayment\s*[:\-]?\s*([0-9\.\,]+)/i);
+  const discountMatch = rawText.match(/discount\s*[:\-]?\s*([0-9\.\,]+)/i);
+  const schoolMatch = rawText.match(/(?:De\s*La\s*Salle\s*Lipa|DLSL|Batangas\s*State\s*University|BatStateU|Lipa\s*City\s*Colleges)/i);
+
+  const totalAssessment = totalAssessmentMatch ? totalAssessmentMatch[1] : null;
+  const downpayment = downpaymentMatch ? downpaymentMatch[1] : null;
+  const discount = discountMatch ? discountMatch[1] : "0.00";
+  const schoolName = schoolMatch ? schoolMatch[0] : "De La Salle Lipa";
+
+  const divider = "============================================================";
+  const subDivider = "----------------+------------------------------+-------";
+
+  let out = `${divider}\n📜 EXTRACTED STUDENT INFORMATION\n${divider}\n`;
+  out += `• Full Name     : ${fullName}\n`;
+  out += `• Student No    : ${studentNo}\n`;
+  out += `• Course        : ${course}\n`;
+  out += `• Year Level    : ${yearLevel}\n`;
+  out += `• Academic Yr   : ${academicYrSem}\n\n`;
+
+  if (subjectRows.length > 0) {
+    out += `${divider}\n📚 ENROLLED SUBJECTS & UNITS\n${divider}\n`;
+    out += `   SUBJECT CODE | DESCRIPTION                  | UNITS\n${subDivider}\n`;
+    for (const sub of subjectRows) {
+      const padCode = sub.code.padEnd(14, ' ');
+      const padDesc = sub.desc.padEnd(28, ' ');
+      out += `   ${padCode} | ${padDesc} | ${sub.units}\n`;
+    }
+    out += `${subDivider}\n   TOTAL UNITS  : ${totalUnits}\n\n`;
+  } else {
+    out += `${divider}\n📚 ENROLLED SUBJECTS & UNITS\n${divider}\n`;
+    out += `• Total Units   : ${totalUnits}\n\n`;
+  }
+
+  if (totalAssessment || downpayment) {
+    out += `${divider}\n💰 FINANCIAL SUMMARY\n${divider}\n`;
+    if (totalAssessment) out += `• Total Assessment : ${totalAssessment}\n`;
+    if (downpayment) out += `• Downpayment      : ${downpayment}\n`;
+    if (discount) out += `• Discount         : ${discount}\n`;
+    out += `• Status           : ENROLLED - ${schoolName}\n${divider}\n`;
+  }
+
+  return out;
 }
 
 function getLevenshteinDistance(a, b) {
@@ -900,28 +1053,50 @@ function studentNameMatchesText(text, first, middle, last) {
 
   if (candidateNameStr) {
     let cleanCandStr = candidateNameStr.replace(/(?:reg\s*no|student\s*no|id|tran\s*date|status|sec|bldg|college|pay|user|scholarship|discount|ref\s*no).*/i, '');
-    cleanCandStr = cleanCandStr.replace(/[^a-zA-Z\s]/g, ' ');
-    const normCand = normalizeForOcr(cleanCandStr);
-    const stopWords = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines', 'this', 'that', 'years', 'age'];
-    const candWords = normCand.split(/\s+/).filter(w => w.length >= 2 && !stopWords.includes(w.toLowerCase()));
 
-    if (candWords.length >= 2) {
+    let candFirstStr = cleanCandStr;
+    let candLastStr = '';
+
+    if (cleanCandStr.includes(',')) {
+      // Format: "LANTAFE, MIKAELA YSABEL LINATOC" -> Surname before comma, First/Middle after comma
+      const commaParts = cleanCandStr.split(',');
+      candLastStr = commaParts[0];
+      candFirstStr = commaParts.slice(1).join(' ');
+    } else {
+      // Format: "MIKAELA YSABEL LANTAFE" -> Last word is surname
+      const words = cleanCandStr.trim().split(/\s+/);
+      if (words.length >= 2) {
+        candLastStr = words[words.length - 1];
+        candFirstStr = words.slice(0, words.length - 1).join(' ');
+      }
+    }
+
+    const normCandFirst = normalizeForOcr(candFirstStr.replace(/[^a-zA-Z\s]/g, ' '));
+    const normCandLast = normalizeForOcr(candLastStr.replace(/[^a-zA-Z\s]/g, ' '));
+    const stopWords = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines', 'this', 'that', 'years', 'age'];
+
+    const candFirstWords = normCandFirst.split(/\s+/).filter(w => {
+      if (w.length < 2 || stopWords.includes(w.toLowerCase())) return false;
+      const userInputLastNorm = normalizeForOcr(last || '');
+      if (isSimilarWord(w, userInputLastNorm) || isSimilarWord(userInputLastNorm, w)) return false;
+      if (normCandLast && (isSimilarWord(w, normCandLast) || isSimilarWord(normCandLast, w))) return false;
+      return true;
+    });
+
+    if (candFirstWords.length >= 2) {
       const userInputFirstNorm = normalizeForOcr(`${first || ''} ${middle || ''}`);
       const inputFirstWords = userInputFirstNorm.split(/\s+/).filter(w => w.length >= 1);
-      const userInputLastNorm = normalizeForOcr(last || '');
 
-      // Identify candidate first name words (exclude the document surname which is the last word in candWords)
-      const candFirstWords = candWords.slice(0, candWords.length - 1).filter(cw => {
-        if (cw.length < 2) return false;
-        if (isSimilarWord(cw, userInputLastNorm) || isSimilarWord(userInputLastNorm, cw)) return false;
-        return true;
+      const missingDocFirstWords = candFirstWords.filter(docW => {
+        return !inputFirstWords.some(inpW => isSimilarWord(docW, inpW) || isSimilarWord(inpW, docW));
       });
-
-      if (candFirstWords.length >= 2) {
-        const missingDocFirstWords = candFirstWords.filter(docW => {
-          return !inputFirstWords.some(inpW => isSimilarWord(docW, inpW) || isSimilarWord(inpW, docW));
-        });
-        if (missingDocFirstWords.length > 0) {
+      if (missingDocFirstWords.length > 0) {
+        // If the ONLY missing word is the last word in candFirstWords (the middle name in Philippine format "LAST, FIRST MIDDLE"), ignore it!
+        const lastCandWord = candFirstWords[candFirstWords.length - 1];
+        if (missingDocFirstWords.length === 1 && (missingDocFirstWords[0] === lastCandWord || isSimilarWord(missingDocFirstWords[0], lastCandWord))) {
+          console.debug('[REVERSE FIRST NAME CHECK] Missing word is trailing middle name:', lastCandWord, '- Passing first name match.');
+          reverseFirstOk = true;
+        } else {
           console.debug('[REVERSE FIRST NAME CHECK FAILED] Document name has extra first name words missing in input:', missingDocFirstWords);
           reverseFirstOk = false;
         }
@@ -1628,7 +1803,7 @@ function extractTotalUnitsFromText(text) {
     const line = rawLines[i].trim();
     const lower = line.toLowerCase();
 
-    if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(lower)) break;
+    if (/total\s*units|assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(lower)) break;
     if (isMetadataLine(lower)) continue;
 
     const isSubjectRow =
@@ -1657,12 +1832,12 @@ function extractTotalUnitsFromText(text) {
   }
 
   let calculatedSubjectUnits = null;
-  if (subjectRowCount >= 2) {
-    if (cleanUnitMatchCount >= 4 && explicitUnitsSum >= 6 && explicitUnitsSum <= 48) {
+  if (subjectRowCount >= 1) {
+    if (cleanUnitMatchCount >= 1 && explicitUnitsSum >= 3 && explicitUnitsSum <= 48) {
       calculatedSubjectUnits = Math.round(explicitUnitsSum);
     } else {
       const estimated = subjectRowCount * 3;
-      if (estimated >= 6 && estimated <= 48) calculatedSubjectUnits = estimated;
+      if (estimated >= 3 && estimated <= 48) calculatedSubjectUnits = estimated;
     }
   }
 
@@ -1682,10 +1857,6 @@ function extractTotalUnitsFromText(text) {
     for (let k = allNums.length - 1; k >= 0; k--) {
       const v = parseUnitVal(allNums[k][1]);
       if (v !== null) {
-        // Prefer calculatedSubjectUnits if explicit line has OCR misread (e.g. 9 instead of 12)
-        if (calculatedSubjectUnits !== null && Math.abs(v - calculatedSubjectUnits) >= 2) {
-          return calculatedSubjectUnits;
-        }
         return v;
       }
     }
@@ -1699,15 +1870,28 @@ function extractTotalUnitsFromText(text) {
       }
     }
 
-    for (let j = i + 1; j < Math.min(rawLines.length, i + 4); j++) {
+    for (let j = i + 1; j < Math.min(rawLines.length, i + 25); j++) {
       const checkLine = rawLines[j].trim();
       if (/assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(checkLine)) break;
+
+      // Check if line is a standalone number like "12" or "12.0"
+      const standaloneMatch = checkLine.match(/^(?::\s*)?([6-9]|[1-4]\d)(?:\.0)?$/);
+      if (standaloneMatch) {
+        const v = parseInt(standaloneMatch[1], 10);
+        if (v >= 6 && v <= 48) return v;
+      }
+
       const belowNums = [...checkLine.matchAll(/\b(\d+(?:\.\d+)?)\b/g)];
       for (let k = belowNums.length - 1; k >= 0; k--) {
         const v = parseUnitVal(belowNums[k][1]);
         if (v !== null) return v;
       }
     }
+  }
+
+  // If we extracted units directly from the subject table (e.g. 12 units), prefer it over scanning fee lines
+  if (calculatedSubjectUnits !== null && calculatedSubjectUnits >= 3 && calculatedSubjectUnits <= 48) {
+    return calculatedSubjectUnits;
   }
 
   return calculatedSubjectUnits;
@@ -4182,12 +4366,12 @@ const StudentInfo = () => {
         }
       }
 
-      // Build combinedText BEFORE debugRequirements block (used in Grades branch)
+      let structuredSummary = formatExtractedRequirementsSummary(detectedText);
       let combinedText = "";
       if (docType === 'SchoolID') {
-        combinedText = `[DOCUMENT OCR TEXT]\n${detectedText || 'No text recognized.'}\n\n[FRONT ID VIDEO OCR LOGS]\n${frontVidCheck?.detectedText || 'No text logs.'}\n\n[BACK ID VIDEO OCR LOGS]\n${backVidCheck?.detectedText || 'No text logs.'}`;
+        combinedText = `${structuredSummary ? structuredSummary + '\n\n' : ''}[DOCUMENT OCR TEXT]\n${detectedText || 'No text recognized.'}\n\n[FRONT ID VIDEO OCR LOGS]\n${frontVidCheck?.detectedText || 'No text logs.'}\n\n[BACK ID VIDEO OCR LOGS]\n${backVidCheck?.detectedText || 'No text logs.'}`;
       } else {
-        combinedText = `[DOCUMENT OCR TEXT]\n${detectedText || 'No text recognized.'}\n\n[VIDEO OCR CHECK LOGS]\n${videoCheck?.detectedText || 'No video text log available.'}`;
+        combinedText = `${structuredSummary ? structuredSummary + '\n\n' : ''}[DOCUMENT OCR TEXT]\n${detectedText || 'No text recognized.'}\n\n[VIDEO OCR CHECK LOGS]\n${videoCheck?.detectedText || 'No video text log available.'}`;
       }
 
       let debugRequirements = {};
