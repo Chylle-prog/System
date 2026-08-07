@@ -12,6 +12,11 @@ import difflib
 import platform
 import logging
 try:
+    import pytesseract
+except ImportError:
+    pytesseract = None
+
+try:
     from project_config import get_performance_config
 except ImportError:
     def get_performance_config():
@@ -103,10 +108,60 @@ def resolve_verification_image_bytes(image_data):
                 return None
     return None
 
+_tesseract_initialized = False
+
+def _init_tesseract():
+    global _tesseract_initialized
+    if _tesseract_initialized or pytesseract is None:
+        return
+    if platform.system() == 'Windows':
+        which_tess = shutil.which('tesseract')
+        candidates = [
+            os.environ.get('TESSERACT_CMD', r'C:\Program Files\Tesseract-OCR\tesseract.exe'),
+            r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+            which_tess
+        ]
+        for cmd in candidates:
+            if cmd and os.path.exists(cmd):
+                pytesseract.pytesseract.tesseract_cmd = cmd
+                print(f"[OCR] Tesseract executable configured: {cmd}", flush=True)
+                break
+    _tesseract_initialized = True
+
+def _run_tesseract_fallback(img_cv_or_bytes, psm=6):
+    """Fallback OCR engine if Google Cloud Vision API returns empty text or billing error."""
+    if img_cv_or_bytes is None or pytesseract is None:
+        return ""
+    try:
+        _init_tesseract()
+        img_cv = img_cv_or_bytes
+        if isinstance(img_cv_or_bytes, (bytes, str)):
+            data = decode_base64(img_cv_or_bytes) if isinstance(img_cv_or_bytes, str) else img_cv_or_bytes
+            if data:
+                nparr = np.frombuffer(data, np.uint8)
+                img_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if img_cv is None:
+            return ""
+
+        processed = preprocess_image_advanced(img_cv, scale_factor=2.0)
+        if processed is None:
+            processed = img_cv
+
+        text = pytesseract.image_to_string(processed, config=f'--psm {psm} --oem 1')
+        if not text.strip() and psm != 3:
+            text = pytesseract.image_to_string(processed, config='--psm 3 --oem 1')
+
+        return text.strip()
+    except Exception as e:
+        print(f"[OCR FALLBACK] Tesseract error: {e}", flush=True)
+        return ""
+
 def extract_text_with_google_cloud_vision(image_input):
     """
     High-Fidelity Document Text Extraction using Google Cloud Vision API (DOCUMENT_TEXT_DETECTION).
     Optimized for dense printed document tables (COR, Grades Transcripts, Barangay Indigency, IDs).
+    Falls back gracefully to PyTesseract if GCP Vision API is unlinked to billing or encounters network limits.
     """
     if image_input is None:
         return ""
@@ -158,16 +213,17 @@ def extract_text_with_google_cloud_vision(image_input):
         response = client.document_text_detection(image=image)
         if response.error and response.error.message:
             logger.warning(f"[GOOGLE CLOUD VISION] API Error: {response.error.message}")
-            return ""
+            return _run_tesseract_fallback(raw_bytes)
 
         full_text = response.full_text_annotation.text or ""
         if full_text:
             logger.info(f"[GOOGLE CLOUD VISION] Successfully extracted {len(full_text)} chars from document.")
             return full_text.strip()
+        else:
+            return _run_tesseract_fallback(raw_bytes)
     except Exception as e:
         logger.warning(f"[GOOGLE CLOUD VISION EXCEPTION] {e}")
-
-    return ""
+        return _run_tesseract_fallback(image_input)
 
 def decode_signature(value, fernet_instance=None):
     """Safely decode signature image data (handles base64 URIs, raw bytes, URLs, and optional Fernet decryption)."""
