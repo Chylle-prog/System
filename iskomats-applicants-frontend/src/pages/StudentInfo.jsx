@@ -807,11 +807,47 @@ function formatExtractedRequirementsSummary(rawText) {
   const discount = discountMatch ? discountMatch[1] : "0.00";
   const schoolName = schoolMatch ? schoolMatch[0] : "De La Salle Lipa";
 
+  // Parse name into First Name, Middle Name, Last Name
+  let firstName = "Not detected";
+  let middleName = "Not detected";
+  let lastName = "Not detected";
+
+  if (fullName && fullName !== "Not detected") {
+    let clean = fullName.trim();
+    if (clean.includes(',')) {
+      const parts = clean.split(',').map(s => s.trim());
+      lastName = parts[0] || "Not detected";
+      const rest = (parts[1] || '').split(/\s+/).filter(Boolean);
+      if (rest.length >= 2) {
+        middleName = rest[rest.length - 1];
+        firstName = rest.slice(0, rest.length - 1).join(' ');
+      } else if (rest.length === 1) {
+        firstName = rest[0];
+        middleName = "N/A";
+      }
+    } else {
+      const words = clean.split(/\s+/).filter(Boolean);
+      if (words.length >= 3) {
+        lastName = words[words.length - 1];
+        middleName = words[words.length - 2];
+        firstName = words.slice(0, words.length - 2).join(' ');
+      } else if (words.length === 2) {
+        firstName = words[0];
+        lastName = words[1];
+        middleName = "N/A";
+      } else if (words.length === 1) {
+        firstName = words[0];
+      }
+    }
+  }
+
   const divider = "============================================================";
   const subDivider = "----------------+------------------------------+-------";
 
   let out = `${divider}\n📜 EXTRACTED STUDENT INFORMATION\n${divider}\n`;
-  out += `• Full Name     : ${fullName}\n`;
+  out += `• First Name    : ${firstName}\n`;
+  out += `• Middle Name   : ${middleName}\n`;
+  out += `• Last Name     : ${lastName}\n`;
   out += `• Student No    : ${studentNo}\n`;
   out += `• Course        : ${course}\n`;
   out += `• Year Level    : ${yearLevel}\n`;
