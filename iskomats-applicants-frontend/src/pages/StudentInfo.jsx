@@ -436,6 +436,7 @@ const performGoogleVisionOcrScan = async (imageInput) => {
 
   const candidates = [
     API_ORIGIN,
+    'https://system-hxgp.onrender.com',
     'https://iskomats-backend.onrender.com',
     ...(isLocalhost ? ['http://localhost:10000', 'http://localhost:5000'] : [])
   ];
