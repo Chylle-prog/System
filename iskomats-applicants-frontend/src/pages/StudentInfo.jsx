@@ -2536,12 +2536,6 @@ const StudentInfo = () => {
     setIdStatus('Scanning cancelled by user.');
     setFaceVerified(null);
 
-    if (tesseractWorkerSingleton) {
-      try {
-        tesseractWorkerSingleton.terminate();
-      } catch (e) {}
-      tesseractWorkerSingleton = null;
-    }
     console.log('[DEBUG] Stopped all active scannings successfully.');
   };
 
@@ -3426,10 +3420,6 @@ const StudentInfo = () => {
       const { firstName, lastName, middleName } = formData;
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
       const reqSemester = scholarshipDetails?.semester || searchParams.get('semester');
-
-      if (!window.Tesseract) {
-        throw new Error("WebAssembly OCR Engine (Tesseract.js) failed to load. Please check your internet connection.");
-      }
 
       // Resolve/decrypt proxy URLs to local blob URLs for robust local OCR scanning
       let resolvedParam = docParam;
@@ -4701,10 +4691,6 @@ const StudentInfo = () => {
       setScholarshipName(scholarship);
     }
 
-    // Warm up Tesseract WebAssembly worker in background immediately on page mount
-    setTimeout(() => {
-      getTesseractWorker().catch(() => {});
-    }, 100);
 
     const loadProfile = async () => {
       const savedDraft = await loadDraftFromStorage(draftKey);
