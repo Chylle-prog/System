@@ -12,11 +12,6 @@ import difflib
 import platform
 import logging
 try:
-    import pytesseract
-except ImportError:
-    pytesseract = None
-
-try:
     from project_config import get_performance_config
 except ImportError:
     def get_performance_config():
@@ -107,6 +102,116 @@ def resolve_verification_image_bytes(image_data):
                 print(f"[RESOLVE] Failed to fetch image URL {normalized}: {e}", flush=True)
                 return None
     return None
+
+def extract_text_with_google_cloud_vision(image_input):
+    """
+    High-Fidelity Document Text Extraction using Google Cloud Vision API (DOCUMENT_TEXT_DETECTION).
+    """
+    if image_input is None:
+        return ""
+
+    if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ:
+        base_dir = os.path.dirname(__file__)
+        candidate_paths = [
+            os.path.join(base_dir, "gcp-vision-key.json"),
+            os.path.join(os.path.dirname(base_dir), "gcp-vision-key.json"),
+            "gcp-vision-key.json"
+        ]
+        for cp in candidate_paths:
+            if os.path.exists(cp):
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.abspath(cp)
+                break
+
+    try:
+        raw_bytes = None
+        if isinstance(image_input, np.ndarray):
+            success, encoded_img = cv2.imencode('.jpg', image_input)
+            if success:
+                raw_bytes = encoded_img.tobytes()
+        elif isinstance(image_input, str) and os.path.isfile(image_input):
+            with open(image_input, 'rb') as f:
+                raw_bytes = f.read()
+        else:
+            raw_bytes = resolve_verification_image_bytes(image_input)
+
+        if not raw_bytes:
+            return ""
+
+        from google.cloud import vision
+        client = vision.ImageAnnotatorClient()
+        image = vision.Image(content=raw_bytes)
+
+        response = client.document_text_detection(image=image)
+        if response.error and response.error.message:
+            logger.warning(f"[GOOGLE CLOUD VISION] API Error: {response.error.message}")
+            return ""
+
+        full_text = response.full_text_annotation.text or ""
+        if full_text:
+            logger.info(f"[GOOGLE CLOUD VISION] Successfully extracted {len(full_text)} chars from document.")
+            return full_text.strip()
+    except Exception as e:
+        logger.warning(f"[GOOGLE CLOUD VISION EXCEPTION] {e}")
+
+    return ""
+
+def extract_text_and_kvp_with_azure(image_bytes):
+    """
+    Extracts text and Key-Value Pairs from document using Azure Document Intelligence REST API if configured.
+    """
+    key = os.environ.get('AZURE_DOC_INTEL_KEY', '').strip()
+    endpoint = os.environ.get('AZURE_DOC_INTEL_ENDPOINT', '').strip().rstrip('/')
+
+    if not key or not endpoint:
+        return None, {}
+
+    try:
+        data = decode_base64(image_bytes) if isinstance(image_bytes, str) else image_bytes
+        if not data or len(data) < 10:
+            return None, {}
+
+        import requests
+        headers = {
+            'Ocp-Apim-Subscription-Key': key,
+            'Content-Type': 'application/octet-stream'
+        }
+
+        models = ['prebuilt-document', 'prebuilt-layout']
+        for model in models:
+            analyze_url = f"{endpoint}/formrecognizer/documentModels/{model}:analyze?api-version=2023-07-31"
+            resp = requests.post(analyze_url, headers=headers, data=data, timeout=15)
+            if resp.status_code != 202:
+                continue
+
+            op_location = resp.headers.get('Operation-Location')
+            if not op_location:
+                continue
+
+            for _ in range(30):
+                time.sleep(0.4)
+                poll_resp = requests.get(op_location, headers={'Ocp-Apim-Subscription-Key': key}, timeout=10)
+                if poll_resp.status_code == 200:
+                    result_json = poll_resp.json()
+                    status = result_json.get('status')
+                    if status == 'succeeded':
+                        analyze_res = result_json.get('analyzeResult', {})
+                        content = analyze_res.get('content', '')
+                        kvp_dict = {}
+                        kv_pairs = analyze_res.get('keyValuePairs', [])
+                        for kv in kv_pairs:
+                            k_str = (kv.get('key', {}).get('content') or '').strip().lower()
+                            v_str = (kv.get('value', {}).get('content') or '').strip()
+                            if k_str and v_str:
+                                kvp_dict[k_str] = v_str
+                        if content and len(content.strip()) > 0:
+                            print(f"[AZURE OCR] Extracted {len(content)} chars and {len(kvp_dict)} KV pairs via {model}.", flush=True)
+                            return content.strip(), kvp_dict
+                    elif status in ('failed', 'canceled'):
+                        break
+        return None, {}
+    except Exception as e:
+        print(f"[AZURE OCR] Exception: {e}", flush=True)
+        return None, {}
 
 def decode_signature(value, fernet_instance=None):
     """Safely decode signature image data (handles base64 URIs, raw bytes, URLs, and optional Fernet decryption)."""
@@ -825,26 +930,6 @@ def save_signature_profile(student_id, drawing_data, profile_type='real'):
 
 # ─── DOCUMENT OCR & STRUCTURED COR PARSER ───────────────────────────────────
 
-_tesseract_initialized = False
-
-def _init_tesseract():
-    global _tesseract_initialized
-    if _tesseract_initialized or pytesseract is None:
-        return
-    if platform.system() == 'Windows':
-        which_tess = shutil.which('tesseract')
-        candidates = [
-            os.environ.get('TESSERACT_CMD', r'C:\Program Files\Tesseract-OCR\tesseract.exe'),
-            r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
-            which_tess
-        ]
-        for cmd in candidates:
-            if cmd and os.path.exists(cmd):
-                pytesseract.pytesseract.tesseract_cmd = cmd
-                print(f"[OCR] Tesseract executable configured: {cmd}", flush=True)
-                break
-    _tesseract_initialized = True
-
 def normalize_text(text):
     if not text:
         return ""
@@ -1089,26 +1174,6 @@ def extract_semester_from_ocr_text(text):
     return None
 
 
-def _run_tesseract_on_image(img, psm=3):
-    if img is None or pytesseract is None:
-        return ""
-    try:
-        _init_tesseract()
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
-        h, w = gray.shape[:2]
-        if w < 1600:
-            scale = 1600.0 / w
-            gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
-        elif w > 2400:
-            scale = 2400.0 / w
-            gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-
-        text = pytesseract.image_to_string(gray, config=f'--psm {psm} --oem 1')
-        return text.strip()
-    except Exception as e:
-        print(f"[OCR] Tesseract error: {e}", flush=True)
-        return ""
-
 def auto_adjust_luminance_and_gamma(gray_img):
     """
     1. Automatic Luminance Detection and Gamma Correction:
@@ -1281,129 +1346,13 @@ def extract_cor_roi_crops(img_cv):
         print(f"[COR ROI CROPS] Error cropping regions: {e}", flush=True)
         return None, None
 
-def extract_text_multi_pass_tesseract(img_cv_or_bytes, psms=[6, 11, 3]):
-    """
-    Multi-Pass Dual-Engine OCR & Sparse Text Extraction (--psm 6 & --psm 11 & --psm 3):
-    Runs multiple Tesseract passes with different Page Segmentation Modes (PSMs)
-    across two enhanced versions (CLAHE brightened + shadow-removed binarized) to capture
-    scattered small words, numbers, and text under poor/shadowy lighting.
-    """
-    if img_cv_or_bytes is None or pytesseract is None:
-        return ""
-    _init_tesseract()
-    
-    img_cv = img_cv_or_bytes
-    if isinstance(img_cv_or_bytes, (bytes, str)):
-        data = decode_base64(img_cv_or_bytes) if isinstance(img_cv_or_bytes, str) else img_cv_or_bytes
-        if data:
-            nparr = np.frombuffer(data, np.uint8)
-            img_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-    if img_cv is None:
-        return ""
-
-    gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY) if len(img_cv.shape) == 3 else img_cv.copy()
-    brightened_gray = auto_adjust_luminance_and_gamma(gray)
-    
-    # Version 1: Brightened + CLAHE local contrast
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    img_pass1 = clahe.apply(brightened_gray)
-    
-    # Version 2: Shadow-removed Adaptive Thresholding Binarization
-    img_pass2 = create_shadow_removed_binarized_image(brightened_gray)
-
-    combined_lines = []
-    seen_lines_normalized = set()
-
-    for psm in psms:
-        for pass_img in [img_pass1, img_pass2]:
-            try:
-                txt = pytesseract.image_to_string(pass_img, config=f'--psm {psm} --oem 1')
-                if txt:
-                    for line in txt.splitlines():
-                        l_clean = line.strip()
-                        if not l_clean:
-                            continue
-                        l_norm = re.sub(r'\s+', ' ', l_clean).lower()
-                        if l_norm not in seen_lines_normalized:
-                            seen_lines_normalized.add(l_norm)
-                            combined_lines.append(l_clean)
-            except Exception as e:
-                print(f"[MULTI-PASS OCR] Pass psm {psm} note: {e}", flush=True)
-
-    return "\n".join(combined_lines)
-
-def extract_text_and_kvp_with_azure(image_bytes):
-    """
-    Extracts text and Key-Value Pairs from document using Azure Document Intelligence REST API.
-    Attempts prebuilt-document model first (for structured KVP), falling back to prebuilt-layout.
-    """
-    key = os.environ.get('AZURE_DOC_INTEL_KEY', '').strip()
-    endpoint = os.environ.get('AZURE_DOC_INTEL_ENDPOINT', '').strip().rstrip('/')
-
-    if not key or not endpoint:
-        return None, {}
-
-    try:
-        data = decode_base64(image_bytes) if isinstance(image_bytes, str) else image_bytes
-        if not data or len(data) < 10:
-            return None, {}
-
-        import requests
-        headers = {
-            'Ocp-Apim-Subscription-Key': key,
-            'Content-Type': 'application/octet-stream'
-        }
-
-        models = ['prebuilt-document', 'prebuilt-layout']
-        for model in models:
-            analyze_url = f"{endpoint}/formrecognizer/documentModels/{model}:analyze?api-version=2023-07-31"
-            resp = requests.post(analyze_url, headers=headers, data=data, timeout=15)
-            if resp.status_code != 202:
-                continue
-
-            op_location = resp.headers.get('Operation-Location')
-            if not op_location:
-                continue
-
-            for _ in range(30):
-                time.sleep(0.4)
-                poll_resp = requests.get(op_location, headers={'Ocp-Apim-Subscription-Key': key}, timeout=10)
-                if poll_resp.status_code == 200:
-                    result_json = poll_resp.json()
-                    status = result_json.get('status')
-                    if status == 'succeeded':
-                        analyze_res = result_json.get('analyzeResult', {})
-                        content = analyze_res.get('content', '')
-                        kvp_dict = {}
-                        kv_pairs = analyze_res.get('keyValuePairs', [])
-                        for kv in kv_pairs:
-                            k_str = (kv.get('key', {}).get('content') or '').strip().lower()
-                            v_str = (kv.get('value', {}).get('content') or '').strip()
-                            if k_str and v_str:
-                                kvp_dict[k_str] = v_str
-                        if content and len(content.strip()) > 0:
-                            print(f"[AZURE OCR] Extracted {len(content)} chars and {len(kvp_dict)} KV pairs via {model}.", flush=True)
-                            return content.strip(), kvp_dict
-                    elif status in ('failed', 'canceled'):
-                        break
-        return None, {}
-    except Exception as e:
-        print(f"[AZURE OCR] Exception: {e}", flush=True)
-        return None, {}
-
-def extract_text_with_azure_document_intelligence(image_bytes):
-    text, _ = extract_text_and_kvp_with_azure(image_bytes)
-    return text
-
 def extract_cor_document_text_multi_pass(image_bytes):
     """
     Comprehensive COR OCR processing pipeline incorporating:
     1. 3x-4x Bicubic Super-Scaling + CLAHE + Sharpness Enhancement
     2. Azure Document Intelligence extraction on high-res super-scaled image
-    3. Header ROI (Top 38%) and Footer ROI (Bottom 45%) Regional Crops
-    4. Multi-Pass Tesseract OCR (--psm 6, --psm 11, --psm 3) on Full Image, Header ROI, and Footer ROI
-    5. Robust OCR Typo Sanitizer (e.g. 1B -> 18, 2O -> 20, 1S -> 15)
+    3. Google Cloud Vision API extraction on full image & regional ROI crops
+    4. Robust OCR Typo Sanitizer (e.g. 1B -> 18, 2O -> 20, 1S -> 15)
     Returns: (raw_text, azure_kvp)
     """
     if not image_bytes:
@@ -1427,21 +1376,24 @@ def extract_cor_document_text_multi_pass(image_bytes):
     except Exception as az_err:
         print(f"[COR OCR] Azure extraction note: {az_err}", flush=True)
 
-    # Step 3: Region-of-Interest (ROI) Header & Footer Crop Scanning
+    # Step 3: Google Cloud Vision API extraction
+    try:
+        gcp_text = extract_text_with_google_cloud_vision(enhanced_bytes)
+        if gcp_text and len(gcp_text.strip()) >= 10:
+            raw_text_parts.append(gcp_text.strip())
+            print(f"[COR OCR] Google Cloud Vision extracted {len(gcp_text)} chars on Super-Resolution COR", flush=True)
+    except Exception as gcp_err:
+        print(f"[COR OCR] Google Cloud Vision extraction note: {gcp_err}", flush=True)
+
+    # Step 4: Region-of-Interest (ROI) Header & Footer Crop Scanning
     header_crop_bytes, footer_crop_bytes = extract_cor_roi_crops(enhanced_img)
-
-    # Step 4: Multi-Pass OCR (--psm 6 & --psm 11 & --psm 3)
-    full_multi_pass = extract_text_multi_pass_tesseract(enhanced_img, psms=[6, 11, 3])
-    if full_multi_pass:
-        raw_text_parts.append(full_multi_pass)
-
     if header_crop_bytes:
-        header_text = extract_text_multi_pass_tesseract(header_crop_bytes, psms=[6, 11])
+        header_text = extract_text_with_google_cloud_vision(header_crop_bytes)
         if header_text:
             raw_text_parts.append("[HEADER ROI CROP]\n" + header_text)
 
     if footer_crop_bytes:
-        footer_text = extract_text_multi_pass_tesseract(footer_crop_bytes, psms=[6, 11])
+        footer_text = extract_text_with_google_cloud_vision(footer_crop_bytes)
         if footer_text:
             raw_text_parts.append("[FOOTER ROI CROP]\n" + footer_text)
 
@@ -1495,7 +1447,7 @@ def extract_document_text(image_bytes, psm=3, max_width=None, prefer_fast_layout
         if is_id_back:
             effective_psm = 6
 
-        text = _run_tesseract_on_image(img, psm=effective_psm)
+        text = extract_text_with_google_cloud_vision(img)
         err = None if text and text.strip() else "Unable to extract readable text from document"
         return (text, err) if should_return_tuple else text
     except Exception as e:

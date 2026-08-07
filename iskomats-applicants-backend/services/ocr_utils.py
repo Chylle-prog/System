@@ -12,11 +12,6 @@ import difflib
 import platform
 import logging
 try:
-    import pytesseract
-except ImportError:
-    pytesseract = None
-
-try:
     from project_config import get_performance_config
 except ImportError:
     def get_performance_config():
@@ -1015,26 +1010,6 @@ def save_signature_profile(student_id, drawing_data, profile_type='real'):
 
 # ─── DOCUMENT OCR & STRUCTURED COR PARSER ───────────────────────────────────
 
-_tesseract_initialized = False
-
-def _init_tesseract():
-    global _tesseract_initialized
-    if _tesseract_initialized or pytesseract is None:
-        return
-    if platform.system() == 'Windows':
-        which_tess = shutil.which('tesseract')
-        candidates = [
-            os.environ.get('TESSERACT_CMD', r'C:\Program Files\Tesseract-OCR\tesseract.exe'),
-            r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
-            which_tess
-        ]
-        for cmd in candidates:
-            if cmd and os.path.exists(cmd):
-                pytesseract.pytesseract.tesseract_cmd = cmd
-                print(f"[OCR] Tesseract executable configured: {cmd}", flush=True)
-                break
-    _tesseract_initialized = True
-
 def normalize_text(text):
     if not text:
         return ""
@@ -1341,9 +1316,9 @@ def verify_name_sequence_detailed(first_name, last_name, target_text, full_raw_t
         
         input_first_tokens = [w for w in (first_clean + " " + mid_clean).split() if len(w) >= 1]
         
-        # Identify candidate first name words (ignore single-letter initials and last name matching token)
+        # Identify candidate first name words (exclude document surname which is the last word in cand_words)
         cand_first_words = [
-            cw for cw in cand_words
+            cw for cw in cand_words[:-1]
             if len(cw) >= 2 and not any(is_similar_name_word(cw, lw, strict_spelling=True) for lw in last_words)
         ]
         
@@ -1513,32 +1488,6 @@ def preprocess_image_advanced(img, scale_factor=2.0, apply_clahe=True, sharpen=T
         print(f"[OCR PREPROCESS] Error: {e}", flush=True)
         return img
 
-def _run_tesseract_on_image(img, psm=6):
-    if img is None or pytesseract is None:
-        return ""
-    try:
-        _init_tesseract()
-        processed = preprocess_image_advanced(img, scale_factor=2.0)
-        if processed is None:
-            processed = img
-
-        text = pytesseract.image_to_string(processed, config=f'--psm {psm} --oem 1')
-        if not text.strip() and psm != 3:
-            text = pytesseract.image_to_string(processed, config='--psm 3 --oem 1')
-
-        # Pass 2: Adaptive Threshold Shadow Removal fallback if text is sparse or missing
-        if len(text.strip()) < 30:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
-            binarized = create_shadow_removed_binarized_image(auto_adjust_luminance_and_gamma(gray))
-            text2 = pytesseract.image_to_string(binarized, config=f'--psm {psm} --oem 1')
-            if text2 and len(text2.strip()) > len(text.strip()):
-                text = text + "\n" + text2
-
-        return text.strip()
-    except Exception as e:
-        print(f"[OCR] Tesseract error: {e}", flush=True)
-        return ""
-
 def sanitize_ocr_number_typos(text):
     """
     Robust OCR Typo Sanitizer for small printed numbers & letters:
@@ -1660,66 +1609,13 @@ def extract_cor_roi_crops(img_cv):
         print(f"[COR ROI CROPS] Error cropping regions: {e}", flush=True)
         return None, None
 
-def extract_text_multi_pass_tesseract(img_cv_or_bytes, psms=[6, 11, 3]):
-    """
-    Multi-Pass Dual-Engine OCR & Sparse Text Extraction (--psm 6 & --psm 11 & --psm 3):
-    Runs multiple Tesseract passes with different Page Segmentation Modes (PSMs)
-    across two enhanced versions (CLAHE brightened + shadow-removed binarized) to capture
-    scattered small words, numbers, and text under poor/shadowy lighting.
-    """
-    if img_cv_or_bytes is None or pytesseract is None:
-        return ""
-    _init_tesseract()
-    
-    img_cv = img_cv_or_bytes
-    if isinstance(img_cv_or_bytes, (bytes, str)):
-        data = decode_base64(img_cv_or_bytes) if isinstance(img_cv_or_bytes, str) else img_cv_or_bytes
-        if data:
-            nparr = np.frombuffer(data, np.uint8)
-            img_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-    if img_cv is None:
-        return ""
-
-    gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY) if len(img_cv.shape) == 3 else img_cv.copy()
-    brightened_gray = auto_adjust_luminance_and_gamma(gray)
-    
-    # Version 1: Brightened + CLAHE local contrast
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    img_pass1 = clahe.apply(brightened_gray)
-    
-    # Version 2: Shadow-removed Adaptive Thresholding Binarization
-    img_pass2 = create_shadow_removed_binarized_image(brightened_gray)
-
-    combined_lines = []
-    seen_lines_normalized = set()
-
-    for psm in psms:
-        for pass_img in [img_pass1, img_pass2]:
-            try:
-                txt = pytesseract.image_to_string(pass_img, config=f'--psm {psm} --oem 1')
-                if txt:
-                    for line in txt.splitlines():
-                        l_clean = line.strip()
-                        if not l_clean:
-                            continue
-                        l_norm = re.sub(r'\s+', ' ', l_clean).lower()
-                        if l_norm not in seen_lines_normalized:
-                            seen_lines_normalized.add(l_norm)
-                            combined_lines.append(l_clean)
-            except Exception as e:
-                print(f"[MULTI-PASS OCR] Pass psm {psm} note: {e}", flush=True)
-
-    return "\n".join(combined_lines)
-
 def extract_cor_document_text_multi_pass(image_bytes):
     """
     Comprehensive COR OCR processing pipeline incorporating:
     1. 3x-4x Bicubic Super-Scaling + CLAHE + Sharpness Enhancement
     2. Azure Document Intelligence extraction on high-res super-scaled image
-    3. Header ROI (Top 38%) and Footer ROI (Bottom 45%) Regional Crops
-    4. Multi-Pass Tesseract OCR (--psm 6, --psm 11, --psm 3) on Full Image, Header ROI, and Footer ROI
-    5. Robust OCR Typo Sanitizer (e.g. 1B -> 18, 2O -> 20, 1S -> 15)
+    3. Google Cloud Vision API extraction on full image & regional ROI crops
+    4. Robust OCR Typo Sanitizer (e.g. 1B -> 18, 2O -> 20, 1S -> 15)
     Returns: (raw_text, azure_kvp)
     """
     if not image_bytes:
@@ -1743,21 +1639,24 @@ def extract_cor_document_text_multi_pass(image_bytes):
     except Exception as az_err:
         print(f"[COR OCR] Azure extraction note: {az_err}", flush=True)
 
-    # Step 3: Region-of-Interest (ROI) Header & Footer Crop Scanning
+    # Step 3: Google Cloud Vision API extraction
+    try:
+        gcp_text = extract_text_with_google_cloud_vision(enhanced_bytes)
+        if gcp_text and len(gcp_text.strip()) >= 10:
+            raw_text_parts.append(gcp_text.strip())
+            print(f"[COR OCR] Google Cloud Vision extracted {len(gcp_text)} chars on Super-Resolution COR", flush=True)
+    except Exception as gcp_err:
+        print(f"[COR OCR] Google Cloud Vision extraction note: {gcp_err}", flush=True)
+
+    # Step 4: Region-of-Interest (ROI) Header & Footer Crop Scanning
     header_crop_bytes, footer_crop_bytes = extract_cor_roi_crops(enhanced_img)
-
-    # Step 4: Multi-Pass OCR (--psm 6 & --psm 11 & --psm 3)
-    full_multi_pass = extract_text_multi_pass_tesseract(enhanced_img, psms=[6, 11, 3])
-    if full_multi_pass:
-        raw_text_parts.append(full_multi_pass)
-
     if header_crop_bytes:
-        header_text = extract_text_multi_pass_tesseract(header_crop_bytes, psms=[6, 11])
+        header_text = extract_text_with_google_cloud_vision(header_crop_bytes)
         if header_text:
             raw_text_parts.append("[HEADER ROI CROP]\n" + header_text)
 
     if footer_crop_bytes:
-        footer_text = extract_text_multi_pass_tesseract(footer_crop_bytes, psms=[6, 11])
+        footer_text = extract_text_with_google_cloud_vision(footer_crop_bytes)
         if footer_text:
             raw_text_parts.append("[FOOTER ROI CROP]\n" + footer_text)
 
@@ -2017,7 +1916,7 @@ def extract_document_text(image_bytes, psm=3, max_width=None, prefer_fast_layout
         if is_id_back:
             effective_psm = 6
 
-        text = _run_tesseract_on_image(img, psm=effective_psm)
+        text = extract_text_with_google_cloud_vision(img)
         err = None if text and text.strip() else "Unable to extract readable text from document"
         return (text, err) if should_return_tuple else text
     except Exception as e:
@@ -3527,7 +3426,8 @@ def verify_video_content(
             print(f"[VIDEO OCR] Frame processing note: {video_err}", flush=True)
 
     for idx, frame in enumerate(frames):
-        frame_text = _run_tesseract_on_image(frame, psm=3)
+        frame_text = extract_text_with_google_cloud_vision(frame)
+
         if frame_text and len(frame_text.strip()) > 3:
             extracted_text_list.append(f'[Frame {idx + 1}]: "{frame_text.strip()}"')
         else:
@@ -3535,7 +3435,7 @@ def verify_video_content(
                 gray_f = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
                 kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=np.float32)
                 sharp_f = cv2.filter2D(gray_f, -1, kernel)
-                alt_text = _run_tesseract_on_image(sharp_f, psm=3)
+                alt_text = extract_text_with_google_cloud_vision(sharp_f)
                 if alt_text and len(alt_text.strip()) > 3:
                     extracted_text_list.append(f'[Frame {idx + 1}]: "{alt_text.strip()}"')
             except Exception:

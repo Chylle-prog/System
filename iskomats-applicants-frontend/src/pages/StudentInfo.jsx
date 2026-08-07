@@ -719,16 +719,19 @@ function studentNameMatchesText(text, first, middle, last) {
   let candidateNameStr = kv.name || null;
   if (!candidateNameStr) {
     const certPatterns = [
-      /(?:certify|certifies|cently|certifye|certiy|patunay|katibayan)\s+(?:that\s+)?([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years|yr|yo)|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)/i,
-      /(?:this\s+is\s+to|sto)\s+[a-z]{3,10}\s+that\s+([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years|yr|yo)|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)/i,
-      /that\s+([A-Z\s,\.\-]{5,60}?)(?=\s+\d+\s*(?:years|yr|yo|\s+years\s+of\s+age)|\s+is\s+a\s+resident|\s+a\s+bonafide|\n|$)/i,
+      /(?:certify|certifies|cently|certifye|certiy|patunay|katibayan)\s+(?:that\s+)?[_\W]*([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years|yr|yo|\s+years\s+of\s+age)|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)/i,
+      /(?:this\s+is\s+to|sto)\s+[a-z]{3,10}\s+that\s+[_\W]*([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years|yr|yo|\s+years\s+of\s+age)|\s+is\s+a\s+resident|\s+a\s+bonafide|\n|$)/i,
+      /that\s+[_\W]*([A-Z\s,\.\-]{5,60}?)(?=\s+\d+\s*(?:years|yr|yo|\s+years\s+of\s+age)|\s+is\s+a\s+resident|\s+a\s+bonafide|\n|$)/i,
       /(?:name|pangalan)\s*[:\-]?\s*([A-Za-z\s,\.\-]+?)(?=\s+reg|\s+student|\s+id|\n|$)/i
     ];
     for (const pat of certPatterns) {
       const m = text.match(pat);
-      if (m && m[1] && m[1].trim().length >= 3 && m[1].trim().includes(' ')) {
-        candidateNameStr = m[1].trim();
-        break;
+      if (m && m[1]) {
+        const rawCand = m[1].replace(/^[^a-zA-Z]+/, '').trim();
+        if (rawCand.length >= 3 && rawCand.includes(' ')) {
+          candidateNameStr = rawCand;
+          break;
+        }
       }
     }
   }
@@ -745,8 +748,8 @@ function studentNameMatchesText(text, first, middle, last) {
       const inputFirstWords = userInputFirstNorm.split(/\s+/).filter(w => w.length >= 1);
       const userInputLastNorm = normalizeForOcr(last || '');
 
-      // Identify candidate first name words (ignore single-letter initials and last name matching token)
-      const candFirstWords = candWords.filter(cw => {
+      // Identify candidate first name words (exclude the document surname which is the last word in candWords)
+      const candFirstWords = candWords.slice(0, candWords.length - 1).filter(cw => {
         if (cw.length < 2) return false;
         if (isSimilarWord(cw, userInputLastNorm) || isSimilarWord(userInputLastNorm, cw)) return false;
         return true;

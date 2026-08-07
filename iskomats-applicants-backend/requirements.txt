@@ -27,4 +27,3 @@ sentence-transformers
 google-genai
 PyPDF2
 python-docx
-pytesseract

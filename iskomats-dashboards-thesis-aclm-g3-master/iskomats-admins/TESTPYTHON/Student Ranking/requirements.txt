@@ -13,7 +13,6 @@ cryptography
 opencv-python-headless
 numpy
 pandas
-pytesseract
 Pillow
 rapidfuzz
 uniface

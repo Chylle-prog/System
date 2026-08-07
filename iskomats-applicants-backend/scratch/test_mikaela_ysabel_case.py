@@ -30,7 +30,12 @@ def test_mikaela_ysabel_case():
     f4, m4, l4, seq4, err4 = verify_name_sequence_detailed("Mikaela Ysabel", "Lantafe", doc_text_noise)
     print(f"[CASE 4] Input 'Mikaela Ysabel' vs Noise Doc 'that _ MIKAELA YSABEL...': first_ok={f4}, last_ok={l4}, seq_ok={seq4}, err={err4}")
     assert f4 and l4 and seq4, f"Case 4 failed with err={err4}"
-    print("[CASE 4 PASS] Document text with leading noise '_' passed successfully!")
+    # Case 5: Input 'Mikaela Ysabel' + 'Magbuhat' vs Doc 'MIKAELA YSABEL L. LANTAFE' -> first_ok MUST be True!
+    f5, m5, l5, seq5, err5 = verify_name_sequence_detailed("Mikaela Ysabel", "Magbuhat", doc_text_noise)
+    print(f"[CASE 5] Input 'Mikaela Ysabel' + 'Magbuhat' vs Doc 'MIKAELA YSABEL L. LANTAFE': first_ok={f5}, last_ok={l5}, seq_ok={seq5}, err={err5}")
+    assert f5, f"Case 5 failed: First Name MUST be True when 'Mikaela Ysabel' is present on document, err={err5}"
+    assert not l5, "Last Name MUST be False when Magbuhat != Lantafe"
+    print("[CASE 5 PASS] First name 'Mikaela Ysabel' matched successfully even when surname differed!")
 
     print("\nALL MIKAELA YSABEL TEST CASES COMPLETED PERFECTLY!")
 
