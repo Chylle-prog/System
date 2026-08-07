@@ -687,7 +687,7 @@ function extractOcrKeyValues(rawText) {
   }
   // Fallbacks for column-separated OCR text layouts (where labels and values appear in separate column blocks)
   if (!fields.name) {
-    const fnMatch = rawText.match(/\b([A-Z]{2,20}\s*,\s*[A-Z\s]{3,40})\b/);
+    const fnMatch = rawText.match(/\b([A-Za-z]{2,20}\s*,\s*[A-Za-z\s]{3,40})\b/);
     if (fnMatch && fnMatch[1] && !/OFFICIAL|CERTIFICATE|REGISTRATION|COLLEGE|UNIVERSITY|ENGINEERING|INFORMATION|BACHELOR/i.test(fnMatch[1])) {
       fields.name = fnMatch[1].trim();
     }
@@ -1096,7 +1096,7 @@ function studentNameMatchesText(text, first, middle, last) {
   }
 
   if (candidateNameStr) {
-    let cleanCandStr = candidateNameStr.replace(/(?:reg\s*no|student\s*no|id|tran\s*date|status|sec|bldg|college|pay|user|scholarship|discount|ref\s*no).*/i, '');
+    let cleanCandStr = candidateNameStr.replace(/(?:reg\s*no|student\s*no|id|tran\s*date|status|sec|bldg|college|course|year|level|pay|user|scholarship|discount|ref\s*no|subject|assessed|fees|units|pay\s*type|room|faculty|days|time)[\s\S]*/i, '');
 
     let candFirstStr = cleanCandStr;
     let candLastStr = '';
@@ -1117,7 +1117,7 @@ function studentNameMatchesText(text, first, middle, last) {
 
     const normCandFirst = normalizeForOcr(candFirstStr.replace(/[^a-zA-Z\s]/g, ' '));
     const normCandLast = normalizeForOcr(candLastStr.replace(/[^a-zA-Z\s]/g, ' '));
-    const stopWords = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines', 'this', 'that', 'years', 'age'];
+    const stopWords = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines', 'this', 'that', 'years', 'age', 'college', 'course', 'degree', 'year', 'level', 'scholarship', 'discount', 'subject', 'assessed', 'fees', 'units', 'pay', 'type', 'section', 'bldg', 'room', 'faculty', 'days', 'time', 'first', 'second', 'semester', 'sem', 'ay', 'sy'];
 
     const candFirstWords = normCandFirst.split(/\s+/).filter(w => {
       if (w.length < 2 || stopWords.includes(w.toLowerCase())) return false;
@@ -1132,7 +1132,7 @@ function studentNameMatchesText(text, first, middle, last) {
       const inputFirstWords = userInputFirstNorm.split(/\s+/).filter(w => w.length >= 1);
 
       const missingDocFirstWords = candFirstWords.filter(docW => {
-        return !inputFirstWords.some(inpW => isSimilarWord(docW, inpW) || isSimilarWord(inpW, docW));
+        return !inputFirstWords.some(inpW => isSimilarWord(docW, inpW) || isSimilarWord(inpW, docW) || (inpW.length === 1 && docW.toLowerCase().startsWith(inpW.toLowerCase())));
       });
       if (missingDocFirstWords.length > 0) {
         // If the ONLY missing word is the last word in candFirstWords (the middle name in Philippine format "LAST, FIRST MIDDLE"), ignore it!
@@ -1811,7 +1811,7 @@ function grades_type_matches_text(text) {
     'gwa',
     'tor',
     'tcog',
-    'final grades',
+  'final grades',
     'card',
     'units',
     'rating',
@@ -1824,127 +1824,83 @@ function grades_type_matches_text(text) {
 function extractTotalUnitsFromText(text) {
   if (!text) return null;
 
-  const rawLines = text.split(/[\r\n]+/);
+  // STEP 1: Truncate financial fee tables / payment schedules
+  // Cut off everything starting from "ASSESSED FEES", "SCHEDULE OF PAYMENTS", "TUITION FEE", or "TOTAL ASSESSMENT"
+  const feeHeaderMatch = text.match(/(?:ASSESSED\s*FEES|SCHEDULE\s*OF\s*PAYMENTS|TUITION\s*FEE|TOTAL\s*ASSESSMENT|FINANCIAL\s*SUMMARY)/i);
+  let upperText = text;
+  if (feeHeaderMatch) {
+    upperText = text.slice(0, feeHeaderMatch.index);
+  }
 
-  const parseUnitVal = (str) => {
-    let val = parseFloat(str);
-    if (val > 48 && val <= 4800) val = val / 100;
-    if (!isNaN(val) && val >= 6 && val <= 48) return Math.round(val);
-    return null;
-  };
+  // Also check if a trailing standalone integer (e.g. "27", "12", "26") exists at the end of full text
+  const trailingNumMatch = text.match(/\b([1-4]\d)\s*$/);
+  const trailingVal = trailingNumMatch ? parseInt(trailingNumMatch[1], 10) : null;
 
-  const isMetadataLine = (l) => {
-    return /^\s*(?:course|name|student\s*(?:no|id)?|year\s*level|scholarship|pay\s*type|reg\s*no|tran\s*date|college)\s*[:=\-]/i.test(l) ||
-           /bachelor\s*of|bachelor\s*in|master\s*of|doctor\s*of/i.test(l);
-  };
+  const rawLines = upperText.split(/[\r\n]+/);
 
-  // 1. First, detect subject rows and calculate expected units from subject table
-  let subjectRowCount = 0;
-  let explicitUnitsSum = 0;
-  let cleanUnitMatchCount = 0;
+  // Strategy 1a: TOTAL UNITS value on same line ("TOTAL UNITS: 27" or "TOTAL UNITS: 26.00")
+  for (const line of rawLines) {
+    const m = line.match(/TOTAL\s*UNITS\s*[:=\-]\s*([6-9]|[1-4]\d)(?:\.0+)?/i);
+    if (m) {
+      const val = parseInt(m[1], 10);
+      if (val >= 6 && val <= 48) return val;
+    }
+  }
 
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i].trim();
-    const lower = line.toLowerCase();
-
-    if (/total\s*units|assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(lower)) break;
-    if (isMetadataLine(lower)) continue;
-
-    const isSubjectRow =
-      /(?:IT4B|IT3B|IT2B|IT1B|MB\s*\d+|MO\s*\d+|JRF|Caproj|Capstone|Captcie|Captc|Capt|Project|Projet|Projec|ITCH|ttscpn|ects|sects|Utes|Lifi|Liferiz|Lite|ITER|Elective|lective|Eiective|Becve|becv|Itel|Itsoc|itsopri|Systadm|systacm|Wordlit|wordt|Disifil|Disipina|fino|Techpre|Itfisem|irsem|fikdtrips|Sysiarc|Itnetw|tnetw|Filipino|Filpino|Literature|Networking|Technopreneurship|Seminars|Architecture|Fieldtrip|Social|Professions|Professional|Issues|Rizal)/i.test(line) &&
-      !/(?:official|certificate|registration|enrolled|run\s*date|user|school\s*year|student\s*no|page\s*\d|assessed|schedule)/i.test(lower);
-
-    if (isSubjectRow) {
-      subjectRowCount++;
-
-      const cleanedLine = line.replace(/(?:networking|architecture|project|elective|programming|english|math|filipino|physics|chemistry|lab|lecture)\s+[1-4]\b/gi, (m) => m.slice(0, -2));
-
-      const strictUnitMatch = cleanedLine.match(/\b([1-6])\b\s+(?:IT[1-4]B|[A-Z]{2,5}\d{0,3})\b/i) ||
-                              cleanedLine.match(/(?:^|\s)([1-6])(?:\.0)?\s+(?:IT|MB|JRF|[A-Z]{2,4}\b)/i);
-      if (strictUnitMatch) {
-        const u = parseFloat(strictUnitMatch[1]);
-        if (!isNaN(u) && u >= 1 && u <= 6) {
-          explicitUnitsSum += u;
-          cleanUnitMatchCount++;
-        } else {
-          explicitUnitsSum += 3;
-        }
-      } else {
-        explicitUnitsSum += 3;
+  // Strategy 1b: standalone value on the next 1-5 lines below "TOTAL UNITS" label
+  // (handles "TOTAL UNITS:\n27" split across lines by OCR)
+  const totalUnitsIdx = rawLines.findIndex(l => /(?:TOTAL\s*UNITS|UNITS\s*TOTAL|TOTAL\s*UTS)/i.test(l));
+  if (totalUnitsIdx !== -1) {
+    for (let j = totalUnitsIdx + 1; j < Math.min(rawLines.length, totalUnitsIdx + 6); j++) {
+      const m = rawLines[j].trim().match(/^(?::\s*)?([6-9]|[1-4]\d)(?:\.0+)?$/);
+      if (m) {
+        const val = parseInt(m[1], 10);
+        if (val >= 6 && val <= 48) return val;
       }
     }
   }
 
-  let calculatedSubjectUnits = null;
-  if (subjectRowCount >= 1) {
-    if (cleanUnitMatchCount >= 1 && explicitUnitsSum >= 3 && explicitUnitsSum <= 48) {
-      calculatedSubjectUnits = Math.round(explicitUnitsSum);
-    } else {
-      const estimated = subjectRowCount * 3;
-      if (estimated >= 3 && estimated <= 48) calculatedSubjectUnits = estimated;
+  // Strategy 2: Count specific DLSL COR subject codes and multiply by 3.
+  // This handles the common OCR failure where "TOTAL UNITS:" appears but the value
+  // on the same line is not captured, yet subject codes ARE reliably scanned line-by-line.
+  // Section codes like IT3B are NOT included; only subject-code prefixes are matched.
+  const DLSL_SUBJECT_PREFIX_RE = /^(?:ITCaproj|Itelect|Itsopri|Itsoc|Itsys|Itnet|Itnets|Liferiz|Systadm|Systacm|Wordlit|Disifil|Techpre|Itfisem|Sysiarc|Itnetw|Coprog|Coworld|Dismath|Intcomi|Itbupro|NSTPtwo|NSTPone|Pathfi|Purpcom|Readphi|Captc|Caproj)/i;
+  let subjectCount = 0;
+  for (const line of rawLines) {
+    if (DLSL_SUBJECT_PREFIX_RE.test(line.trim())) {
+      subjectCount++;
     }
   }
+  if (subjectCount >= 3) {
+    const est = subjectCount * 3;
+    if (est >= 6 && est <= 48) return est;
+  }
 
-  // 2. Scan for explicit TOTAL UNITS line
-  const TOTAL_UNITS_LINE_RE = /(?:t[oi]?[ao]tal\s*(?:no\.?\s*of\s*|enrolled\s*)?u[nm]?[il1]?[tn]s?|u[nm]?[il1]?[tn]s?\s*t[oi]?[ao]tal|tomas|otl\s*uns|total\s*uts?)/i;
-
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i].trim();
-    if (!TOTAL_UNITS_LINE_RE.test(line)) continue;
-
-    const cleanedLine = line
-      .replace(/[\-\_\=\~\#\:\+\|]+/g, ' ')
-      .replace(/\byi\b|\by1\b|\bv1\b|\bvi\b|\bu1\b|\bui\b|\b1z\b|\b1a\b|\bs12\b|\bs13\b/gi, '12')
-      .replace(/S(?=\d{2})/g, '');
-
-    const allNums = [...cleanedLine.matchAll(/\b(\d+(?:\.\d+)?)\b/g)];
-    for (let k = allNums.length - 1; k >= 0; k--) {
-      const v = parseUnitVal(allNums[k][1]);
-      if (v !== null) {
-        return v;
-      }
-    }
-
-    if (i > 0) {
-      const prevLine = rawLines[i - 1].trim();
-      const prevNums = [...prevLine.matchAll(/\b(\d+(?:\.\d+)?)\b/g)];
-      for (let k = prevNums.length - 1; k >= 0; k--) {
-        const v = parseUnitVal(prevNums[k][1]);
-        if (v !== null) return v;
-      }
-    }
-
-    // First pass below TOTAL UNITS: look for explicit standalone unit integer line (e.g. "12")
-    for (let j = i + 1; j < Math.min(rawLines.length, i + 50); j++) {
-      const checkLine = rawLines[j].trim();
-      if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(checkLine)) break;
-      const standaloneMatch = checkLine.match(/^(?::\s*)?([6-9]|[1-4]\d)(?:\.0)?$/);
-      if (standaloneMatch) {
-        const v = parseInt(standaloneMatch[1], 10);
-        if (v >= 6 && v <= 48) return v;
-      }
-    }
-
-    // Second pass below TOTAL UNITS: check clean lines ignoring times/fees/dates
-    for (let j = i + 1; j < Math.min(rawLines.length, i + 50); j++) {
-      const checkLine = rawLines[j].trim();
-      if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(checkLine)) break;
-      if (/am|pm|:\d{2}|\.\d{2}|,\d{3}|\d{1,2}\/\d{1,2}\/\d{2,4}/i.test(checkLine)) continue;
-
-      const belowNums = [...checkLine.matchAll(/\b(\d+)\b/g)];
-      for (let k = belowNums.length - 1; k >= 0; k--) {
-        const v = parseUnitVal(belowNums[k][1]);
-        if (v !== null) return v;
+  // Strategy 3: Sum standalone unit column values (3, 3.00, 2, 2.00, etc.) in upperText
+  // Used as a last resort when subject codes aren't found (unusual COR format)
+  let subjectUnitsSum = 0;
+  let subjectUnitsCount = 0;
+  for (const line of rawLines) {
+    const unitMatch = line.match(/\b([1-6](?:\.0{1,2})?)\b\s+(?:IT[1-9][A-Z]|[A-Z]{2,4}\-\d{3}|CB\-\d{3}|MB\-\d{3}|NR\-)/i) ||
+                      line.trim().match(/^(?:3|3\.00|2|2\.00|4|4\.00|1|1\.00)$/);
+    if (unitMatch) {
+      const u = parseFloat(unitMatch[1]);
+      if (!isNaN(u) && u >= 1 && u <= 6) {
+        subjectUnitsSum += u;
+        subjectUnitsCount++;
       }
     }
   }
-
-  // If we extracted units directly from the subject table (e.g. 12 units), prefer it over scanning fee lines
-  if (calculatedSubjectUnits !== null && calculatedSubjectUnits >= 3 && calculatedSubjectUnits <= 48) {
-    return calculatedSubjectUnits;
+  if (subjectUnitsCount >= 3 && subjectUnitsSum >= 6 && subjectUnitsSum <= 48) {
+    return Math.round(subjectUnitsSum);
   }
 
-  return calculatedSubjectUnits;
+  // Fallback: Trailing number if valid
+  if (trailingVal !== null && trailingVal >= 6 && trailingVal <= 48) {
+    return trailingVal;
+  }
+
+  return null;
 }
 
 function extractYearLevelFromText(text) {
@@ -3806,6 +3762,7 @@ const StudentInfo = () => {
     };
 
     try {
+      visionOcrCache.clear();
       if (!silent) {
         setVerified('verifying');
         setStatus(`Initializing in-browser WebAssembly OCR Engine...`);
@@ -4250,7 +4207,7 @@ const StudentInfo = () => {
           const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
           const isNationalId = idType === 'National ID';
 
-          let nameCheck = studentNameMatchesText(docOnlyText, firstName, middleName, lastName);
+          let nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
 
           const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
           const courseOk = course ? courseMatchesText(course, combinedText) : true;
@@ -4300,7 +4257,7 @@ const StudentInfo = () => {
           const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
           const isNationalId = idType === 'National ID';
 
-          const nameCheck = studentNameMatchesText(docOnlyText, firstName, middleName, lastName);
+          const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
           const gpaOk = gpa ? gpaMatchesText(detectedText, gpa) : true;
           const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
           const semOk = semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);

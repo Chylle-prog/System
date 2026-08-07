@@ -13,6 +13,8 @@ DEFAULT_CORS_ORIGINS = (
     "https://foregoing-giants.surge.sh,"
     "https://iskomats-applicants.surge.sh,"
     "https://iskomats-admin.surge.sh,"
+    "https://admins-site.surge.sh,"
+    "https://admins-site.surge.sh/,"
     "https://system-hxgp.onrender.com,"
     "https://system-rshh.vercel.app"
 )
@@ -40,7 +42,7 @@ def get_allowed_origins():
         origins.append(base_origin + '/')
         
         # Wildcard support for surge.sh, netlify.app, and vercel.app
-        if base_origin.endswith('.surge.sh') or base_origin.endswith('.netlify.app') or base_origin.endswith('.vercel.app'):
+        if 'surge.sh' in base_origin or 'netlify.app' in base_origin or 'vercel.app' in base_origin:
             host = base_origin.removeprefix('https://').removeprefix('http://').split('/')[0]
             # Match current host and any subdomains
             preview_patterns.append(re.compile(rf"^https?://([a-z0-9\-]+\.)*{re.escape(host)}/?$"))
@@ -97,9 +99,8 @@ def is_origin_allowed(origin, exact_origins, regex_origins):
             print(f"[CORS] Error matching pattern {pattern}: {e}")
 
     # GLOBAL OVERRIDE: Allow any surge.sh, netlify.app, or vercel.app origin as a safety net
-    if normalized_origin.endswith('.surge.sh') or normalized_origin.endswith('.surge.sh/') or \
-       normalized_origin.endswith('.netlify.app') or normalized_origin.endswith('.netlify.app/') or \
-       normalized_origin.endswith('.vercel.app') or normalized_origin.endswith('.vercel.app/'):
+    cleaned = normalized_origin.rstrip('/')
+    if 'surge.sh' in cleaned or 'netlify.app' in cleaned or 'vercel.app' in cleaned:
         return True
 
     # Log only unique rejections to avoid flooding

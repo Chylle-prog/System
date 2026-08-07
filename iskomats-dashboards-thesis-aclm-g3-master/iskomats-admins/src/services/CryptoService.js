@@ -1,6 +1,6 @@
 /**
  * CryptoService for ISKOMATS (Admin Site)
- * Matches the encryption logic on the applicant site with high-performance caching.
+ * Matches the encryption logic on the applicant site with high-performance caching and fast video inspection.
  */
 
 const ENCRYPTION_KEY_STR = import.meta.env.VITE_ENCRYPTION_KEY || 'iskomats-system-secret-key-2024';
@@ -59,6 +59,34 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
 
   const decryptPromise = (async () => {
     try {
+      const isVideo = Boolean((type && type.startsWith('video')) || url.toLowerCase().includes('.mp4') || url.toLowerCase().includes('.webm') || url.toLowerCase().includes('video'));
+      const prefixBytes = new TextEncoder().encode(MAGIC_PREFIX);
+
+      // Fast check for videos using Range request to avoid downloading multi-megabyte files unnecessarily!
+      if (isVideo) {
+        try {
+          const headResp = await fetch(url, {
+            headers: { 'Range': `bytes=0-${prefixBytes.length + 12 - 1}` },
+            cache: 'force-cache'
+          });
+
+          if (headResp.ok || headResp.status === 206) {
+            const sampleBuffer = await headResp.arrayBuffer();
+            if (sampleBuffer.byteLength >= prefixBytes.length) {
+              const samplePrefix = new Uint8Array(sampleBuffer.slice(0, prefixBytes.length));
+              const isEncrypted = prefixBytes.every((val, i) => val === samplePrefix[i]);
+
+              // If it's NOT encrypted, return original URL immediately without downloading the full video!
+              if (!isEncrypted) {
+                return url;
+              }
+            }
+          }
+        } catch (rangeErr) {
+          // Fallback to normal fetch if Range header is rejected by server
+        }
+      }
+
       const response = await fetch(url, { cache: 'force-cache' });
       if (!response.ok) {
         console.warn(`[CRYPTO] Failed to fetch media (HTTP ${response.status}):`, url);
@@ -67,7 +95,6 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
       const blob = await response.blob();
       if (blob.size === 0) return url;
 
-      const prefixBytes = new TextEncoder().encode(MAGIC_PREFIX);
       if (blob.size >= prefixBytes.length + 12) {
         const sampleBuffer = await blob.slice(0, prefixBytes.length).arrayBuffer();
         const samplePrefix = new Uint8Array(sampleBuffer);
@@ -94,13 +121,20 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
 };
 
 /**
- * Preload and decrypt multiple media URLs in parallel
+ * Preload and decrypt multiple media URLs in parallel, prioritizing images over videos
  */
 export const preloadMediaUrls = (urls = [], type = 'image/jpeg') => {
   if (!Array.isArray(urls)) return;
-  urls.forEach(url => {
-    if (url && typeof url === 'string' && url.startsWith('http')) {
-      decryptUrl(url, type);
-    }
+  const imageUrls = urls.filter(u => u && typeof u === 'string' && u.startsWith('http') && !u.toLowerCase().includes('.mp4') && !u.toLowerCase().includes('video'));
+  const videoUrls = urls.filter(u => u && typeof u === 'string' && u.startsWith('http') && (u.toLowerCase().includes('.mp4') || u.toLowerCase().includes('video')));
+
+  // Preload images first in parallel so dossier document photos appear instantly
+  imageUrls.forEach(url => {
+    decryptUrl(url, type || 'image/jpeg');
+  });
+
+  // Preload video headers asynchronously
+  videoUrls.forEach(url => {
+    decryptUrl(url, 'video/mp4');
   });
 };

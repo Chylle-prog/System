@@ -3578,6 +3578,7 @@ def get_applicants(current_user_id, pro_no, role, program):
                         ({applicant_document_expr(cursor, 'id_img_front', 'a', 'ad')} IS NOT NULL) as "has_id_img_front",
                         ({applicant_document_expr(cursor, 'id_img_back', 'a', 'ad')} IS NOT NULL) as "has_id_img_back",
                         ({applicant_document_expr(cursor, 'id_pic', 'a', 'ad')} IS NOT NULL) as "has_id_pic",
+                        ({applicant_document_expr(cursor, 'signature_image_data', 'a', 'ad')} IS NOT NULL) as "has_signature",
                         {profile_picture_expr} as "has_profile_picture",
                         {applicant_document_expr(cursor, 'indigency_vid_url', 'a', 'ad')} as indigency_vid_url,
                         {applicant_document_expr(cursor, 'enrollment_certificate_vid_url', 'a', 'ad')} as enrollment_certificate_vid_url,
@@ -4214,13 +4215,21 @@ def get_announcement_image(image_id):
         
             data = row['img']
         
-            # --- CLOUD STORAGE REDIRECT ---
+            # --- CLOUD STORAGE PROXY ---
             if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
-                from flask import redirect
                 from services.applicant_document_service import normalize_supabase_url
                 normalized_url = normalize_supabase_url(data)
-                print(f"[ANN IMAGE] Redirecting {image_id} to cloud URL: {normalized_url[:60]}...", flush=True)
-                return redirect(normalized_url)
+                try:
+                    import requests
+                    proxy_resp = requests.get(normalized_url, timeout=20)
+                    if proxy_resp.status_code == 200 and proxy_resp.content:
+                        data = proxy_resp.content
+                    else:
+                        from flask import redirect
+                        return redirect(normalized_url)
+                except Exception:
+                    from flask import redirect
+                    return redirect(normalized_url)
 
             encrypted_img = data
         
@@ -4284,13 +4293,21 @@ def get_announcement_image_by_index(ann_no, idx):
         
             data = row['img']
         
-            # --- CLOUD STORAGE REDIRECT ---
+            # --- CLOUD STORAGE PROXY ---
             if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
-                from flask import redirect
                 from services.applicant_document_service import normalize_supabase_url
                 normalized_url = normalize_supabase_url(data)
-                print(f"[ANN INDEX ENDPOINT] Redirecting {ann_no}/{idx} to cloud URL: {normalized_url[:60]}...", flush=True)
-                return redirect(normalized_url)
+                try:
+                    import requests
+                    proxy_resp = requests.get(normalized_url, timeout=20)
+                    if proxy_resp.status_code == 200 and proxy_resp.content:
+                        data = proxy_resp.content
+                    else:
+                        from flask import redirect
+                        return redirect(normalized_url)
+                except Exception:
+                    from flask import redirect
+                    return redirect(normalized_url)
 
             encrypted_img = data
         
@@ -4458,8 +4475,18 @@ def get_applicant_image(applicant_no, column_name):
             if fetched_bytes:
                 data = fetched_bytes
             else:
-                from flask import redirect
-                return redirect(normalize_supabase_url(data))
+                try:
+                    import requests
+                    proxy_url = normalize_supabase_url(data)
+                    proxy_resp = requests.get(proxy_url, timeout=20)
+                    if proxy_resp.status_code == 200 and proxy_resp.content:
+                        data = proxy_resp.content
+                    else:
+                        print(f"[APPLICANT IMAGE] Fallback HTTP fetch failed: {proxy_resp.status_code} for {proxy_url}", flush=True)
+                        return jsonify({'message': 'Media file unavailable'}), 404
+                except Exception as proxy_err:
+                    print(f"[APPLICANT IMAGE] Proxy fetch error for {data}: {proxy_err}", flush=True)
+                    return jsonify({'message': 'Failed to load media file'}), 500
 
         # Convert to bytes if not already
         if not isinstance(data, (bytes, bytearray)):

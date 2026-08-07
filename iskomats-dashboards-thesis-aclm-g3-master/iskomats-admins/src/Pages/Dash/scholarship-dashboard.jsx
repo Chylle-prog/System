@@ -34,7 +34,8 @@ import {
   FaPaperPlane,
   FaPlusCircle,
   FaRobot,
-  FaSpinner
+  FaSpinner,
+  FaPlay
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { adminAPI, scholarshipAPI, announcementService, warmBackendConnection } from '../../services/api';
@@ -47,7 +48,7 @@ Chart.register(...registerables);
 /**
  * Helper component to handle encrypted images and videos in the dossier
  */
-const DecryptedMedia = ({ src, type, className, controls = false, onClick = null, alt = "Document" }) => {
+const DecryptedMedia = ({ src, type, className, controls = false, autoPlay = false, onClick = null, alt = "Document" }) => {
   const [decryptedSrc, setDecryptedSrc] = useState(src);
   const [isLoading, setIsLoading] = useState(Boolean(src && typeof src === 'string' && src.startsWith('http')));
   const [hasError, setHasError] = useState(false);
@@ -116,7 +117,11 @@ const DecryptedMedia = ({ src, type, className, controls = false, onClick = null
     <video
       src={decryptedSrc}
       controls={controls}
+      autoPlay={autoPlay}
+      preload="metadata"
       className={className}
+      onClick={onClick}
+      onError={() => setHasError(true)}
     />
   );
 };
@@ -5259,17 +5264,26 @@ export default function ScholarshipDashboard({
       idFiles.splice(insertIdx, 0, { src: backVid, type: 'video/mp4', name: 'ID Back Video' });
     }
 
-    // Preload media URLs when applicant object is available
+    // Preload media URLs when applicant object is available (prioritizing images over videos)
     if (a) {
-      const mediaUrls = [
+      const imageMediaUrls = [
         a.profile_picture,
         a.signature,
-        ...(a.coeFiles || []).map(f => f.src),
-        ...(a.indigencyFiles || []).map(f => f.src),
-        ...(a.gradesFiles || []).map(f => f.src),
-        ...idFiles.map(f => f.src),
+        ...(a.coeFiles || []).filter(f => f.type && f.type.startsWith('image')).map(f => f.src),
+        ...(a.indigencyFiles || []).filter(f => f.type && f.type.startsWith('image')).map(f => f.src),
+        ...(a.gradesFiles || []).filter(f => f.type && f.type.startsWith('image')).map(f => f.src),
+        ...idFiles.filter(f => f.type && f.type.startsWith('image')).map(f => f.src),
       ].filter(Boolean);
-      preloadMediaUrls(mediaUrls);
+
+      const videoMediaUrls = [
+        ...(a.coeFiles || []).filter(f => f.type && f.type.startsWith('video')).map(f => f.src),
+        ...(a.indigencyFiles || []).filter(f => f.type && f.type.startsWith('video')).map(f => f.src),
+        ...(a.gradesFiles || []).filter(f => f.type && f.type.startsWith('video')).map(f => f.src),
+        ...idFiles.filter(f => f.type && f.type.startsWith('video')).map(f => f.src),
+      ].filter(Boolean);
+
+      preloadMediaUrls(imageMediaUrls, 'image/jpeg');
+      preloadMediaUrls(videoMediaUrls, 'video/mp4');
     }
 
     // Normalize family data for display
@@ -5294,20 +5308,33 @@ export default function ScholarshipDashboard({
       if (!files || files.length === 0) return <p className="text-gray-400 italic text-xs">No documents uploaded</p>;
       return (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {files.map((f, idx) => (
-            <div key={idx} className="relative group cursor-pointer border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all">
-              <DecryptedMedia
-                src={f.src}
-                type={f.type}
-                className="w-full h-28 object-contain bg-gray-100 group-hover:scale-105 transition-transform"
-                controls={true}
-                onClick={() => setImageModalSrc(f.src)}
-              />
-              <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] py-0.5 text-center font-bold">
-                {f.type.startsWith('image') ? 'IMAGE' : 'VIDEO'}
+          {files.map((f, idx) => {
+            const isVideo = Boolean(f.type && f.type.startsWith('video'));
+            return (
+              <div
+                key={idx}
+                className="relative group cursor-pointer border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all bg-gray-900"
+                onClick={() => setImageModalSrc({ src: f.src, type: f.type })}
+              >
+                <DecryptedMedia
+                  src={f.src}
+                  type={f.type}
+                  className="w-full h-28 object-contain bg-gray-100 group-hover:scale-105 transition-transform pointer-events-none"
+                  controls={false}
+                />
+                {isVideo && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/50 transition-colors pointer-events-none">
+                    <div className="w-10 h-10 rounded-full bg-black/70 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform border border-white/40">
+                      <FaPlay className="text-sm ml-0.5" />
+                    </div>
+                  </div>
+                )}
+                <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] py-0.5 text-center font-bold pointer-events-none">
+                  {isVideo ? 'VIDEO' : 'IMAGE'}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       );
     };
@@ -5627,12 +5654,12 @@ export default function ScholarshipDashboard({
             {/* Signature box */}
             <div className="flex-1 flex flex-col text-center sm:text-left">
               <div className="border-b-2 border-gray-300 mb-2 h-20 flex items-end justify-center overflow-hidden pb-1">
-                {a.signature ? (
+                {(a.signature || a.signature_image_data || a.signatureUrl) ? (
                   <DecryptedMedia
-                    src={a.signature}
+                    src={a.signature || a.signature_image_data || a.signatureUrl}
                     type="image/png"
                     className="max-h-full cursor-zoom-in hover:scale-110 transition-transform"
-                    onClick={() => setImageModalSrc(a.signature)}
+                    onClick={() => setImageModalSrc(a.signature || a.signature_image_data || a.signatureUrl)}
                   />
                 ) : (
                   <span className="text-gray-300 italic text-sm pb-1">No signature on file</span>
@@ -6177,14 +6204,29 @@ export default function ScholarshipDashboard({
       )}
 
       {imageModalSrc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80" onClick={() => setImageModalSrc(null)}>
-          <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setImageModalSrc(null)}>
+          <div className="relative max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
             <DecryptedMedia
-              src={imageModalSrc}
-              type="image/jpeg"
-              className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl"
+              src={typeof imageModalSrc === 'object' && imageModalSrc !== null ? imageModalSrc.src : imageModalSrc}
+              type={
+                typeof imageModalSrc === 'object' && imageModalSrc !== null && imageModalSrc.type
+                  ? imageModalSrc.type
+                  : (typeof imageModalSrc === 'string' && (imageModalSrc.toLowerCase().includes('.mp4') || imageModalSrc.toLowerCase().includes('.webm') || imageModalSrc.toLowerCase().includes('video')))
+                    ? 'video/mp4'
+                    : 'image/jpeg'
+              }
+              className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl"
+              controls={true}
+              autoPlay={true}
             />
-            <button type="button" onClick={() => setImageModalSrc(null)} className="absolute top-3 right-3 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-[#800020]">Ã—</button>
+            <button
+              type="button"
+              onClick={() => setImageModalSrc(null)}
+              className="absolute -top-10 right-0 sm:top-3 sm:right-3 w-10 h-10 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-[#800020] transition-colors z-10 text-xl font-bold shadow-lg"
+              aria-label="Close media view"
+            >
+              <FaTimes />
+            </button>
           </div>
         </div>
       )}
