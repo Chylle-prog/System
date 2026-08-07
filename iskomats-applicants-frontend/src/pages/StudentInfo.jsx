@@ -417,6 +417,65 @@ const getOcrCacheKey = (imageInput, resolvedBlob, base64Image) => {
   return null;
 };
 
+const compressImageForOcr = async (blobOrDataUrl, maxDim = 1280, quality = 0.75) => {
+  if (!blobOrDataUrl) return blobOrDataUrl;
+  try {
+    let srcUrl = null;
+    if (blobOrDataUrl instanceof Blob || blobOrDataUrl instanceof File) {
+      srcUrl = URL.createObjectURL(blobOrDataUrl);
+    } else if (typeof blobOrDataUrl === 'string') {
+      srcUrl = blobOrDataUrl;
+    } else {
+      return blobOrDataUrl;
+    }
+
+    const img = new Image();
+    const loaded = await new Promise((resolve) => {
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = srcUrl;
+    });
+
+    if (!loaded || !img.width || !img.height) {
+      if (srcUrl && srcUrl.startsWith('blob:')) URL.revokeObjectURL(srcUrl);
+      return blobOrDataUrl;
+    }
+
+    let w = img.width;
+    let h = img.height;
+    if (w <= maxDim && h <= maxDim) {
+      if (srcUrl && srcUrl.startsWith('blob:')) URL.revokeObjectURL(srcUrl);
+      return blobOrDataUrl;
+    }
+
+    if (w > h) {
+      h = Math.round((h * maxDim) / w);
+      w = maxDim;
+    } else {
+      w = Math.round((w * maxDim) / h);
+      h = maxDim;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, w, h);
+
+    if (srcUrl && srcUrl.startsWith('blob:')) URL.revokeObjectURL(srcUrl);
+
+    const outBlob = await new Promise((resolve) => {
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', quality);
+    });
+
+    return outBlob || blobOrDataUrl;
+  } catch (err) {
+    return blobOrDataUrl;
+  }
+};
+
 const performGoogleVisionOcrScan = async (imageInput) => {
   if (!imageInput) return "";
 
@@ -450,6 +509,18 @@ const performGoogleVisionOcrScan = async (imageInput) => {
   if (cacheKey && visionOcrCache.has(cacheKey)) {
     console.log(`[GOOGLE CLOUD VISION CLIENT] Cache hit for image (${cacheKey}). Skipping Vision API request.`);
     return visionOcrCache.get(cacheKey);
+  }
+
+  // 2. Compress large image payloads to max 1280px (~150KB) to prevent TCP socket timeouts / ERR_CONNECTION_CLOSED
+  if (resolvedBlob && resolvedBlob.size > 800000) {
+    const compressed = await compressImageForOcr(resolvedBlob, 1280, 0.75);
+    if (compressed instanceof Blob) resolvedBlob = compressed;
+  } else if (base64Image && base64Image.length > 800000) {
+    const compressed = await compressImageForOcr(base64Image, 1280, 0.75);
+    if (compressed instanceof Blob) {
+      resolvedBlob = compressed;
+      base64Image = null;
+    }
   }
 
   // Filter backend candidates based on execution environment
