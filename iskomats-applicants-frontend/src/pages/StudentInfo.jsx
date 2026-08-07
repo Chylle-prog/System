@@ -674,6 +674,10 @@ function extractOcrKeyValues(rawText) {
           let val = match[1].trim();
           val = val.replace(/\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref)\s*[:\-].*/i, '').trim();
           if (val.length > 0) {
+            // Reject false matches that contain digits or academic year / semester header keywords
+            if (key === 'name' && (/\d/.test(val) || /AY\s*\d|School\s*Year|Semester|1st|2nd|3rd|Official|Certificate|Registration/i.test(val))) {
+              continue;
+            }
             fields[key] = val;
             break;
           }
@@ -1049,6 +1053,10 @@ function studentNameMatchesText(text, first, middle, last) {
         }
       }
     }
+  }
+
+  if (candidateNameStr && (/\d/.test(candidateNameStr) || /AY\s*\d|School\s*Year|Semester|1st|2nd|3rd|Official|Certificate|Registration/i.test(candidateNameStr))) {
+    candidateNameStr = null;
   }
 
   if (candidateNameStr) {
@@ -1870,18 +1878,24 @@ function extractTotalUnitsFromText(text) {
       }
     }
 
-    for (let j = i + 1; j < Math.min(rawLines.length, i + 25); j++) {
+    // First pass below TOTAL UNITS: look for explicit standalone unit integer line (e.g. "12")
+    for (let j = i + 1; j < Math.min(rawLines.length, i + 50); j++) {
       const checkLine = rawLines[j].trim();
-      if (/assessed\s*fees|schedule\s*of|total\s*assessment|outstanding|tuition/i.test(checkLine)) break;
-
-      // Check if line is a standalone number like "12" or "12.0"
+      if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(checkLine)) break;
       const standaloneMatch = checkLine.match(/^(?::\s*)?([6-9]|[1-4]\d)(?:\.0)?$/);
       if (standaloneMatch) {
         const v = parseInt(standaloneMatch[1], 10);
         if (v >= 6 && v <= 48) return v;
       }
+    }
 
-      const belowNums = [...checkLine.matchAll(/\b(\d+(?:\.\d+)?)\b/g)];
+    // Second pass below TOTAL UNITS: check clean lines ignoring times/fees/dates
+    for (let j = i + 1; j < Math.min(rawLines.length, i + 50); j++) {
+      const checkLine = rawLines[j].trim();
+      if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(checkLine)) break;
+      if (/am|pm|:\d{2}|\.\d{2}|,\d{3}|\d{1,2}\/\d{1,2}\/\d{2,4}/i.test(checkLine)) continue;
+
+      const belowNums = [...checkLine.matchAll(/\b(\d+)\b/g)];
       for (let k = belowNums.length - 1; k >= 0; k--) {
         const v = parseUnitVal(belowNums[k][1]);
         if (v !== null) return v;
