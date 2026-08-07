@@ -21,7 +21,7 @@ os.environ['TESSDATA_PREFIX'] = os.environ.get('TESSDATA_PREFIX', '/usr/share/te
 STARTUP_TIME = time.time()
 print("[STARTUP] 1. eventlet monkey_patch complete. Loading modules...", flush=True)
 
-# Deployment trigger: 2026-04-08 - CORS TIMEOUT FIX - Better error handling
+# Deployment trigger: 2026-08-07 - Add /api/student/verification/ocr-scan route for Google Cloud Vision OCR
 from flask import Flask, jsonify, request, Request
 from flask_socketio import SocketIO
 from werkzeug.middleware.proxy_fix import ProxyFix
