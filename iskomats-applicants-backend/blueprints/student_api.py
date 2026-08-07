@@ -3530,11 +3530,12 @@ def ocr_scan():
         if not image_bytes:
             return jsonify({'success': False, 'message': 'No image data provided for OCR scan.', 'text': ''}), 400
 
-        extracted_text = extract_text_with_google_cloud_vision(image_bytes)
+        extracted_text, debug_info = extract_text_with_google_cloud_vision(image_bytes, return_debug=True)
         return jsonify({
             'success': True,
             'text': extracted_text or "",
-            'length': len(extracted_text or "")
+            'length': len(extracted_text or ""),
+            'debug': debug_info
         }), 200
     except Exception as e:
         print(f"[OCR SCAN API EXCEPTION] {e}", flush=True)

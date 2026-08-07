@@ -176,17 +176,25 @@ def _run_tesseract_fallback(image_input):
         logger.warning(f"[TESSERACT FALLBACK EXCEPTION] {te}")
         return ""
 
-def extract_text_with_google_cloud_vision(image_input):
+def extract_text_with_google_cloud_vision(image_input, return_debug=False):
     """
     High-Fidelity Document Text Extraction using Google Cloud Vision API (DOCUMENT_TEXT_DETECTION).
     Optimized for dense printed document tables (COR, Grades Transcripts, Barangay Indigency, IDs).
     Falls back gracefully to PyTesseract if GCP Vision API is unlinked to billing or encounters network limits.
     """
     if image_input is None:
-        return ""
+        return ("", "image_input is None") if return_debug else ""
 
-    from google.cloud import vision
-    from google.oauth2 import service_account
+    debug_msg = []
+
+    try:
+        from google.cloud import vision
+        from google.oauth2 import service_account
+    except Exception as imp_err:
+        debug_msg.append(f"Import error: {imp_err}")
+        logger.warning(f"[GOOGLE CLOUD VISION] Import error: {imp_err}")
+        res = _run_tesseract_fallback(image_input)
+        return (res, " | ".join(debug_msg)) if return_debug else res
 
     client = None
 
@@ -194,15 +202,19 @@ def extract_text_with_google_cloud_vision(image_input):
     if "GOOGLE_CLOUD_VISION_KEY_JSON" in os.environ:
         try:
             raw_json_str = os.environ["GOOGLE_CLOUD_VISION_KEY_JSON"].strip()
+            debug_msg.append(f"Found GOOGLE_CLOUD_VISION_KEY_JSON (len={len(raw_json_str)})")
             key_data = json.loads(raw_json_str)
             if isinstance(key_data, dict) and "private_key" in key_data:
                 if "\\n" in key_data["private_key"] and "\n" not in key_data["private_key"]:
                     key_data["private_key"] = key_data["private_key"].replace("\\n", "\n")
             credentials = service_account.Credentials.from_service_account_info(key_data)
             client = vision.ImageAnnotatorClient(credentials=credentials)
-            logger.info("[GOOGLE CLOUD VISION] Client initialized directly from GOOGLE_CLOUD_VISION_KEY_JSON env var.")
+            debug_msg.append("Client created from GOOGLE_CLOUD_VISION_KEY_JSON")
         except Exception as json_e:
+            debug_msg.append(f"JSON key parse error: {json_e}")
             logger.warning(f"[GOOGLE CLOUD VISION] Failed initializing from GOOGLE_CLOUD_VISION_KEY_JSON: {json_e}")
+    else:
+        debug_msg.append("GOOGLE_CLOUD_VISION_KEY_JSON not in os.environ")
 
     # Priority 2: File path in GOOGLE_APPLICATION_CREDENTIALS or candidate paths
     if client is None:
@@ -217,15 +229,19 @@ def extract_text_with_google_cloud_vision(image_input):
             for cp in candidate_paths:
                 if os.path.exists(cp):
                     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.abspath(cp)
+                    debug_msg.append(f"Found candidate key file: {cp}")
                     break
         try:
             client = vision.ImageAnnotatorClient()
+            debug_msg.append("Client created from default GOOGLE_APPLICATION_CREDENTIALS")
         except Exception as client_e:
+            debug_msg.append(f"Default client init error: {client_e}")
             logger.warning(f"[GOOGLE CLOUD VISION] Failed default client initialization: {client_e}")
 
     if client is None:
-        logger.warning("[GOOGLE CLOUD VISION] No valid GCP Vision credentials found. Running Tesseract fallback.")
-        return _run_tesseract_fallback(image_input)
+        debug_msg.append("No valid credentials found, running tesseract fallback")
+        res = _run_tesseract_fallback(image_input)
+        return (res, " | ".join(debug_msg)) if return_debug else res
 
     try:
         raw_bytes = None
@@ -240,23 +256,32 @@ def extract_text_with_google_cloud_vision(image_input):
             raw_bytes = resolve_verification_image_bytes(image_input)
 
         if not raw_bytes:
-            return ""
+            debug_msg.append("raw_bytes is empty")
+            return ("", " | ".join(debug_msg)) if return_debug else ""
 
+        debug_msg.append(f"Sending image bytes (size={len(raw_bytes)}) to Vision API")
         image = vision.Image(content=raw_bytes)
         response = client.document_text_detection(image=image)
         if response.error and response.error.message:
+            debug_msg.append(f"API Response Error: {response.error.message}")
             logger.warning(f"[GOOGLE CLOUD VISION] API Error: {response.error.message}")
-            return _run_tesseract_fallback(raw_bytes)
+            res = _run_tesseract_fallback(raw_bytes)
+            return (res, " | ".join(debug_msg)) if return_debug else res
 
         full_text = response.full_text_annotation.text or ""
         if full_text:
+            debug_msg.append(f"Extracted {len(full_text)} chars")
             logger.info(f"[GOOGLE CLOUD VISION] Successfully extracted {len(full_text)} chars from document.")
-            return full_text.strip()
+            return (full_text.strip(), " | ".join(debug_msg)) if return_debug else full_text.strip()
         else:
-            return _run_tesseract_fallback(raw_bytes)
+            debug_msg.append("full_text_annotation empty")
+            res = _run_tesseract_fallback(raw_bytes)
+            return (res, " | ".join(debug_msg)) if return_debug else res
     except Exception as e:
+        debug_msg.append(f"Exception during Vision API call: {e}")
         logger.warning(f"[GOOGLE CLOUD VISION EXCEPTION] {e}")
-        return _run_tesseract_fallback(image_input)
+        res = _run_tesseract_fallback(image_input)
+        return (res, " | ".join(debug_msg)) if return_debug else res
 
 def decode_signature(value, fernet_instance=None):
     """Safely decode signature image data (handles base64 URIs, raw bytes, URLs, and optional Fernet decryption)."""
