@@ -404,12 +404,42 @@ const splitFullName = (fullName) => {
 
 const performGoogleVisionOcrScan = async (imageInput) => {
   if (!imageInput) return "";
-  const originsToTry = [
-    'http://localhost:10000',
+
+  // Pre-process imageInput safely into resolvedBlob or base64Image before attempting network calls
+  let resolvedBlob = null;
+  let base64Image = null;
+
+  if (imageInput instanceof Blob || imageInput instanceof File) {
+    resolvedBlob = imageInput;
+  } else if (typeof imageInput === 'string') {
+    if (imageInput.startsWith('blob:')) {
+      try {
+        const blobResp = await fetch(imageInput);
+        if (blobResp.ok) {
+          resolvedBlob = await blobResp.blob();
+        } else {
+          console.warn('[GOOGLE CLOUD VISION CLIENT] Blob URL unavailable or revoked:', imageInput);
+          return "";
+        }
+      } catch (blobErr) {
+        console.warn('[GOOGLE CLOUD VISION CLIENT] Unable to read blob URL:', blobErr?.message || blobErr);
+        return "";
+      }
+    } else {
+      base64Image = imageInput;
+    }
+  }
+
+  // Filter backend candidates based on execution environment
+  const isLocalhost = typeof window !== 'undefined' && 
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+  const candidates = [
     API_ORIGIN,
     'https://iskomats-backend.onrender.com',
-    'http://localhost:5000'
-  ].filter((v, i, a) => v && a.indexOf(v) === i);
+    ...(isLocalhost ? ['http://localhost:10000', 'http://localhost:5000'] : [])
+  ];
+  const originsToTry = candidates.filter((v, i, a) => v && a.indexOf(v) === i);
 
   for (const origin of originsToTry) {
     try {
@@ -420,26 +450,16 @@ const performGoogleVisionOcrScan = async (imageInput) => {
       let requestBody = null;
       let isFormData = false;
 
-      if (imageInput instanceof Blob || imageInput instanceof File) {
+      if (resolvedBlob) {
         const formData = new FormData();
-        formData.append('file', imageInput);
+        formData.append('file', resolvedBlob, 'scan.jpg');
         requestBody = formData;
         isFormData = true;
-      } else if (typeof imageInput === 'string' && (imageInput.startsWith('data:') || imageInput.startsWith('blob:'))) {
-        if (imageInput.startsWith('blob:')) {
-          const blobResp = await fetch(imageInput);
-          const blob = await blobResp.blob();
-          const formData = new FormData();
-          formData.append('file', blob);
-          requestBody = formData;
-          isFormData = true;
-        } else {
-          headers['Content-Type'] = 'application/json';
-          requestBody = JSON.stringify({ image: imageInput });
-        }
-      } else {
+      } else if (base64Image) {
         headers['Content-Type'] = 'application/json';
-        requestBody = JSON.stringify({ image: imageInput });
+        requestBody = JSON.stringify({ image: base64Image });
+      } else {
+        return "";
       }
 
       const fetchOptions = {
@@ -454,9 +474,11 @@ const performGoogleVisionOcrScan = async (imageInput) => {
         const data = await resp.json();
         const text = String(data.text || "").trim();
         if (text) return text;
+      } else {
+        console.warn(`[GOOGLE CLOUD VISION CLIENT] Origin ${cleanOrigin} returned HTTP status ${resp.status}`);
       }
     } catch (err) {
-      console.warn(`[GOOGLE CLOUD VISION CLIENT] Scan error on origin (${origin}):`, err?.message || err);
+      console.warn(`[GOOGLE CLOUD VISION CLIENT] Network check failed on origin (${origin}):`, err?.message || err);
     }
   }
   return "";
