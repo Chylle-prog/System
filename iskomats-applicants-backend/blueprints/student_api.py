@@ -3502,12 +3502,15 @@ def get_verification_status():
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
-@student_api_bp.route('/verification/ocr-scan', methods=['POST'])
+@student_api_bp.route('/verification/ocr-scan', methods=['POST', 'OPTIONS'])
 def ocr_scan():
     """
     High-Precision Document & Frame Scan Endpoint powered by Google Cloud Vision API.
     Accepts raw file uploads, base64 data URIs, or JSON payloads.
     """
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
+
     try:
         from services.ocr_utils import extract_text_with_google_cloud_vision, resolve_verification_image_bytes
         image_bytes = None
