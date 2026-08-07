@@ -405,8 +405,9 @@ const splitFullName = (fullName) => {
 const performGoogleVisionOcrScan = async (imageInput) => {
   if (!imageInput) return "";
   const originsToTry = [
-    'https://iskomats-backend.onrender.com',
+    'http://localhost:10000',
     API_ORIGIN,
+    'https://iskomats-backend.onrender.com',
     'http://localhost:5000'
   ].filter((v, i, a) => v && a.indexOf(v) === i);
 
