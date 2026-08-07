@@ -1844,7 +1844,6 @@ const StudentInfo = () => {
             const token = localStorage.getItem('authToken');
             const apiOrigin = API_ORIGIN;
 
-            // Resolve to backend decryption proxy URL
             let fetchUrl = trimmed;
             if (fieldName && !trimmed.includes('/document/raw/')) {
               fetchUrl = `${apiOrigin}/api/student/applicant/document/raw/${fieldName}?token=${token}`;
@@ -1861,7 +1860,6 @@ const StudentInfo = () => {
 
             const cbSep = fetchUrl.includes('?') ? '&' : '?';
 
-            // Retry fetch up to 3 times to handle Render backend ERR_CONNECTION_CLOSED connection resets
             let resp = null;
             for (let attempt = 0; attempt < 3; attempt++) {
               try {
@@ -1876,7 +1874,6 @@ const StudentInfo = () => {
             if (resp && resp.ok) {
               const blob = await resp.blob();
               if (blob.size > 0) {
-                // Read the first 16 bytes to check if the file is already decrypted
                 const headerBuffer = await blob.slice(0, 16).arrayBuffer();
                 const headerBytes = new Uint8Array(headerBuffer);
                 const isMkvWebm = headerBytes[0] === 0x1a && headerBytes[1] === 0x45 && headerBytes[2] === 0xdf && headerBytes[3] === 0xa3;
@@ -1884,7 +1881,6 @@ const StudentInfo = () => {
 
                 let decryptedBlob = blob;
                 if (!isMkvWebm && !isMp4) {
-                  // Explicitly decrypt on client side only if the file is still encrypted
                   const { decryptDocument } = await import('../services/CryptoService');
                   decryptedBlob = await decryptDocument(blob, 'video/mp4');
                 }
@@ -1904,198 +1900,58 @@ const StudentInfo = () => {
       }
 
       if (!srcUrl) {
+        if (createdBlobUrl) URL.revokeObjectURL(createdBlobUrl);
         return { valid: false, isMatched: false, reason: "No video proof source provided.", detectedText: "No video file provided for verification." };
       }
 
-      return await new Promise((resolve) => {
+      // --- NEW SEEK-BASED VIDEO FRAME EXTRACTOR (FROM TEST FOLDER) ---
+      const sampleRatios = [0.15, 0.35, 0.60, 0.85];
+      const maxDim = 1600;
+
+      const extractedFrames = await new Promise((resolveFrames) => {
         const video = document.createElement('video');
         video.muted = true;
         video.playsInline = true;
-        video.style.position = 'fixed';
-        video.style.top = '0px';
-        video.style.left = '0px';
-        video.style.width = '1px';
-        video.style.height = '1px';
-        video.style.opacity = '0.01';
-        video.style.pointerEvents = 'none';
-        video.style.zIndex = '-9999';
-        document.body.appendChild(video);
+        video.preload = 'auto';
 
         let cleanedUp = false;
-        let ocrTriggered = false;
-        let playInterval = null;
-
-        const cleanup = () => {
+        const cleanupVideo = () => {
           if (cleanedUp) return;
           cleanedUp = true;
-          if (playInterval) { clearInterval(playInterval); playInterval = null; }
           try {
             video.pause();
             video.removeAttribute('src');
             video.load();
             video.remove();
-          } catch (e) { }
-          if (createdBlobUrl) {
-            URL.revokeObjectURL(createdBlobUrl);
-          }
+          } catch (e) {}
         };
-
-        const evaluateVideoText = (textLogs) => {
-          const rawCombined = (textLogs || []).join(" ").toLowerCase();
-          const cleanText = normalizeForOcr(rawCombined);
-
-          // Extract expected name words safely from formData or userProfile
-          const userLast = String(formData?.lastName || userProfile?.last_name || userProfile?.lastName || '');
-          const userFirst = String(formData?.firstName || userProfile?.first_name || userProfile?.firstName || '');
-
-          const lastWord = normalizeForOcr(userLast).split(' ').filter(w => w.length >= 2);
-          const firstWord = normalizeForOcr(userFirst).split(' ').filter(w => w.length >= 2);
-          const allNameWords = [...lastWord, ...firstWord];
-
-          const schoolNameStr = String(formData?.schoolName || userProfile?.school_name || userProfile?.schoolName || '');
-          const schoolWords = normalizeForOcr(schoolNameStr).split(' ').filter(w => w.length >= 3);
-
-          const studentIdStr = String(formData?.schoolIdNumber || userProfile?.school_id_number || userProfile?.schoolIdNumber || '');
-          const cleanStudentId = studentIdStr.replace(/[^a-zA-Z0-9]/g, '');
-
-          // Target document category keywords (including common Philippine document phrases)
-          let targetKeywords = [];
-          if (fieldName?.includes('Indigency') || fieldName?.includes('indigency') || fieldName?.includes('Residency') || fieldName?.includes('residency')) {
-            const _vidResType = String(scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || '').toLowerCase();
-            const _vidIsResidency = _vidResType.includes('residency');
-            const _requiredVidKeywords = _vidIsResidency ? ['residency', 'resident'] : ['indigency', 'indigent'];
-
-            targetKeywords = [
-              ..._requiredVidKeywords,
-              'certificate', 'barangay', 'punong', 'certify',
-              'office', 'bayan', 'mataasnakahoy', 'lipa', 'batangas', 'whom', 'concern', 'personally',
-              'purok', 'bonafide', 'family', 'families', 'sangguniang', 'kagawad', 'lubi', 'moises',
-              'republic', 'philippines', 'province', 'municipality', 'seal'
-            ];
-          } else if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('certificate') || fieldName?.includes('mayorCOE') || fieldName?.includes('cor')) {
-            targetKeywords = [
-              'certificate', 'registration', 'enrollment', 'official', 'student', 'college', 'semester', 'academic',
-              'course', 'school', 'university', 'whom', 'concern', 'certify', 'bonafide', 'enrolled', 'registrar',
-              'dean', 'republic', 'philippines', 'department', 'dlsl', 'lipa', 'salle', 'bsit', 'units', 'cor', 'coe', 'total',
-              'form', 'year', 'level', 'fee', 'tuition', 'subject', 'grades', 'matriculation', 'assessment', 'schedule',
-              'classes', 'load', 'student load', 'admission', 'curriculum', '1st sem', '2nd sem', 'sy', 'ay', 'school year',
-              'academic year', 'tertiary', 'secondary', 'high school', 'institute', 'state', 'national'
-            ];
-          } else if (fieldName?.includes('Grades') || fieldName?.includes('grades') || fieldName?.includes('mayorGrades') || fieldName?.includes('reportCard')) {
-            targetKeywords = [
-              'grade', 'grades', 'transcript', 'gpa', 'gwa', 'academic', 'rating', 'remarks', 'passed',
-              'subject', 'subjects', 'units', 'unit', 'evaluation', 'record', 'scholastic', 'registrar',
-              'certified', 'true', 'copy', 'student', 'school', 'college', 'course', 'term', 'semester',
-              'year', 'tor', 'card', 'report', 'report card', 'transcript of records', 'scholastic record',
-              'final grade', 'remedial', 'credit', 'credits', 'weighted', 'average', 'cumulative', 'general'
-            ];
-          } else if (fieldName?.includes('schoolId') || fieldName?.includes('Id') || fieldName?.includes('id') || fieldName?.includes('nationalId')) {
-            targetKeywords = [
-              'republic', 'pilipinas', 'philsys', 'philid', 'pambansang', 'pagkakakilanlan', 'philippines', 'identity',
-              'national', 'school', 'student', 'id', 'college', 'university', 'card', 'de la salle',
-              'lipa', 'signature', 'valid', 'holder', 'psa'
-            ];
-          } else {
-            targetKeywords = [
-              'certificate', 'official', 'document', 'school', 'student', 'republic', 'barangay',
-              'whom', 'concern', 'certify', 'philippines', 'province', 'office', 'grade', 'transcript', 'registration'
-            ];
-          }
-
-          const isSchoolIdVideo = fieldName?.includes('schoolId') || fieldName?.includes('schoolid') || fieldName?.includes('schoolIdFront') || fieldName?.includes('schoolIdBack') || fieldName?.includes('face_video') || fieldName?.includes('id_vid');
-          const isBackIdVideo = fieldName?.includes('schoolIdBack') || fieldName?.includes('backVid');
-
-          const targetBarangay = formData?.barangay || userProfile?.barangay || '';
-          const hasNameMatch = allNameWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
-          const hasAddressMatch = targetBarangay ? (cleanText.includes(targetBarangay.toLowerCase()) || rawCombined.includes(targetBarangay.toLowerCase())) : false;
-          const hasKeywordMatch = targetKeywords.some(k => cleanText.includes(k) || rawCombined.includes(k));
-          const hasSchoolMatch = schoolWords.length > 0 && schoolWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
-          const hasIdMatch = cleanStudentId.length >= 4 && (cleanText.includes(cleanStudentId.toLowerCase()) || rawCombined.includes(cleanStudentId.toLowerCase()));
-          const hasAnyDocumentWord = /certificate|registration|enrollment|grade|grades|transcript|report|card|student|college|university|school|semester|academic|course|units|official|republic|philippines|certify|whom/i.test(rawCombined);
-
-          // 🚫 Strict rejection: Reject Barangay Indigency/Residency document videos uploaded as School ID videos
-          if (isSchoolIdVideo) {
-            const isIndigencyDocVideo = /punong\s*barangay|barangay\s*inosluban|to\s*whom\s*it\s*may\s*concern|resident\s*of\s*this\s*barangay|residing\s*at|specimen\s*signature|kawalang\s*kabuhayan/i.test(rawCombined) ||
-                                       (cleanText.includes('barangay') && cleanText.includes('certify') && cleanText.includes('resident'));
-            if (isIndigencyDocVideo) {
-              return {
-                valid: false,
-                isMatched: false,
-                reason: "School ID video verification failed: Detected Barangay Indigency/Residency document video instead of School ID card.",
-                detectedText: (textLogs || []).join("\n\n")
-              };
-            }
-          }
-
-          if (isSchoolIdVideo && !isBackIdVideo) {
-            if (!hasNameMatch) {
-              return {
-                valid: false,
-                isMatched: false,
-                reason: `School ID video verification failed: Could not detect applicant name (${allNameWords.join(' ')}) in video frames.`,
-                detectedText: (textLogs || []).join("\n\n") || "No valid name text recognized in video frames."
-              };
-            }
-          }
-
-          if (isBackIdVideo) {
-            const hasBackIdIndicator = /signature|non-transferable|transferable|emergency|notify|valid\s*until|\bsy\b|2025|2026|chancellor|registrar|de\s*la\s*salle|lipa|isseso|college|university/i.test(rawCombined) ||
-                                       hasNameMatch || hasSchoolMatch || hasIdMatch;
-            if (!hasBackIdIndicator) {
-              return {
-                valid: false,
-                isMatched: false,
-                reason: "School ID back video verification failed: Could not detect valid School ID back indicators (signature, emergency contact, or SY sticker).",
-                detectedText: (textLogs || []).join("\n\n")
-              };
-            }
-          }
-
-          if (hasNameMatch || hasAddressMatch || hasKeywordMatch || hasSchoolMatch || hasIdMatch || hasAnyDocumentWord || (cleanText && cleanText.length >= 8)) {
-            return {
-              valid: true,
-              isMatched: true,
-              reason: "Video Proof Verified",
-              detectedText: (textLogs || []).join("\n\n")
-            };
-          }
-
-          return {
-            valid: false,
-            isMatched: false,
-            reason: "Video proof verification failed: could not detect required document text, applicant name, or address in video.",
-            detectedText: (textLogs || []).join("\n\n") || "No valid text recognized in video frames."
-          };
-        };
-
-        const videoTimeout = 20000;
 
         const timeout = setTimeout(() => {
-          if (!ocrTriggered) {
-            ocrTriggered = true;
-            cleanup();
-            resolve(evaluateVideoText(accumulatedText));
-          }
-        }, videoTimeout);
+          cleanupVideo();
+          resolveFrames([]);
+        }, 20000);
 
-        let isCapturing = false;
-        let accumulatedText = [];
+        video.onerror = (e) => {
+          console.warn('[VIDEO OCR] video loading error:', e);
+          cleanupVideo();
+          clearTimeout(timeout);
+          resolveFrames([]);
+        };
 
-        const captureFrame = async () => {
-          if (ocrTriggered || isCapturing) return;
-          isCapturing = true;
-
-          const w = video.videoWidth;
-          const h = video.videoHeight;
-          if (!w || !h) {
-            isCapturing = false;
-            return;
-          }
-
+        video.onloadedmetadata = async () => {
           try {
-            const maxDim = 1400;
-            let targetW = w;
-            let targetH = h;
+            const duration = video.duration || 5;
+            const vw = video.videoWidth;
+            const vh = video.videoHeight;
+
+            if (!vw || !vh) {
+              cleanupVideo();
+              clearTimeout(timeout);
+              return resolveFrames([]);
+            }
+
+            let targetW = vw;
+            let targetH = vh;
             if (targetW > maxDim || targetH > maxDim) {
               if (targetW > targetH) {
                 targetH = Math.round((targetH * maxDim) / targetW);
@@ -2106,130 +1962,215 @@ const StudentInfo = () => {
               }
             }
 
-            // Canvas 1: Raw full video frame
-            const canvas = document.createElement('canvas');
-            canvas.width = targetW;
-            canvas.height = targetH;
-            const ctx = canvas.getContext('2d');
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = "high";
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const timestamps = sampleRatios.map(r => Math.max(0.1, Math.min(duration - 0.1, duration * r)));
+            const resultCanvases = [];
 
-            // Canvas 2: Top 60% Header Crop
-            const headerH = Math.floor(h * 0.60);
-            const headerCanvas = document.createElement('canvas');
-            headerCanvas.width = targetW;
-            headerCanvas.height = targetH;
-            const hCtx = headerCanvas.getContext('2d');
-            hCtx.imageSmoothingEnabled = true;
-            hCtx.imageSmoothingQuality = "high";
-            if ('filter' in hCtx) {
-              hCtx.filter = "contrast(160%) brightness(92%)";
-            }
-            hCtx.drawImage(video, 0, 0, w, headerH, 0, 0, targetW, targetH);
+            for (let i = 0; i < timestamps.length; i++) {
+              const seekTime = timestamps[i];
 
-            // Canvas 3: Middle 65% Body Crop
-            const midY = Math.floor(h * 0.18);
-            const midH = Math.floor(h * 0.65);
-            const centerCanvas = document.createElement('canvas');
-            centerCanvas.width = targetW;
-            centerCanvas.height = targetH;
-            const cCtx = centerCanvas.getContext('2d');
-            cCtx.imageSmoothingEnabled = true;
-            cCtx.imageSmoothingQuality = "high";
-            if ('filter' in cCtx) {
-              cCtx.filter = "contrast(170%) brightness(90%)";
-            }
-            cCtx.drawImage(video, 0, midY, w, midH, 0, 0, targetW, targetH);
+              await new Promise((seekResolve) => {
+                const onSeeked = () => {
+                  video.removeEventListener('seeked', onSeeked);
 
-            // Canvas 4: High-contrast document enhancement
-            const enhancedCanvas = document.createElement('canvas');
-            enhancedCanvas.width = targetW;
-            enhancedCanvas.height = targetH;
-            const eCtx = enhancedCanvas.getContext('2d');
-            eCtx.imageSmoothingEnabled = true;
-            eCtx.imageSmoothingQuality = "high";
-            if ('filter' in eCtx) {
-              eCtx.filter = "contrast(180%) brightness(90%) grayscale(100%)";
-            }
-            eCtx.drawImage(video, 0, 0, targetW, targetH);
+                  // Canvas 1: Full seeked frame
+                  const canvas = document.createElement('canvas');
+                  canvas.width = targetW;
+                  canvas.height = targetH;
+                  const ctx = canvas.getContext('2d');
+                  ctx.imageSmoothingEnabled = true;
+                  ctx.imageSmoothingQuality = 'high';
+                  ctx.drawImage(video, 0, 0, targetW, targetH);
 
-            // Run Tesseract OCR on all 4 passes and combine text
-            let combinedFrameText = "";
-            try {
-              const worker = await getTesseractWorker();
-              if (worker && !ocrTriggered) {
-                const res1 = await worker.recognize(canvas).catch(() => null);
-                const text1 = String(res1?.data?.text || "").trim();
+                  // Canvas 2: Header crop (Top 65%)
+                  const headerH = Math.floor(vh * 0.65);
+                  const headerCanvas = document.createElement('canvas');
+                  headerCanvas.width = targetW;
+                  headerCanvas.height = targetH;
+                  const hCtx = headerCanvas.getContext('2d');
+                  hCtx.imageSmoothingEnabled = true;
+                  hCtx.imageSmoothingQuality = 'high';
+                  if ('filter' in hCtx) hCtx.filter = 'contrast(125%) brightness(98%)';
+                  hCtx.drawImage(video, 0, 0, vw, headerH, 0, 0, targetW, targetH);
 
-                const res2 = await worker.recognize(headerCanvas).catch(() => null);
-                const text2 = String(res2?.data?.text || "").trim();
+                  resultCanvases.push({ time: seekTime, canvas, headerCanvas });
+                  seekResolve();
+                };
 
-                const res3 = await worker.recognize(centerCanvas).catch(() => null);
-                const text3 = String(res3?.data?.text || "").trim();
-
-                let text4 = "";
-                if ((text1.length + text2.length + text3.length) < 15) {
-                  const res4 = await worker.recognize(enhancedCanvas).catch(() => null);
-                  text4 = String(res4?.data?.text || "").trim();
-                }
-
-                combinedFrameText = [text1, text2, text3, text4].filter(Boolean).join(" ");
-              }
-            } catch (e) {
-              console.warn("[VIDEO OCR] Frame recognition failed:", e?.message || e);
+                video.addEventListener('seeked', onSeeked, { once: true });
+                video.currentTime = seekTime;
+              });
             }
 
-            if (ocrTriggered) { isCapturing = false; return; }
-
-            if (combinedFrameText) {
-              const cleanExtracted = combinedFrameText.trim().replace(/\s+/g, ' ');
-              if (cleanExtracted && cleanExtracted.length >= 3) {
-                accumulatedText.push(`[Frame at ${video.currentTime.toFixed(1)}s]: "${cleanExtracted}"`);
-                console.log(`[VIDEO OCR] Frame text (${video.currentTime.toFixed(1)}s):`, cleanExtracted.substring(0, 120));
-              }
-            }
-
-            // Check if we already have a match
-            const partialResult = evaluateVideoText(accumulatedText);
-            if (partialResult.isMatched) {
-              isCapturing = false;
-              ocrTriggered = true;
-              clearTimeout(timeout);
-              cleanup();
-              resolve(partialResult);
-              return;
-            }
-
-            isCapturing = false;
+            cleanupVideo();
+            clearTimeout(timeout);
+            resolveFrames(resultCanvases);
           } catch (err) {
-            console.warn("[VIDEO OCR] captureFrame error:", err?.message || err);
-            isCapturing = false;
+            console.warn('[VIDEO OCR] Seeking error:', err);
+            cleanupVideo();
+            clearTimeout(timeout);
+            resolveFrames([]);
           }
-        };
-
-        video.onerror = (e) => {
-          console.warn('[VIDEO-OCR] video.onerror — evaluating accumulated text. Error:', e);
-          clearTimeout(timeout);
-          cleanup();
-          resolve(evaluateVideoText(accumulatedText));
         };
 
         video.src = srcUrl;
         video.load();
-        video.play().then(() => {
-          // Continuous 400ms frame sampling during live video playback
-          if (!playInterval) {
-            playInterval = setInterval(() => {
-              if (ocrTriggered) {
-                if (playInterval) clearInterval(playInterval);
-                return;
-              }
-              captureFrame();
-            }, 400);
-          }
-        }).catch(() => { });
       });
+
+      // --- RUN TESSERACT OCR ON SEEKED FRAMES ---
+      const accumulatedText = [];
+      try {
+        const worker = await getTesseractWorker();
+        if (worker && extractedFrames.length > 0) {
+          for (let i = 0; i < extractedFrames.length; i++) {
+            const { time, canvas, headerCanvas } = extractedFrames[i];
+            const res1 = await worker.recognize(canvas).catch(() => null);
+            const t1 = String(res1?.data?.text || "").trim();
+
+            const res2 = await worker.recognize(headerCanvas).catch(() => null);
+            const t2 = String(res2?.data?.text || "").trim();
+
+            const frameCombined = [t1, t2].filter(Boolean).join(" ").replace(/\s+/g, ' ');
+            if (frameCombined && frameCombined.length >= 3) {
+              accumulatedText.push(`[Frame at ${time.toFixed(1)}s]: "${frameCombined}"`);
+              console.log(`[VIDEO OCR SEEK] Frame (${time.toFixed(1)}s) text:`, frameCombined.substring(0, 120));
+            }
+          }
+        }
+      } catch (ocrErr) {
+        console.warn('[VIDEO OCR SEEK] Recognition error:', ocrErr);
+      }
+
+      if (createdBlobUrl) {
+        URL.revokeObjectURL(createdBlobUrl);
+      }
+
+      // --- EVALUATE EXTRACTED TEXT ---
+      const evaluateVideoText = (textLogs) => {
+        const rawCombined = (textLogs || []).join(" ").toLowerCase();
+        const cleanText = normalizeForOcr(rawCombined);
+
+        const userLast = String(formData?.lastName || userProfile?.last_name || userProfile?.lastName || '');
+        const userFirst = String(formData?.firstName || userProfile?.first_name || userProfile?.firstName || '');
+
+        const lastWord = normalizeForOcr(userLast).split(' ').filter(w => w.length >= 2);
+        const firstWord = normalizeForOcr(userFirst).split(' ').filter(w => w.length >= 2);
+        const allNameWords = [...lastWord, ...firstWord];
+
+        const schoolNameStr = String(formData?.schoolName || userProfile?.school_name || userProfile?.schoolName || '');
+        const schoolWords = normalizeForOcr(schoolNameStr).split(' ').filter(w => w.length >= 3);
+
+        const studentIdStr = String(formData?.schoolIdNumber || userProfile?.school_id_number || userProfile?.schoolIdNumber || '');
+        const cleanStudentId = studentIdStr.replace(/[^a-zA-Z0-9]/g, '');
+
+        let targetKeywords = [];
+        if (fieldName?.includes('Indigency') || fieldName?.includes('indigency') || fieldName?.includes('Residency') || fieldName?.includes('residency')) {
+          const _vidResType = String(scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || '').toLowerCase();
+          const _vidIsResidency = _vidResType.includes('residency');
+          const _requiredVidKeywords = _vidIsResidency ? ['residency', 'resident'] : ['indigency', 'indigent'];
+
+          targetKeywords = [
+            ..._requiredVidKeywords,
+            'certificate', 'barangay', 'punong', 'certify',
+            'office', 'bayan', 'mataasnakahoy', 'lipa', 'batangas', 'whom', 'concern', 'personally',
+            'purok', 'bonafide', 'family', 'families', 'sangguniang', 'kagawad', 'lubi', 'moises',
+            'republic', 'philippines', 'province', 'municipality', 'seal'
+          ];
+        } else if (fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('certificate') || fieldName?.includes('mayorCOE') || fieldName?.includes('cor')) {
+          targetKeywords = [
+            'certificate', 'registration', 'enrollment', 'official', 'student', 'college', 'semester', 'academic',
+            'course', 'school', 'university', 'whom', 'concern', 'certify', 'bonafide', 'enrolled', 'registrar',
+            'dean', 'republic', 'philippines', 'department', 'dlsl', 'lipa', 'salle', 'bsit', 'units', 'cor', 'coe', 'total',
+            'form', 'year', 'level', 'fee', 'tuition', 'subject', 'grades', 'matriculation', 'assessment', 'schedule',
+            'classes', 'load', 'student load', 'admission', 'curriculum', '1st sem', '2nd sem', 'sy', 'ay', 'school year',
+            'academic year', 'tertiary', 'secondary', 'high school', 'institute', 'state', 'national'
+          ];
+        } else if (fieldName?.includes('Grades') || fieldName?.includes('grades') || fieldName?.includes('mayorGrades') || fieldName?.includes('reportCard')) {
+          targetKeywords = [
+            'grade', 'grades', 'transcript', 'gpa', 'gwa', 'academic', 'rating', 'remarks', 'passed',
+            'subject', 'subjects', 'units', 'unit', 'evaluation', 'record', 'scholastic', 'registrar',
+            'certified', 'true', 'copy', 'student', 'school', 'college', 'course', 'term', 'semester',
+            'year', 'tor', 'card', 'report', 'report card', 'transcript of records', 'scholastic record',
+            'final grade', 'remedial', 'credit', 'credits', 'weighted', 'average', 'cumulative', 'general'
+          ];
+        } else if (fieldName?.includes('schoolId') || fieldName?.includes('Id') || fieldName?.includes('id') || fieldName?.includes('nationalId')) {
+          targetKeywords = [
+            'republic', 'pilipinas', 'philsys', 'philid', 'pambansang', 'pagkakakilanlan', 'philippines', 'identity',
+            'national', 'school', 'student', 'id', 'college', 'university', 'card', 'de la salle',
+            'lipa', 'signature', 'valid', 'holder', 'psa'
+          ];
+        } else {
+          targetKeywords = [
+            'certificate', 'official', 'document', 'school', 'student', 'republic', 'barangay',
+            'whom', 'concern', 'certify', 'philippines', 'province', 'office', 'grade', 'transcript', 'registration'
+          ];
+        }
+
+        const isSchoolIdVideo = fieldName?.includes('schoolId') || fieldName?.includes('schoolid') || fieldName?.includes('schoolIdFront') || fieldName?.includes('schoolIdBack') || fieldName?.includes('face_video') || fieldName?.includes('id_vid');
+        const isBackIdVideo = fieldName?.includes('schoolIdBack') || fieldName?.includes('backVid');
+
+        const targetBarangay = formData?.barangay || userProfile?.barangay || '';
+        const hasNameMatch = allNameWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
+        const hasAddressMatch = targetBarangay ? (cleanText.includes(targetBarangay.toLowerCase()) || rawCombined.includes(targetBarangay.toLowerCase())) : false;
+        const hasKeywordMatch = targetKeywords.some(k => cleanText.includes(k) || rawCombined.includes(k));
+        const hasSchoolMatch = schoolWords.length > 0 && schoolWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
+        const hasIdMatch = cleanStudentId.length >= 4 && (cleanText.includes(cleanStudentId.toLowerCase()) || rawCombined.includes(cleanStudentId.toLowerCase()));
+        const hasAnyDocumentWord = /certificate|registration|enrollment|grade|grades|transcript|report|card|student|college|university|school|semester|academic|course|units|official|republic|philippines|certify|whom/i.test(rawCombined);
+
+        if (isSchoolIdVideo) {
+          const isIndigencyDocVideo = /punong\s*barangay|barangay\s*inosluban|to\s*whom\s*it\s*may\s*concern|resident\s*of\s*this\s*barangay|residing\s*at|specimen\s*signature|kawalang\s*kabuhayan/i.test(rawCombined) ||
+                                     (cleanText.includes('barangay') && cleanText.includes('certify') && cleanText.includes('resident'));
+          if (isIndigencyDocVideo) {
+            return {
+              valid: false,
+              isMatched: false,
+              reason: "School ID video verification failed: Detected Barangay Indigency/Residency document video instead of School ID card.",
+              detectedText: (textLogs || []).join("\n\n")
+            };
+          }
+        }
+
+        if (isSchoolIdVideo && !isBackIdVideo) {
+          if (!hasNameMatch) {
+            return {
+              valid: false,
+              isMatched: false,
+              reason: `School ID video verification failed: Could not detect applicant name (${allNameWords.join(' ')}) in video frames.`,
+              detectedText: (textLogs || []).join("\n\n") || "No valid name text recognized in video frames."
+            };
+          }
+        }
+
+        if (isBackIdVideo) {
+          const hasBackIdIndicator = /signature|non-transferable|transferable|emergency|notify|valid\s*until|\bsy\b|2025|2026|chancellor|registrar|de\s*la\s*salle|lipa|isseso|college|university/i.test(rawCombined) ||
+                                     hasNameMatch || hasSchoolMatch || hasIdMatch;
+          if (!hasBackIdIndicator) {
+            return {
+              valid: false,
+              isMatched: false,
+              reason: "School ID back video verification failed: Could not detect valid School ID back indicators (signature, emergency contact, or SY sticker).",
+              detectedText: (textLogs || []).join("\n\n")
+            };
+          }
+        }
+
+        if (hasNameMatch || hasAddressMatch || hasKeywordMatch || hasSchoolMatch || hasIdMatch || hasAnyDocumentWord || (cleanText && cleanText.length >= 8)) {
+          return {
+            valid: true,
+            isMatched: true,
+            reason: "Video Proof Verified",
+            detectedText: (textLogs || []).join("\n\n")
+          };
+        }
+
+        return {
+          valid: false,
+          isMatched: false,
+          reason: "Video proof verification failed: could not detect required document text, applicant name, or address in video.",
+          detectedText: (textLogs || []).join("\n\n") || "No valid text recognized in video frames."
+        };
+      };
+
+      return evaluateVideoText(accumulatedText);
     } catch (err) {
       if (createdBlobUrl) URL.revokeObjectURL(createdBlobUrl);
       return { valid: false, isMatched: false, reason: "Video proof error: " + (err.message || "Failed to process video.") };
