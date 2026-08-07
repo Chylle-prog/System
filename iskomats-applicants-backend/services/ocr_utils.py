@@ -111,11 +111,24 @@ def extract_text_with_google_cloud_vision(image_input):
     if image_input is None:
         return ""
 
+    # Support raw JSON string in environment variable (e.g. on Render / Cloud Host)
+    if "GOOGLE_CLOUD_VISION_KEY_JSON" in os.environ and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        try:
+            import tempfile, json
+            key_data = json.loads(os.environ["GOOGLE_CLOUD_VISION_KEY_JSON"])
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tf:
+                json.dump(key_data, tf)
+                temp_key_path = tf.name
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_key_path
+        except Exception as json_e:
+            logger.warning(f"[GOOGLE CLOUD VISION] Failed parsing env JSON key: {json_e}")
+
     if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ:
         base_dir = os.path.dirname(__file__)
         candidate_paths = [
             os.path.join(base_dir, "gcp-vision-key.json"),
             os.path.join(os.path.dirname(base_dir), "gcp-vision-key.json"),
+            "/etc/secrets/gcp-vision-key.json",
             "gcp-vision-key.json"
         ]
         for cp in candidate_paths:
