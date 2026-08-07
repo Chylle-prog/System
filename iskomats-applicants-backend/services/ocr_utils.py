@@ -208,8 +208,11 @@ def extract_text_with_google_cloud_vision(image_input, return_debug=False):
                 if "\\n" in key_data["private_key"] and "\n" not in key_data["private_key"]:
                     key_data["private_key"] = key_data["private_key"].replace("\\n", "\n")
             credentials = service_account.Credentials.from_service_account_info(key_data)
-            client = vision.ImageAnnotatorClient(credentials=credentials)
-            debug_msg.append("Client created from GOOGLE_CLOUD_VISION_KEY_JSON")
+            try:
+                client = vision.ImageAnnotatorClient(credentials=credentials, transport='rest')
+            except Exception:
+                client = vision.ImageAnnotatorClient(credentials=credentials)
+            debug_msg.append("Client created from GOOGLE_CLOUD_VISION_KEY_JSON (rest transport)")
         except Exception as json_e:
             debug_msg.append(f"JSON key parse error: {json_e}")
             logger.warning(f"[GOOGLE CLOUD VISION] Failed initializing from GOOGLE_CLOUD_VISION_KEY_JSON: {json_e}")
@@ -232,7 +235,10 @@ def extract_text_with_google_cloud_vision(image_input, return_debug=False):
                     debug_msg.append(f"Found candidate key file: {cp}")
                     break
         try:
-            client = vision.ImageAnnotatorClient()
+            try:
+                client = vision.ImageAnnotatorClient(transport='rest')
+            except Exception:
+                client = vision.ImageAnnotatorClient()
             debug_msg.append("Client created from default GOOGLE_APPLICATION_CREDENTIALS")
         except Exception as client_e:
             debug_msg.append(f"Default client init error: {client_e}")
