@@ -529,9 +529,8 @@ const performGoogleVisionOcrScan = async (imageInput) => {
 
   const candidates = [
     API_ORIGIN,
-    'https://system-hxgp.onrender.com',
     'https://iskomats-backend.onrender.com',
-    ...(isLocalhost ? ['http://localhost:10000', 'http://localhost:5000'] : [])
+    ...(isLocalhost ? ['http://localhost:10000', 'http://localhost:10001', 'http://localhost:5000'] : [])
   ];
   const originsToTry = candidates.filter((v, i, a) => v && a.indexOf(v) === i);
 
@@ -1985,58 +1984,65 @@ const StudentInfo = () => {
             const token = localStorage.getItem('authToken');
             const apiOrigin = API_ORIGIN;
 
-            let fetchUrl = trimmed;
-            if (fieldName && !trimmed.includes('/document/raw/')) {
-              fetchUrl = `${apiOrigin}/api/student/applicant/document/raw/${fieldName}?token=${token}`;
-            } else if (!trimmed.includes('token=')) {
-              fetchUrl = `${trimmed}${trimmed.includes('?') ? '&' : '?'}token=${token}`;
-            }
-
-            if (fetchUrl.startsWith('/')) {
-              fetchUrl = `${apiOrigin}${fetchUrl}`;
-            }
-
-            const headers = {};
-            if (token) headers['Authorization'] = `Bearer ${token}`;
-
-            const cbSep = fetchUrl.includes('?') ? '&' : '?';
-
-            let resp = null;
-            for (let attempt = 0; attempt < 3; attempt++) {
-              try {
-                const cleanFetchUrl = `${fetchUrl}${cbSep}_cb=${Date.now()}`;
-                resp = await fetch(cleanFetchUrl, { headers });
-                if (resp.ok) break;
-              } catch (retryErr) {
-                if (attempt < 2) await new Promise(r => setTimeout(r, 600));
+            // If trimmed is already a direct playable video URL, try using it directly first
+            if (trimmed.startsWith('http') && !trimmed.includes('/api/') && !trimmed.includes('/document/raw/')) {
+              srcUrl = trimmed;
+            } else {
+              let fetchUrl = trimmed;
+              if (fieldName && !trimmed.includes('/document/raw/')) {
+                fetchUrl = `${apiOrigin}/api/student/applicant/document/raw/${fieldName}?token=${token}`;
+              } else if (!trimmed.includes('token=')) {
+                fetchUrl = `${trimmed}${trimmed.includes('?') ? '&' : '?'}token=${token}`;
               }
-            }
 
-            if (resp && resp.ok) {
-              const blob = await resp.blob();
-              if (blob.size > 0) {
-                const headerBuffer = await blob.slice(0, 16).arrayBuffer();
-                const headerBytes = new Uint8Array(headerBuffer);
-                const isMkvWebm = headerBytes[0] === 0x1a && headerBytes[1] === 0x45 && headerBytes[2] === 0xdf && headerBytes[3] === 0xa3;
-                const isMp4 = String.fromCharCode(...headerBytes.slice(4, 8)) === 'ftyp';
+              if (fetchUrl.startsWith('/')) {
+                fetchUrl = `${apiOrigin}${fetchUrl}`;
+              }
 
-                let decryptedBlob = blob;
-                if (!isMkvWebm && !isMp4) {
-                  const { decryptDocument } = await import('../services/CryptoService');
-                  decryptedBlob = await decryptDocument(blob, 'video/mp4');
+              const headers = {};
+              if (token) headers['Authorization'] = `Bearer ${token}`;
+
+              const cbSep = fetchUrl.includes('?') ? '&' : '?';
+
+              let resp = null;
+              for (let attempt = 0; attempt < 2; attempt++) {
+                try {
+                  const cleanFetchUrl = `${fetchUrl}${cbSep}_cb=${Date.now()}`;
+                  resp = await fetch(cleanFetchUrl, { headers });
+                  if (resp.ok) break;
+                } catch (retryErr) {
+                  if (attempt < 1) await new Promise(r => setTimeout(r, 400));
                 }
+              }
 
-                createdBlobUrl = URL.createObjectURL(decryptedBlob);
-                srcUrl = createdBlobUrl;
+              if (resp && resp.ok) {
+                const blob = await resp.blob();
+                if (blob.size > 0) {
+                  const headerBuffer = await blob.slice(0, 16).arrayBuffer();
+                  const headerBytes = new Uint8Array(headerBuffer);
+                  const isMkvWebm = headerBytes[0] === 0x1a && headerBytes[1] === 0x45 && headerBytes[2] === 0xdf && headerBytes[3] === 0xa3;
+                  const isMp4 = String.fromCharCode(...headerBytes.slice(4, 8)) === 'ftyp';
+
+                  let decryptedBlob = blob;
+                  if (!isMkvWebm && !isMp4) {
+                    const { decryptDocument } = await import('../services/CryptoService');
+                    decryptedBlob = await decryptDocument(blob, 'video/mp4');
+                  }
+
+                  createdBlobUrl = URL.createObjectURL(decryptedBlob);
+                  srcUrl = createdBlobUrl;
+                } else {
+                  srcUrl = trimmed;
+                }
               } else {
                 srcUrl = trimmed;
               }
-            } else {
-              srcUrl = trimmed;
             }
           } catch (e) {
             srcUrl = trimmed;
           }
+        } else {
+          srcUrl = trimmed;
         }
       }
 
@@ -2607,12 +2613,12 @@ const StudentInfo = () => {
         const hasSchoolIdBackVid = profile.has_schoolid_back_vid || profile.schoolid_back_vid_url || profile.schoolIdBack_video;
 
         const rawVideos = {
-          face_video: hasFaceVid ? `${apiOrigin}/api/student/applicant/document/raw/face_video?token=${token}` : null,
-          mayorIndigency_video: hasIndigencyVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null,
-          mayorGrades_video: hasGradesVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorGrades_video?token=${token}` : null,
-          mayorCOE_video: hasCoeVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorCOE_video?token=${token}` : null,
-          schoolIdFront_video: hasSchoolIdFrontVid ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdFront_video?token=${token}` : null,
-          schoolIdBack_video: hasSchoolIdBackVid ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null
+          face_video: (profile.id_vid_url && String(profile.id_vid_url).startsWith('http')) ? profile.id_vid_url : (hasFaceVid ? `${apiOrigin}/api/student/applicant/document/raw/face_video?token=${token}` : null),
+          mayorIndigency_video: (profile.indigency_vid_url && String(profile.indigency_vid_url).startsWith('http')) ? profile.indigency_vid_url : (hasIndigencyVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null),
+          mayorGrades_video: (profile.grades_vid_url && String(profile.grades_vid_url).startsWith('http')) ? profile.grades_vid_url : (hasGradesVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorGrades_video?token=${token}` : null),
+          mayorCOE_video: (profile.enrollment_certificate_vid_url && String(profile.enrollment_certificate_vid_url).startsWith('http')) ? profile.enrollment_certificate_vid_url : (hasCoeVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorCOE_video?token=${token}` : null),
+          schoolIdFront_video: (profile.schoolid_front_vid_url && String(profile.schoolid_front_vid_url).startsWith('http')) ? profile.schoolid_front_vid_url : (hasSchoolIdFrontVid ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdFront_video?token=${token}` : null),
+          schoolIdBack_video: (profile.schoolid_back_vid_url && String(profile.schoolid_back_vid_url).startsWith('http')) ? profile.schoolid_back_vid_url : (hasSchoolIdBackVid ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null)
         };
 
         const activeVids = {};
@@ -2729,12 +2735,12 @@ const StudentInfo = () => {
       }
 
       const rawVideos = {
-        face_video: profile.id_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/face_video?token=${token}` : null,
-        mayorIndigency_video: profile.indigency_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null,
-        mayorGrades_video: profile.grades_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorGrades_video?token=${token}` : null,
-        mayorCOE_video: profile.enrollment_certificate_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorCOE_video?token=${token}` : null,
-        schoolIdFront_video: profile.schoolid_front_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdFront_video?token=${token}` : null,
-        schoolIdBack_video: profile.schoolid_back_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null
+        face_video: (profile.id_vid_url && String(profile.id_vid_url).startsWith('http')) ? profile.id_vid_url : (profile.id_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/face_video?token=${token}` : null),
+        mayorIndigency_video: (profile.indigency_vid_url && String(profile.indigency_vid_url).startsWith('http')) ? profile.indigency_vid_url : (profile.indigency_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null),
+        mayorGrades_video: (profile.grades_vid_url && String(profile.grades_vid_url).startsWith('http')) ? profile.grades_vid_url : (profile.grades_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorGrades_video?token=${token}` : null),
+        mayorCOE_video: (profile.enrollment_certificate_vid_url && String(profile.enrollment_certificate_vid_url).startsWith('http')) ? profile.enrollment_certificate_vid_url : (profile.enrollment_certificate_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorCOE_video?token=${token}` : null),
+        schoolIdFront_video: (profile.schoolid_front_vid_url && String(profile.schoolid_front_vid_url).startsWith('http')) ? profile.schoolid_front_vid_url : (profile.schoolid_front_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdFront_video?token=${token}` : null),
+        schoolIdBack_video: (profile.schoolid_back_vid_url && String(profile.schoolid_back_vid_url).startsWith('http')) ? profile.schoolid_back_vid_url : (profile.schoolid_back_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null)
       };
 
       const activeVideos = {};
@@ -4105,17 +4111,21 @@ const StudentInfo = () => {
             ? ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
             : ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang'];
 
-          // Video PROOF passes only if it contains required document keywords or applicant name
+          // Video PROOF passes if it contains required document keywords or applicant name, or if no video was uploaded
           const userFirstStr = (firstName || '').toLowerCase();
           const userLastStr = (lastName || '').toLowerCase();
-          const videoHasKeyword = videoOk && (_requiredDocKeywords.some(k => vidText.includes(k)) || (userFirstStr && vidText.includes(userFirstStr)) || (userLastStr && vidText.includes(userLastStr)));
+          const videoHasKeyword = videoCheck
+            ? (_requiredDocKeywords.some(k => vidText.includes(k)) || (userFirstStr && vidText.includes(userFirstStr)) || (userLastStr && vidText.includes(userLastStr)) || videoCheck.isMatched)
+            : true;
 
-          const docTypeOk = imageHasKeyword && videoHasKeyword;
-          const effectiveVideoOk = videoOk && videoHasKeyword;
+          const effectiveVideoOk = videoUrl ? (videoOk && videoHasKeyword) : true;
           // Use nameCheck.success (includes two-way reverse first name check) — same as COR
           const nameOk = nameCheck.success;
 
-          isSuccess = nameOk && addrOk && townCityOk && effectiveVideoOk && imageHasKeyword;
+          // Document photo OCR is primary: if image has Name, Barangay, Town/City, and Document Header, mark as success
+          const imageOnlyValid = nameOk && addrOk && townCityOk && imageHasKeyword;
+          isSuccess = imageOnlyValid && (videoUrl ? effectiveVideoOk : true);
+
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
             "Middle Name": middleName ? nameCheck.details.middle_ok : null,
@@ -4123,7 +4133,7 @@ const StudentInfo = () => {
             "Barangay Address": targetBarangay ? addrOk : null,
             "Town / City": townCity ? townCityOk : null,
             "Document Type": imageHasKeyword,
-            "Video Proof": effectiveVideoOk
+            "Video Proof": videoUrl ? effectiveVideoOk : true
           };
           const _docTypeFail = docTypeErrorMessage || (!imageHasKeyword
             ? `Document type mismatch: image does not contain ${docLabel} keywords.`
@@ -4967,12 +4977,12 @@ const StudentInfo = () => {
 
         // 2. Map video URLs from server profile if available
         const nextVideos = {
-          face_video: profile.id_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/face_video?token=${token}` : null,
-          mayorIndigency_video: profile.indigency_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null,
-          mayorGrades_video: profile.grades_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorGrades_video?token=${token}` : null,
-          mayorCOE_video: profile.enrollment_certificate_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorCOE_video?token=${token}` : null,
-          schoolIdFront_video: profile.schoolid_front_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdFront_video?token=${token}` : null,
-          schoolIdBack_video: profile.schoolid_back_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null
+          face_video: (profile.id_vid_url && String(profile.id_vid_url).startsWith('http')) ? profile.id_vid_url : (profile.id_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/face_video?token=${token}` : null),
+          mayorIndigency_video: (profile.indigency_vid_url && String(profile.indigency_vid_url).startsWith('http')) ? profile.indigency_vid_url : (profile.indigency_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null),
+          mayorGrades_video: (profile.grades_vid_url && String(profile.grades_vid_url).startsWith('http')) ? profile.grades_vid_url : (profile.grades_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorGrades_video?token=${token}` : null),
+          mayorCOE_video: (profile.enrollment_certificate_vid_url && String(profile.enrollment_certificate_vid_url).startsWith('http')) ? profile.enrollment_certificate_vid_url : (profile.enrollment_certificate_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorCOE_video?token=${token}` : null),
+          schoolIdFront_video: (profile.schoolid_front_vid_url && String(profile.schoolid_front_vid_url).startsWith('http')) ? profile.schoolid_front_vid_url : (profile.schoolid_front_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdFront_video?token=${token}` : null),
+          schoolIdBack_video: (profile.schoolid_back_vid_url && String(profile.schoolid_back_vid_url).startsWith('http')) ? profile.schoolid_back_vid_url : (profile.schoolid_back_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null)
         };
         const activeVideos = {};
         Object.keys(nextVideos).forEach(k => {

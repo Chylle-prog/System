@@ -103,14 +103,14 @@ const processDecryptQueue = () => {
   }
 };
 
-const enqueueDecryptFetch = (fn) => {
-  return new Promise((resolve, reject) => {
+const enqueueDecryptFetch = (fn, fallbackUrl) => {
+  return new Promise((resolve) => {
     decryptQueue.push(async () => {
       try {
         const res = await fn();
-        resolve(res);
+        resolve(res || fallbackUrl);
       } catch (err) {
-        reject(err);
+        resolve(fallbackUrl);
       }
     });
     processDecryptQueue();

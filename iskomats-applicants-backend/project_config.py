@@ -60,7 +60,7 @@ def _init_pool():
         # Adjust pool size based on environment
         # For managed DBs like Render (limit 20), we keep these very conservative
         min_conn = int(os.environ.get('DB_POOL_MIN', '2'))
-        max_conn = int(os.environ.get('DB_POOL_MAX', '20'))
+        max_conn = int(os.environ.get('DB_POOL_MAX', '40'))
         
         try:
             _CONNECTION_POOL = pool.ThreadedConnectionPool(
@@ -108,16 +108,22 @@ def get_db(cursor_factory=RealDictCursor, fast_startup=False):
     if _CONNECTION_POOL is None:
         _init_pool()
     
-    # Try up to 3 times to get a live connection
+    # Try up to 10 attempts with backoff when pool is busy under high socket bursts
     conn = None
-    for attempt in range(3):
+    max_attempts = 10
+    for attempt in range(max_attempts):
         try:
             conn = _CONNECTION_POOL.getconn()
             if conn.closed != 0:
                 raise psycopg2.InterfaceError("Connection obtained from pool is already closed.")
             break
         except pool.PoolError as e:
-            print(f"[DB CRITICAL] Pool exhausted! All {os.environ.get('DB_POOL_MAX', '10')} connections in use.", flush=True)
+            if attempt < max_attempts - 1:
+                # Active queries take a few ms; sleep briefly and retry to acquire freed connection
+                time.sleep(0.05 * (attempt + 1))
+                continue
+            pool_max = os.environ.get('DB_POOL_MAX', '40')
+            print(f"[DB CRITICAL] Pool exhausted after {max_attempts} attempts! All {pool_max} connections in use.", flush=True)
             raise psycopg2.OperationalError("Database connection pool is full. Try again later.") from e
         except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
             print(f"[DB ERROR] Got broken connection from pool: {e}. Attempting to refresh...", flush=True)
@@ -127,8 +133,9 @@ def get_db(cursor_factory=RealDictCursor, fast_startup=False):
                 except:
                     pass
             conn = None
-            if attempt == 2:
+            if attempt == max_attempts - 1:
                 raise
+            time.sleep(0.05)
         except Exception as e:
             print(f"[DB ERROR] Unexpected error gathering connection: {e}", flush=True)
             if conn:
@@ -140,7 +147,7 @@ def get_db(cursor_factory=RealDictCursor, fast_startup=False):
             raise
 
     if not conn:
-        raise psycopg2.OperationalError("Could not obtain a live database connection after 3 attempts.")
+        raise psycopg2.OperationalError("Could not obtain a live database connection after retries.")
 
     # We'll use a wrapper to ensure the connection is returned to the pool on close
     class PooledConnectionProxy:

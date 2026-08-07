@@ -1112,12 +1112,11 @@ def debug_env():
 def get_debug_flags():
     """Get current global debug bypass flags (shared across all deployments)."""
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("SELECT key, value FROM debug_flags")
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT key, value FROM debug_flags")
+            rows = cur.fetchall()
+            cur.close()
         flags = {}
         for row in rows:
             key = row['key'] if isinstance(row, dict) else row[0]
@@ -1138,16 +1137,15 @@ def set_debug_flag():
         value = bool(data.get('value', False))
         if key not in ('skip_alternate_check', 'skip_tamper_check'):
             return jsonify({'success': False, 'error': 'Unknown flag key'}), 400
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO debug_flags (key, value, updated_at)
-            VALUES (%s, %s, NOW())
-            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-        """, (key, value))
-        conn.commit()
-        cur.close()
-        conn.close()
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO debug_flags (key, value, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, (key, value))
+            conn.commit()
+            cur.close()
         print(f"[DEBUG FLAGS] Set {key} = {value}", flush=True)
         return jsonify({'success': True, 'key': key, 'value': value})
     except Exception as e:
