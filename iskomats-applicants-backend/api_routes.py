@@ -5173,13 +5173,12 @@ def get_all_messages_rest(pro_no=None):
     try:
         with get_db() as conn:
             cursor = conn.cursor()
-            # Only return real applicant chat rooms (applicant_no > 0, room matches 'N+M' pattern)
-            # Exclude provider_room_*, superadmin_room_*, and room '0+X' ghost rooms
-            applicant_room_filter = """
-                m.applicant_no IS NOT NULL
-                AND m.applicant_no > 0
-                AND m.room ~ '^[1-9][0-9]*\\+[0-9]+'
-            """
+            valid_room_filter = """(
+                (m.applicant_no IS NOT NULL AND m.applicant_no > 0 AND m.room ~ '^[1-9][0-9]*\\+[0-9]+')
+                OR m.room LIKE 'provider_room_%%'
+                OR m.room LIKE 'superadmin_room_%%'
+                OR m.room IN ('0+1', '0+2', '0+3')
+            )"""
             if pro_no:
                 cursor.execute(f"""
                     SELECT m.m_id, m.applicant_no, m.pro_no, m.room, m.username,
@@ -5190,9 +5189,10 @@ def get_all_messages_rest(pro_no=None):
                         SELECT is_accepted FROM applicant_status
                         WHERE applicant_no = m.applicant_no LIMIT 1
                     ) ast ON TRUE
-                    WHERE m.pro_no = %s AND {applicant_room_filter}
+                    WHERE (m.pro_no = %s OR m.room = 'provider_room_' || %s OR m.room = 'superadmin_room_' || %s OR m.room = '0+' || %s)
+                      AND {valid_room_filter}
                     ORDER BY m.timestamp ASC
-                """, (pro_no,))
+                """, (pro_no, str(pro_no), str(pro_no), str(pro_no)))
             else:
                 cursor.execute(f"""
                     SELECT m.m_id, m.applicant_no, m.pro_no, m.room, m.username,
@@ -5203,7 +5203,7 @@ def get_all_messages_rest(pro_no=None):
                         SELECT is_accepted FROM applicant_status
                         WHERE applicant_no = m.applicant_no LIMIT 1
                     ) ast ON TRUE
-                    WHERE {applicant_room_filter}
+                    WHERE {valid_room_filter}
                     ORDER BY m.timestamp ASC
                 """)
             rows = cursor.fetchall()
