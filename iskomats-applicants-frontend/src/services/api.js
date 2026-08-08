@@ -15,7 +15,7 @@ export const uploadProfilePicture = async (file) => {
     .upload(objectPath, encryptedFile, {
       upsert: true,
       contentType: 'application/octet-stream',
-      cacheControl: '60',
+      cacheControl: '31536000',  // 1 year
     });
 
   if (uploadResult.error) {
@@ -150,7 +150,7 @@ const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
     .upload(objectPath, encryptedFile, {
       upsert: true,
       contentType: 'application/octet-stream',
-      cacheControl: '60',
+      cacheControl: '31536000',  // 1 year — files are unique per user, safe to cache indefinitely
       onUploadProgress: (p) => {
         if (!onProgress) return;
         const percent = Math.round((p.loaded / (p.total || 1)) * 100);

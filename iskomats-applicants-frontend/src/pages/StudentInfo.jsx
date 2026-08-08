@@ -707,18 +707,47 @@ function extractOcrKeyValues(rawText) {
 function formatExtractedRequirementsSummary(rawText) {
   if (!rawText) return "";
 
-  const kv = extractOcrKeyValues(rawText);
+  // --- Use only the FRONT ID section for name extraction (avoid back-ID noise like "please notify emergency") ---
+  let nameSearchText = rawText;
+  const frontIdSectionMatch = rawText.match(/\[(?:FRONT ID TEXT|NATIONAL ID FRONT TEXT)\]\s*([\s\S]*?)(?=\n\n\[|$)/i);
+  if (frontIdSectionMatch && frontIdSectionMatch[1]) {
+    nameSearchText = frontIdSectionMatch[1];
+  }
+
+  const kv = extractOcrKeyValues(nameSearchText);
 
   // 1. Full Name Extraction
   let fullName = kv.name;
+
+  // DLSL/School-ID format: LASTNAME on its own all-caps line, then "First Middle." on the next line
+  // e.g.: "MAGBUHAT\nAlexie Chyle O."
   if (!fullName) {
-    const nameMatch = rawText.match(/\b([A-Z]{2,20}\s*,\s*[A-Z\s]{3,40})\b/);
+    const nameLines = nameSearchText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    for (let i = 0; i < nameLines.length - 1; i++) {
+      const upper = nameLines[i];
+      const next  = nameLines[i + 1];
+      // Last-name line: all-caps, 2-20 letters (may include spaces for compound names), no digits
+      // First/middle line: mixed or title case, 3-40 chars, may end with a middle initial dot
+      if (
+        /^[A-Z][A-Z\s]{1,19}$/.test(upper) &&
+        !/^(COLLEGE|UNIVERSITY|DE\s*LA\s*SALLE|LIPA|DLSL|BACHELOR|NATIONAL|ID|CARD|VALID|OFFICIAL|CERTIFICATE|REGISTRATION)$/i.test(upper.trim()) &&
+        /^[A-Za-z][A-Za-z\s\.]{2,39}$/.test(next) &&
+        !/^(Signature|Chancellor|Registrar|This|In\s*case|Dr\.|SY|Valid|Races)/i.test(next.trim())
+      ) {
+        fullName = `${upper.trim()}, ${next.trim()}`;
+        break;
+      }
+    }
+  }
+
+  if (!fullName) {
+    const nameMatch = nameSearchText.match(/\b([A-Z]{2,20}\s*,\s*[A-Z\s]{3,40})\b/);
     if (nameMatch && nameMatch[1] && !/OFFICIAL|CERTIFICATE|REGISTRATION|COLLEGE|UNIVERSITY|ENGINEERING|INFORMATION/i.test(nameMatch[1])) {
       fullName = nameMatch[1].trim();
     }
   }
   if (!fullName) {
-    const inlineMatch = rawText.match(/(?:name|student\s*name|pangalan)\s*[:\-]\s*(.+)/i);
+    const inlineMatch = nameSearchText.match(/(?:name|student\s*name|pangalan)\s*[:\-]\s*(.+)/i);
     if (inlineMatch && inlineMatch[1]) fullName = inlineMatch[1].trim();
   }
   fullName = fullName || "Not detected";

@@ -2776,19 +2776,19 @@ def get_applicant_document_raw(field_name):
                     response.headers.set('Accept-Ranges', 'bytes')
                     response.headers.set('Content-Range', f'bytes {start}-{end}/{len(value)}')
                     response.headers.set('Content-Length', str(len(chunk)))
-                    response.headers.set('Cache-Control', 'public, max-age=3600')
+                    response.headers.set('Cache-Control', 'public, max-age=604800')  # 7 days
                     return response
                 else:
                     response = Response(value, mimetype=mime_type)
                     response.headers.set('Accept-Ranges', 'bytes')
                     response.headers.set('Content-Length', str(len(value)))
-                    response.headers.set('Cache-Control', 'public, max-age=3600')
+                    response.headers.set('Cache-Control', 'public, max-age=604800')  # 7 days
                     return response
             else:
                 from flask import make_response
                 response = make_response(value)
                 response.headers.set('Content-Type', mime_type)
-                response.headers.set('Cache-Control', 'public, max-age=3600')
+                response.headers.set('Cache-Control', 'public, max-age=604800')  # 7 days
                 return response
     except Exception as e:
         print(f"[DOCUMENT RAW] Error: {e}", flush=True)
