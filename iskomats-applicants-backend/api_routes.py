@@ -1965,9 +1965,9 @@ def init_socketio(socketio):
                             FROM message m
                             LEFT JOIN applicant_status s ON m.applicant_no = s.applicant_no
                             LEFT JOIN applicants a ON m.applicant_no = a.applicant_no
-                            WHERE m.applicant_no = %s AND m.pro_no = %s
+                            WHERE (m.room = %s OR (m.applicant_no = %s AND m.pro_no = %s))
                         """
-                        params = [app_no, pro_no]
+                        params = [room, app_no, pro_no]
 
                         user_role = session.get('role')
                         if user_role == 'student':
@@ -2047,39 +2047,46 @@ def init_socketio(socketio):
                 except Exception:
                     pass
 
-            if not sender_id and app_no:
-                sender_id = app_no
+            clean_sender_id = None
+            if sender_id is not None:
+                try:
+                    clean_sender_id = int(sender_id)
+                except (ValueError, TypeError):
+                    clean_sender_id = app_no
+
+            if not clean_sender_id and app_no:
+                clean_sender_id = app_no
             
             with get_db() as conn:
                 cursor = conn.cursor()
                 sender_role = (session.get('role') or '').lower()
-                is_student_sender = (sender_role == 'student') or (app_no is not None and str(sender_id) == str(app_no))
+                is_student_sender = (sender_role == 'student') or (app_no is not None and str(clean_sender_id) == str(app_no))
             
                 # Determine the sender's actual name from the database
                 actual_username = username
             
-                if is_student_sender and sender_id:
-                    cursor.execute("SELECT first_name FROM applicants WHERE applicant_no = %s", (sender_id,))
+                if is_student_sender and clean_sender_id:
+                    cursor.execute("SELECT first_name FROM applicants WHERE applicant_no = %s", (clean_sender_id,))
                     applicant_sender = cursor.fetchone()
                     if applicant_sender and applicant_sender.get('first_name'):
                         actual_username = applicant_sender['first_name']
                     else:
-                        actual_username = username or f"Applicant {sender_id}"
-                elif sender_id:
+                        actual_username = username or f"Applicant {clean_sender_id}"
+                elif clean_sender_id:
                     cursor.execute("""
                         SELECT COALESCE(sp.provider_name, u.user_name) AS sender_name
                         FROM users u
                         LEFT JOIN scholarship_providers sp ON u.pro_no = sp.pro_no
                         WHERE u.user_no = %s
                         LIMIT 1
-                    """, (sender_id,))
+                    """, (clean_sender_id,))
                     admin_sender = cursor.fetchone()
                     if admin_sender and admin_sender.get('sender_name'):
                         actual_username = admin_sender['sender_name']
                     elif username:
                         actual_username = username
                     else:
-                        actual_username = f"Admin {sender_id}"
+                        actual_username = f"Admin {clean_sender_id}"
                 else:
                     actual_username = username or "Admin"
             
@@ -2088,7 +2095,7 @@ def init_socketio(socketio):
                     INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender)
                     VALUES (%s, %s, %s, %s, %s, NOW(), %s, %s)
                     RETURNING m_id, timestamp
-                """, (app_no, pro_no, room, actual_username, message_text, sender_id, is_student_sender))
+                """, (app_no, pro_no, room, actual_username, message_text, clean_sender_id, is_student_sender))
                 row = cursor.fetchone()
                 m_id = row['m_id']
                 timestamp = row['timestamp']
@@ -2114,7 +2121,7 @@ def init_socketio(socketio):
                 msg_payload = {
                     'm_id': m_id,
                     'username': actual_username,
-                    'sender_id': sender_id,
+                    'sender_id': clean_sender_id,
                     'is_student_sender': is_student_sender,
                     'message': message_text,
                     'room': room,
@@ -5146,31 +5153,107 @@ def handle_superadmin_messages_endpoint():
         except Exception as e:
             return jsonify({'success': False, 'error': str(e), 'messages': []}), 200
 
-@api_bp.route('/messages/<path:room_id>', methods=['GET'])
-def get_room_messages_rest(room_id):
-    """REST endpoint to fetch messages for any room."""
-    try:
-        with get_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT m_id, room, username, message, timestamp, sender_id, is_student_sender
-                FROM message
-                WHERE room = %s
-                ORDER BY timestamp ASC
-            """, (room_id,))
-            rows = cursor.fetchall()
-            messages = [{
-                'm_id': r['m_id'],
-                'room': r['room'],
-                'username': r['username'],
-                'message': r['message'],
-                'timestamp': r['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(r['timestamp'], 'strftime') else str(r['timestamp']),
-                'sender_id': r['sender_id'],
-                'is_student_sender': r['is_student_sender']
-            } for r in rows]
-            return jsonify({'success': True, 'messages': messages}), 200
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e), 'messages': []}), 200
+@api_bp.route('/messages/<path:room_id>', methods=['GET', 'POST'])
+def handle_room_messages_rest(room_id):
+    """REST endpoint to fetch or post messages for any room."""
+    if request.method == 'POST':
+        data = request.json or {}
+        message_text = data.get('message')
+        username = data.get('username') or 'User'
+        sender_id = data.get('sender_id')
+
+        if not message_text:
+            return jsonify({'success': False, 'message': 'Message text is required'}), 400
+
+        try:
+            app_no = None
+            pro_no = None
+            if '+' in room_id:
+                try:
+                    parts = room_id.split('+')
+                    app_no = int(parts[0])
+                    pro_no = int(parts[1])
+                except Exception:
+                    pass
+
+            clean_sender_id = None
+            if sender_id is not None:
+                try:
+                    clean_sender_id = int(sender_id)
+                except (ValueError, TypeError):
+                    clean_sender_id = app_no
+
+            if not clean_sender_id and app_no:
+                clean_sender_id = app_no
+
+            is_student_sender = data.get('is_student_sender', False)
+
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender)
+                    VALUES (%s, %s, %s, %s, %s, NOW(), %s, %s)
+                    RETURNING m_id, timestamp
+                """, (app_no, pro_no, room_id, username, message_text, clean_sender_id, is_student_sender))
+                row = cursor.fetchone()
+                conn.commit()
+
+                msg_payload = {
+                    'm_id': row['m_id'],
+                    'room': room_id,
+                    'username': username,
+                    'message': message_text,
+                    'timestamp': row['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(row['timestamp'], 'strftime') else str(row['timestamp']),
+                    'sender_id': clean_sender_id,
+                    'is_student_sender': is_student_sender
+                }
+                safe_emit('message', msg_payload, to=room_id)
+                return jsonify({'success': True, 'message': msg_payload}), 200
+        except Exception as e:
+            print(f"[REST POST MESSAGE ERROR] {e}", flush=True)
+            return jsonify({'success': False, 'error': str(e)}), 500
+    else:
+        try:
+            app_no = None
+            pro_no = None
+            if '+' in room_id:
+                try:
+                    parts = room_id.split('+')
+                    app_no = int(parts[0])
+                    pro_no = int(parts[1])
+                except Exception:
+                    pass
+
+            with get_db() as conn:
+                cursor = conn.cursor()
+                if app_no and pro_no:
+                    cursor.execute("""
+                        SELECT m_id, room, username, message, timestamp, sender_id, is_student_sender
+                        FROM message
+                        WHERE room = %s OR (applicant_no = %s AND pro_no = %s)
+                        ORDER BY timestamp ASC
+                    """, (room_id, app_no, pro_no))
+                else:
+                    cursor.execute("""
+                        SELECT m_id, room, username, message, timestamp, sender_id, is_student_sender
+                        FROM message
+                        WHERE room = %s
+                        ORDER BY timestamp ASC
+                    """, (room_id,))
+
+                rows = cursor.fetchall()
+                messages = [{
+                    'm_id': r['m_id'],
+                    'room': r['room'],
+                    'username': r['username'],
+                    'message': r['message'],
+                    'timestamp': r['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(r['timestamp'], 'strftime') else str(r['timestamp']),
+                    'sender_id': r['sender_id'],
+                    'is_student_sender': r['is_student_sender']
+                } for r in rows]
+                return jsonify({'success': True, 'messages': messages}), 200
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e), 'messages': []}), 200
 
 # ===== ERROR HANDLERS =====
 

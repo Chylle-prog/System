@@ -20,15 +20,17 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
-        // Manual chunks to optimize bundle splitting
-        manualChunks: {
-          // Vendor chunk for large dependencies including socket.io-client to avoid adblocker triggers on filenames
-          'vendor': [
-            'react',
-            'react-dom',
-            'react-router-dom',
-            'socket.io-client'
-          ]
+        // Manual chunks to optimize bundle splitting and prevent single vendor chunk connection reset errors
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+              return 'vendor-framework';
+            }
+            if (id.includes('socket.io-client')) {
+              return 'vendor-socket';
+            }
+            return 'vendor-deps';
+          }
         }
       }
     }

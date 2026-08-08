@@ -121,11 +121,14 @@ class SocketService {
   }
 
   sendMessage(room, username, message, providerName = null) {
+    const rawSenderId = this.userId || (typeof window !== 'undefined' ? localStorage.getItem('userId') : null);
+    const numericSenderId = (rawSenderId && !isNaN(rawSenderId)) ? Number(rawSenderId) : null;
+
     this.emit('message', { 
       room, 
       username: providerName || username || this.username, 
       message,
-      sender_id: this.userId,
+      sender_id: numericSenderId,
       ...(providerName && { provider_name: providerName })
     });
   }

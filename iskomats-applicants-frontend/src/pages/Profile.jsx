@@ -107,11 +107,12 @@ const Profile = () => {
         setUserProfile(profile);
         setShowEditForm(false);
       } catch (err) {
-        if (err.message.includes('404') || err.message.includes('not found') || err.message.includes('Profile not found')) {
+        const errMsg = err?.message || '';
+        if (errMsg.includes('404') || errMsg.includes('not found') || errMsg.includes('Profile not found')) {
           setUserProfile(null);
           setShowEditForm(true);
         } else {
-          setError(err.message);
+          setError(errMsg || 'Failed to load profile');
           setUserProfile(null);
           setShowEditForm(true);
           console.error('Error loading profile:', err);
