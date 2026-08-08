@@ -4207,6 +4207,7 @@ const StudentInfo = () => {
         const nameOk = (firstOk && lastOk) || nameMatchFront.success || nameMatchBack.success || nameMatchVid.success;
 
         const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, combinedFrontText, true) || studentIdNoMatchesText(idNumber, combinedBackText, true)) : true);
+        const schoolOk = schoolName ? (schoolNameMatchesText(allIdText, schoolName)) : true;
         const ayOkDocImage = academic_year_matches_expected(frontText, academicYear) || academic_year_matches_expected(backText, academicYear);
         const ayOkVid = academic_year_matches_expected(combinedFrontText, academicYear) || academic_year_matches_expected(combinedBackText, academicYear);
         const hasExplicitDocYear = /\b20\d{2}\s*[\-\/\.\:\+]\s*20\d{2}\b/.test(frontText + " " + backText) || /\b[2-9]\d\s*[\-\/\.]\s*[2-9]\d\b/.test(frontText + " " + backText);
