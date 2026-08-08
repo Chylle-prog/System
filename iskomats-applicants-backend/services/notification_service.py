@@ -183,6 +183,12 @@ def send_sms_logic(number, message):
     import urllib.parse
     import base64
     
+    # Feature flag to toggle SMS globally. Set ENABLE_SMS=true in .env to turn on.
+    enable_sms = os.environ.get('ENABLE_SMS', 'false').strip().lower() in ('true', '1', 'yes')
+    if not enable_sms:
+        print("[SMS INFO] SMS notifications are currently disabled (ENABLE_SMS=false).")
+        return False
+
     provider = os.environ.get('SMS_PROVIDER', '').strip().lower()
     if not provider or provider == 'none':
         print("[SMS INFO] SMS notifications are disabled (SMS_PROVIDER not set).")
