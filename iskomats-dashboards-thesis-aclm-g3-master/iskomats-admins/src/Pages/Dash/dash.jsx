@@ -707,9 +707,9 @@ export default function Dash() {
         </div>
       </aside>
 
-      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} flex-1 flex flex-col h-full overflow-y-auto px-4 md:px-10 py-6 md:py-10 scroll-smooth custom-scrollbar border-l border-r border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)] w-full relative`}>
-        <div className="w-full max-w-7xl mx-auto flex-1 flex flex-col">
-          <div className="flex-shrink-0 mb-4 w-full">
+      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} flex-1 flex flex-col h-full ${activeTab === 'inbox' ? 'overflow-hidden py-3 md:py-4' : 'overflow-y-auto py-6 md:py-10'} px-4 md:px-10 scroll-smooth custom-scrollbar border-l border-r border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)] w-full relative`}>
+        <div className="w-full max-w-7xl mx-auto flex-1 flex flex-col min-h-0">
+          <div className={`flex-shrink-0 w-full ${activeTab === 'inbox' ? 'mb-2' : 'mb-4'}`}>
             <header className="bg-white rounded-2xl shadow-sm px-4 md:px-8 py-4 md:py-5 flex items-center justify-between border border-gray-100 gap-2 sm:gap-4 w-full">
               <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                 <button
@@ -747,7 +747,7 @@ export default function Dash() {
             )}
           </div>
 
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             {isLoading ? (
               <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-10 text-center h-full flex items-center justify-center">
                 <p className="text-sm font-black uppercase tracking-widest text-gray-500">Loading dashboard data from PostgreSQL...</p>
@@ -755,7 +755,7 @@ export default function Dash() {
             ) : (
               <>
                 {activeTab === 'inbox' && (
-                  <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-2 sm:p-4 flex-1 flex flex-col min-h-0">
+                  <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-2 sm:p-4 flex-1 flex flex-col min-h-0 overflow-hidden">
                     <ScholarshipDashboard
                       providerKey="system"
                       providerName="Super Admin"

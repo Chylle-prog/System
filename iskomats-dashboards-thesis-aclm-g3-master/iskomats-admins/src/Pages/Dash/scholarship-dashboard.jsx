@@ -2799,12 +2799,10 @@ export default function ScholarshipDashboard({
         }
       });
     } else {
-      // Applicant mode: Group applicant messages
+      // Applicant mode: Group applicant messages (excluding rejected and declined applicants)
       const allKnownApplicants = [
         ...(data.applicants || []),
         ...(data.accepted || []),
-        ...(data.rejected || []),
-        ...(data.declined || []),
         ...(data.cancelled || [])
       ];
 
@@ -2953,6 +2951,20 @@ export default function ScholarshipDashboard({
 
     if (inboxMode === 'applicants') {
       filtered = filtered.filter(c => !c.isAdminRoom && !c.room?.startsWith('provider_room_'));
+
+      // Ensure rejected and declined applicants are not shown in the inbox
+      filtered = filtered.filter((c) => {
+        const studentStatus = getStudentStatus(c.applicant_no, c.studentName, c.lastMessage?.studentStatus);
+        const normStatus = (studentStatus || '').toLowerCase();
+
+        const isRejectedStatus = normStatus === 'rejected' || normStatus === 'declined';
+
+        const isRejectedList =
+          (data.rejected || []).some(a => a.applicant_no?.toString() === c.applicant_no?.toString() || (c.studentEmail && a.email === c.studentEmail) || a.name === c.studentName) ||
+          (data.declined || []).some(a => a.applicant_no?.toString() === c.applicant_no?.toString() || (c.studentEmail && a.email === c.studentEmail) || a.name === c.studentName);
+
+        return !isRejectedStatus && !isRejectedList;
+      });
 
       if (inboxFilter !== 'all') {
         filtered = filtered.filter((c) => {
@@ -5717,7 +5729,7 @@ export default function ScholarshipDashboard({
 
 
   const renderInbox = () => (
-    <div className={`flex flex-col ${standaloneInbox ? 'h-[calc(100vh-14rem)] min-h-[500px]' : 'h-[calc(100vh-6.5rem)] sm:h-[calc(100vh-8rem)]'} bg-gradient-to-br from-gray-50 to-blue-50/30 animate-in fade-in duration-300`}>
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-gradient-to-br from-gray-50 to-blue-50/30 animate-in fade-in duration-300">
       <div className="flex items-center gap-3 mb-3 flex-shrink-0">
         {!isSuperAdminUser && (
           <button
@@ -5749,10 +5761,10 @@ export default function ScholarshipDashboard({
         </button>
       </div>
 
-      <div className="flex-1 flex flex-col md:flex-row gap-3 sm:gap-4 overflow-hidden">
-        <div className={`w-full md:w-80 flex-shrink-0 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col ${selectedConversation ? 'hidden md:flex' : 'flex'}`}>
+      <div className="flex-1 flex flex-col md:flex-row gap-3 sm:gap-4 overflow-hidden min-h-0">
+        <div className={`w-full md:w-80 flex-shrink-0 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col min-h-0 overflow-hidden ${selectedConversation ? 'hidden md:flex' : 'flex'}`}>
           {inboxMode === 'applicants' ? (
-            <div className="p-3 sm:p-4 border-b border-gray-100 bg-white">
+            <div className="p-3 sm:p-4 border-b border-gray-100 bg-white flex-shrink-0">
               <div className="flex items-center gap-2 mb-2 sm:mb-3">
                 <FaSearch className="text-gray-400 flex-shrink-0" />
                 <input
@@ -5788,7 +5800,7 @@ export default function ScholarshipDashboard({
               </div>
             </div>
           ) : (
-            <div className="p-3 sm:p-4 border-b border-gray-100 bg-gray-50/80 flex items-center justify-between">
+            <div className="p-3 sm:p-4 border-b border-gray-100 bg-gray-50/80 flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-[#800020] text-white flex items-center justify-center font-bold text-xs shadow-sm">
                   <FaInbox />
@@ -5804,7 +5816,7 @@ export default function ScholarshipDashboard({
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar">
             {filteredConversations.length > 0 ? (
               <div className="divide-y divide-gray-100">
                 {filteredConversations.map((conv) => {
@@ -5876,10 +5888,10 @@ export default function ScholarshipDashboard({
           </div>
         </div>
 
-        <div className={`flex-1 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden ${selectedConversation ? 'flex' : 'hidden md:flex'}`}>
+        <div className={`flex-1 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col min-h-0 overflow-hidden ${selectedConversation ? 'flex' : 'hidden md:flex'}`}>
           {currentConversation ? (
             <>
-              <div className="p-3 sm:p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between gap-3">
+              <div className="p-3 sm:p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between gap-3 flex-shrink-0">
                 <div className="flex items-center gap-3 min-w-0">
                   <button
                     type="button"
@@ -5906,7 +5918,7 @@ export default function ScholarshipDashboard({
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 bg-white">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 bg-white min-h-0 custom-scrollbar">
                 {currentConversationMessages.length > 0 ? (
                   currentConversationMessages.map((msg) => {
                     let isFromMe = false;
@@ -5965,7 +5977,7 @@ export default function ScholarshipDashboard({
                 <div ref={inboxMessagesEndRef} />
               </div>
 
-              <div className="p-3 sm:p-4 border-t border-gray-200 bg-gray-50">
+              <div className="p-3 sm:p-4 border-t border-gray-200 bg-gray-50 flex-shrink-0">
                 <div className="flex gap-2">
                   <textarea
                     value={replyText}
@@ -6007,7 +6019,7 @@ export default function ScholarshipDashboard({
 
   if (standaloneInbox) {
     return (
-      <div className="w-full flex-1 flex flex-col min-h-0">
+      <div className="w-full flex-1 flex flex-col min-h-0 overflow-hidden">
         {renderInbox()}
       </div>
     );
@@ -6077,8 +6089,8 @@ export default function ScholarshipDashboard({
         </nav>
       </aside>
 
-      <main className={`transition-all duration-300 ml-0 ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-72'} flex-1 flex flex-col overflow-y-auto px-3 sm:px-6 lg:px-10 py-4 sm:py-6 lg:py-10 custom-scrollbar border-l border-r border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`} style={{ maxHeight: 'calc(100vh - 4rem)' }}>
-        <header className="bg-white rounded-2xl shadow-sm px-3.5 sm:px-6 lg:px-8 py-3 sm:py-4 lg:py-5 mb-4 sm:mb-6 lg:mb-8 flex flex-row items-center justify-between gap-2 sm:gap-4 border border-gray-100">
+      <main className={`transition-all duration-300 ml-0 ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-72'} flex-1 flex flex-col ${section === 'inbox' ? 'h-[calc(100vh-4rem)] sm:h-[calc(100vh-5rem)] overflow-hidden py-3 sm:py-4' : 'overflow-y-auto py-4 sm:py-6 lg:py-10'} px-3 sm:px-6 lg:px-10 custom-scrollbar border-l border-r border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`} style={{ maxHeight: 'calc(100vh - 4rem)' }}>
+        <header className={`bg-white rounded-2xl shadow-sm px-3.5 sm:px-6 lg:px-8 py-3 sm:py-4 lg:py-5 flex flex-row items-center justify-between gap-2 sm:gap-4 border border-gray-100 flex-shrink-0 ${section === 'inbox' ? 'mb-3 sm:mb-4' : 'mb-4 sm:mb-6 lg:mb-8'}`}>
           <div className="flex items-center gap-2 sm:gap-3 text-[#800020] font-bold text-sm sm:text-lg lg:text-xl min-w-0 flex-1">
             <button
               type="button"

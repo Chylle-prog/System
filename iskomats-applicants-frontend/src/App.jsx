@@ -89,6 +89,30 @@ function RouteContent() {
 function App() {
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
+  React.useEffect(() => {
+    const pingBackend = () => {
+      const backendUrl = import.meta.env.VITE_API_URL || 'https://iskomats-backend.onrender.com/api';
+      const cleanOrigin = backendUrl.replace(/\/api\/?$/, '');
+      fetch(`${cleanOrigin}/_health`, { method: 'GET', cache: 'no-store' }).catch(() => {});
+    };
+
+    pingBackend();
+    // Ping every 8 minutes to prevent Render free-tier from sleeping (limit is 15 mins)
+    const interval = setInterval(pingBackend, 8 * 60 * 1000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        pingBackend();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
       <Router>

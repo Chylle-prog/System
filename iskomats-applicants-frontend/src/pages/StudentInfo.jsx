@@ -560,46 +560,56 @@ const performGoogleVisionOcrScan = async (imageInput) => {
   const originsToTry = candidates.filter((v, i, a) => v && a.indexOf(v) === i);
 
   for (const origin of originsToTry) {
-    try {
-      const token = localStorage.getItem('authToken');
-      const headers = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+    const cleanOrigin = origin.replace(/\/+$/, '');
+    const maxRetries = 3;
 
-      let requestBody = null;
-      let isFormData = false;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const token = localStorage.getItem('authToken');
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      if (resolvedBlob) {
-        const formData = new FormData();
-        formData.append('file', resolvedBlob, 'scan.jpg');
-        requestBody = formData;
-        isFormData = true;
-      } else if (base64Image) {
-        headers['Content-Type'] = 'application/json';
-        requestBody = JSON.stringify({ image: base64Image });
-      } else {
-        return "";
-      }
+        let requestBody = null;
+        let isFormData = false;
 
-      const fetchOptions = {
-        method: 'POST',
-        headers: isFormData ? (token ? { 'Authorization': `Bearer ${token}` } : {}) : headers,
-        body: requestBody
-      };
-
-      const cleanOrigin = origin.replace(/\/+$/, '');
-      const resp = await fetch(`${cleanOrigin}/api/student/verification/ocr-scan`, fetchOptions);
-      if (resp.ok) {
-        const data = await resp.json();
-        const text = String(data.text || "").trim();
-        if (text) {
-          if (cacheKey) visionOcrCache.set(cacheKey, text);
-          return text;
+        if (resolvedBlob) {
+          const formData = new FormData();
+          formData.append('file', resolvedBlob, 'scan.jpg');
+          requestBody = formData;
+          isFormData = true;
+        } else if (base64Image) {
+          headers['Content-Type'] = 'application/json';
+          requestBody = JSON.stringify({ image: base64Image });
+        } else {
+          return "";
         }
-      } else {
-        console.warn(`[GOOGLE CLOUD VISION CLIENT] Origin ${cleanOrigin} returned HTTP status ${resp.status}`);
+
+        const fetchOptions = {
+          method: 'POST',
+          headers: isFormData ? (token ? { 'Authorization': `Bearer ${token}` } : {}) : headers,
+          body: requestBody
+        };
+
+        const resp = await fetch(`${cleanOrigin}/api/student/verification/ocr-scan`, fetchOptions);
+        if (resp.ok) {
+          const data = await resp.json();
+          const text = String(data.text || "").trim();
+          if (text) {
+            if (cacheKey) visionOcrCache.set(cacheKey, text);
+            return text;
+          }
+          break; // OK status, empty text -> no need to retry same origin
+        } else {
+          console.warn(`[GOOGLE CLOUD VISION CLIENT] Origin ${cleanOrigin} returned HTTP status ${resp.status}`);
+          break; // Server error -> move to next candidate
+        }
+      } catch (err) {
+        console.warn(`[GOOGLE CLOUD VISION CLIENT] Network attempt ${attempt}/${maxRetries} failed on origin (${origin}):`, err?.message || err);
+        if (attempt < maxRetries) {
+          // Render free tier cold-start: wait 2.5s for container boot to complete before retrying
+          await new Promise(r => setTimeout(r, 2500));
+        }
       }
-    } catch (err) {
-      console.warn(`[GOOGLE CLOUD VISION CLIENT] Network check failed on origin (${origin}):`, err?.message || err);
     }
   }
   return "";
@@ -735,13 +745,17 @@ function formatExtractedRequirementsSummary(rawText) {
     for (let i = 0; i < nameLines.length - 1; i++) {
       const upper = nameLines[i];
       const next  = nameLines[i + 1];
-      // Last-name line: all-caps, 2-20 letters (may include spaces for compound names), no digits
-      // First/middle line: mixed or title case, 3-40 chars, may end with a middle initial dot
+      // Last-name line: all-caps, 2-25 letters, no school header keywords
+      // First/middle line: must contain lowercase letters (mixed/title case e.g. "Alexie Chyle O.") and no footer keywords
+      const isSchoolHeader = /(?:DE\s*LA\s*SALLE|LIPA|DLSL|COLLEGE|UNIVERSITY|BACHELOR|NATIONAL|OFFICIAL|CERTIFICATE|REGISTRATION|DEPARTMENT|HIGHWAY|STREET|BRGY|INC|ISSESO)/i.test(upper);
+      const isFooterOrNotice = /(?:Signature|Chancellor|Registrar|This|In\s*case|Dr\.|SY|Valid|Races|Emergency|Notify|Non-transferable)/i.test(next);
+
       if (
-        /^[A-Z][A-Z\s]{1,19}$/.test(upper) &&
-        !/^(COLLEGE|UNIVERSITY|DE\s*LA\s*SALLE|LIPA|DLSL|BACHELOR|NATIONAL|ID|CARD|VALID|OFFICIAL|CERTIFICATE|REGISTRATION)$/i.test(upper.trim()) &&
-        /^[A-Za-z][A-Za-z\s\.]{2,39}$/.test(next) &&
-        !/^(Signature|Chancellor|Registrar|This|In\s*case|Dr\.|SY|Valid|Races)/i.test(next.trim())
+        /^[A-Z][A-Z\s\.\-]{1,24}$/.test(upper) &&
+        !isSchoolHeader &&
+        /[a-z]/.test(next) &&
+        /^[A-Za-z][A-Za-z\s\.\-]{2,39}$/.test(next) &&
+        !isFooterOrNotice
       ) {
         fullName = `${upper.trim()}, ${next.trim()}`;
         break;
@@ -1569,43 +1583,63 @@ function normalizeSemesterInt(val) {
 function extractSemesterFromText(text) {
   if (!text) return null;
 
-  const rawLines = String(text).split(/[\r\n]+/);
+  // 1. Primary check: Key-value extracted header field (e.g. "School Year Sem : AY 2025-2026 - 1st Semester")
+  const kv = extractOcrKeyValues(text);
+  if (kv.schoolYearSem || kv.semester) {
+    const kvSem = normalizeSemesterInt(kv.schoolYearSem || kv.semester);
+    if (kvSem !== null) return kvSem;
+  }
 
-  // Collect semester evidence from header lines (excluding footer fine print like "1st week of classes")
+  const rawLines = String(text).split(/[\r\n]+/);
   const votes = { 1: 0, 2: 0, 3: 0 };
 
   for (const rawLine of rawLines) {
     const line = rawLine.toLowerCase();
-    if (line.includes('week of classes') || line.includes('withdraw') || line.includes('refund') || line.includes('penalty')) continue;
 
-    if (line.includes('school year') || line.includes('sy') || line.includes('ay') || line.includes('sem') || line.includes('pay type') || line.includes('registration')) {
+    // Skip fine print, refund rules, payment plan terms, or fee schedules that mention 2nd Sem
+    if (
+      line.includes('week of classes') ||
+      line.includes('withdraw') ||
+      line.includes('refund') ||
+      line.includes('penalty') ||
+      line.includes('pay type') ||
+      line.includes('payment') ||
+      line.includes('due on') ||
+      line.includes('assessed fees') ||
+      line.includes('plan b') ||
+      line.includes('schedule of')
+    ) {
+      continue;
+    }
+
+    if (line.includes('school year') || line.includes('sy') || line.includes('ay') || line.includes('sem') || line.includes('registration') || line.includes('grades')) {
       const cleanLine = line
         .replace(/\b20\d{2}\s*[\-\/\.\:\+]\s*20\d{2}\b/g, '')
         .replace(/\b(?:sy|ay)?\s*\d{2}\s*[\-\/\.\:\+]\s*\d{2}\b/gi, '');
 
-      if (/\b(?:2nd|second|2na|2ng|2da|2rd|sem\s*2|2nd\s*sem|semester\s*2)\b/i.test(cleanLine)) votes[2]++;
-      else if (/\b(?:1st|first|1sa|15t|sem\s*1|1st\s*sem|semester\s*1)\b/i.test(cleanLine)) votes[1]++;
-      else if (/\b(?:3rd|third|summer|midyear|sem\s*3|semester\s*3)\b/i.test(cleanLine)) votes[3]++;
+      if (/\b(?:1st|first|1sa|15t|sem\s*1|1st\s*sem|1st\s*semester)\b/i.test(cleanLine)) votes[1]++;
+      else if (/\b(?:2nd|second|2na|2ng|2da|2rd|sem\s*2|2nd\s*sem|2nd\s*semester)\b/i.test(cleanLine)) votes[2]++;
+      else if (/\b(?:3rd|third|summer|midyear|sem\s*3|3rd\s*sem|3rd\s*semester)\b/i.test(cleanLine)) votes[3]++;
     }
   }
 
   const maxVotes = Math.max(votes[1], votes[2], votes[3]);
   if (maxVotes > 0) {
-    if (votes[2] === maxVotes) return 2;
     if (votes[1] === maxVotes) return 1;
+    if (votes[2] === maxVotes) return 2;
     if (votes[3] === maxVotes) return 3;
   }
 
   // Fallback: Search full document text with fine print stripped
   const cleaned = String(text)
-    .replace(/.*(?:week\s*of\s*classes|refunds\s*and\s*other|withdrawal|within\s*(?:two|2)\s*weeks).*/gi, '')
+    .replace(/.*(?:week\s*of\s*classes|refunds\s*and\s*other|withdrawal|within\s*(?:two|2)\s*weeks|pay\s*type|schedule\s*of\s*payments).*/gi, '')
     .replace(/\b20\d{2}\s*[\-\/\.\:\+]\s*20\d{2}\b/g, '')
     .replace(/\b(?:sy|ay)?\s*\d{2}\s*[\-\/\.\:\+]\s*\d{2}\b/gi, '')
     .replace(/\b15t\b/gi, '1st')
     .toLowerCase();
 
-  if (/\b(?:2nd|second|2na|2ng|2da|2rd|2nd\s*sem|2nd\s*semester)\b/i.test(cleaned)) return 2;
   if (/\b(?:1st|first|1sa|15t|1st\s*sem|1st\s*semester)\b/i.test(cleaned)) return 1;
+  if (/\b(?:2nd|second|2na|2ng|2da|2rd|2nd\s*sem|2nd\s*semester)\b/i.test(cleaned)) return 2;
   if (/\b(?:3rd|third|summer|midyear|3rd\s*sem|3rd\s*semester)\b/i.test(cleaned)) return 3;
 
   return null;
