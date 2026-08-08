@@ -47,8 +47,9 @@ api_bp = Blueprint('admin_api', __name__, url_prefix='/api/admin')
 
 @api_bp.record_once
 def on_blueprint_init(state):
-    """Run migrations once when the app starts up."""
-    with state.app.app_context():
+    """Run migrations once when the app starts up and register global message endpoints."""
+    app = state.app
+    with app.app_context():
         try:
             from project_config import get_db
             with get_db() as conn:
@@ -60,6 +61,14 @@ def on_blueprint_init(state):
                 print("[BACKEND] Admin schema initialization complete.")
         except Exception as e:
             print(f"[BACKEND] Admin schema migration skipped or failed: {e}")
+
+    try:
+        app.add_url_rule('/api/messages/all', 'global_get_all_messages', get_all_messages_rest, methods=['GET'])
+        app.add_url_rule('/api/messages/provider/<int:pro_no>', 'global_get_provider_messages', get_all_messages_rest, methods=['GET'])
+        app.add_url_rule('/api/messages/<path:room_id>', 'global_handle_room_messages', handle_room_messages_rest, methods=['GET', 'POST'])
+        print("[BACKEND] Registered global /api/messages REST endpoints.")
+    except Exception as e:
+        print(f"[BACKEND] Error registering global message rules: {e}")
 
 from project_config import get_db, get_db_startup, use_storage, upload_to_supabase
 from services.notification_service import create_notification, init_socketio as init_notification_socketio, fetch_google_access_token, send_verification_email, send_email_message

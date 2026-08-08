@@ -238,11 +238,14 @@ export const announcementService = {
 
 export const messagingAPI = {
   getAllMessages: (proNo = null) =>
-    api.get(proNo ? `/messages/provider/${proNo}` : '/messages/all'),
+    api.get(proNo ? `/messages/provider/${proNo}` : '/messages/all')
+      .catch(() => api.get(proNo ? `/admin/messages/provider/${proNo}` : '/admin/messages/all')),
   getRoomMessages: (roomId) =>
-    api.get(`/messages/${encodeURIComponent(roomId)}`),
+    api.get(`/messages/${encodeURIComponent(roomId)}`)
+      .catch(() => api.get(`/admin/messages/${encodeURIComponent(roomId)}`)),
   sendMessage: (roomId, messageData) =>
-    api.post(`/messages/${encodeURIComponent(roomId)}`, messageData),
+    api.post(`/messages/${encodeURIComponent(roomId)}`, messageData)
+      .catch(() => api.post(`/admin/messages/${encodeURIComponent(roomId)}`, messageData)),
 };
 
 export default api;

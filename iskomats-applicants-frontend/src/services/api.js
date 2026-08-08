@@ -1101,13 +1101,20 @@ export const debugAPI = {
  * ===== MESSAGING API =====
  */
 export const messagingAPI = {
+  getAllMessages: (proNo = null) =>
+    makeRequest(proNo ? `/messages/provider/${proNo}` : '/messages/all', { method: 'GET' })
+      .catch(() => makeRequest(proNo ? `/admin/messages/provider/${proNo}` : '/admin/messages/all', { method: 'GET' })),
   getRoomMessages: (roomId) =>
-    makeRequest(`/messages/${encodeURIComponent(roomId)}`, { method: 'GET' }),
+    makeRequest(`/messages/${encodeURIComponent(roomId)}`, { method: 'GET' })
+      .catch(() => makeRequest(`/admin/messages/${encodeURIComponent(roomId)}`, { method: 'GET' })),
   sendMessage: (roomId, messageData) =>
     makeRequest(`/messages/${encodeURIComponent(roomId)}`, {
       method: 'POST',
       body: JSON.stringify(messageData),
-    }),
+    }).catch(() => makeRequest(`/admin/messages/${encodeURIComponent(roomId)}`, {
+      method: 'POST',
+      body: JSON.stringify(messageData),
+    })),
 };
 
 /**
