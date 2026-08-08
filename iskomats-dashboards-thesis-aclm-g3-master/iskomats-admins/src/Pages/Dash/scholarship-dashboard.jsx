@@ -632,7 +632,8 @@ export default function ScholarshipDashboard({
   const [viewApplicant, setViewApplicant] = useState(null); // { listType: 'all'|'accepted'|'declined', index }
   const [inboxSearch, setInboxSearch] = useState('');
   const [inboxFilter, setInboxFilter] = useState('all'); // all | pending | accepted
-  const [inboxMode, setInboxMode] = useState(isSuperAdminUser ? 'admin_rooms' : 'applicants'); // 'applicants' | 'admin_rooms'
+  const isActualSuperAdmin = userRole === 'superadmin' || userRole === 'super_admin' || providerKey === 'system';
+  const [inboxMode, setInboxMode] = useState(isActualSuperAdmin ? 'admin_rooms' : 'applicants'); // 'applicants' | 'admin_rooms'
   const [viewMessage, setViewMessage] = useState(null); // { messageId }
   const [replyText, setReplyText] = useState('');
   const [recommendationModal, setRecommendationModal] = useState(false);
@@ -1126,11 +1127,17 @@ export default function ScholarshipDashboard({
       });
 
       const unsubMsg = socketService.subscribe('message', (msg) => {
+        let normRoom = msg.room;
+        if (msg.room === '0+1' || msg.room === 'superadmin_room_1') normRoom = 'provider_room_1';
+        else if (msg.room === '0+2' || msg.room === 'superadmin_room_2') normRoom = 'provider_room_2';
+        else if (msg.room === '0+3' || msg.room === 'superadmin_room_3') normRoom = 'provider_room_3';
+
         setData(prev => {
           const existingIndex = prev.inbox.findIndex(m => {
             if (msg.m_id && m.m_id && String(m.m_id) === String(msg.m_id)) return true;
-            if (typeof m.id === 'string' && m.id.startsWith('temp-') && m.message === msg.message && m.room === msg.room) return true;
-            return m.message === msg.message && m.studentName === msg.username && m.room === msg.room;
+            const sameRoom = (m.room === normRoom || m.room === msg.room);
+            if (typeof m.id === 'string' && m.id.startsWith('temp-') && m.message === msg.message && sameRoom) return true;
+            return m.message === msg.message && sameRoom && (m.studentName === msg.username || !m.is_student_sender);
           });
 
           if (existingIndex !== -1) {
@@ -1139,25 +1146,26 @@ export default function ScholarshipDashboard({
               ...updatedInbox[existingIndex],
               id: msg.m_id || updatedInbox[existingIndex].id,
               m_id: msg.m_id,
+              room: normRoom,
               timestamp: msg.timestamp || updatedInbox[existingIndex].timestamp
             };
             return { ...prev, inbox: sortMessages(updatedInbox) };
           }
 
-          const isActiveRoom = currentInboxRoomRef.current === msg.room;
+          const isActiveRoom = currentInboxRoomRef.current === normRoom || currentInboxRoomRef.current === msg.room;
           const isAdminMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
           const nextMessage = {
             id: msg.m_id || (Date.now() + Math.random()),
             m_id: msg.m_id,
             studentName: msg.username,
             studentEmail: msg.username,
-            applicant_no: msg.applicant_no || msg.room,
+            applicant_no: msg.applicant_no || null,
             studentStatus: msg.student_status,
             message: msg.message,
             timestamp: msg.timestamp,
             read: isActiveRoom || isAdminMessage,
-            is_student_sender: !isAdminMessage,
-            room: msg.room
+            is_student_sender: msg.is_student_sender !== undefined ? msg.is_student_sender : !isAdminMessage,
+            room: normRoom
           };
 
           return {
@@ -2861,9 +2869,19 @@ export default function ScholarshipDashboard({
 
         const targetRoom = visibleRooms.find(r => r.room === normRoom || r.room === m.room);
         if (targetRoom && grouped[targetRoom.applicant_no]) {
-          grouped[targetRoom.applicant_no].messages.push(m);
-          if (!m.read) grouped[targetRoom.applicant_no].unreadCount += 1;
-          grouped[targetRoom.applicant_no].lastMessage = m;
+          const roomMsgs = grouped[targetRoom.applicant_no].messages;
+          const isDuplicate = roomMsgs.some(existingMsg => {
+            if (m.m_id && existingMsg.m_id && String(m.m_id) === String(existingMsg.m_id)) return true;
+            if (m.id && existingMsg.id && String(m.id) === String(existingMsg.id)) return true;
+            if (m.message === existingMsg.message && (String(m.id || '').startsWith('temp-') || String(existingMsg.id || '').startsWith('temp-'))) return true;
+            return existingMsg.message === m.message && existingMsg.timestamp === m.timestamp;
+          });
+
+          if (!isDuplicate) {
+            roomMsgs.push(m);
+            if (!m.read) grouped[targetRoom.applicant_no].unreadCount += 1;
+            grouped[targetRoom.applicant_no].lastMessage = m;
+          }
         }
       });
     } else {
@@ -2949,9 +2967,24 @@ export default function ScholarshipDashboard({
         if (!key || !/^[1-9]\d*$/.test(key)) return;
 
         if (!grouped[key]) {
-          // Don't auto-create for applicants not in the known list — this prevents
-          // admin/provider names from appearing as fake applicant conversations
-          return;
+          const applicantRoom = m.room || `${key}+${activeProviderNo || 1}`;
+          grouped[key] = {
+            studentName: m.username || m.studentName || `Applicant ${key}`,
+            studentEmail: m.studentEmail || '',
+            studentPhone: m.studentPhone || '',
+            applicant_no: key,
+            room: applicantRoom,
+            isAdminRoom: false,
+            messages: [],
+            unreadCount: 0,
+            lastMessage: {
+              timestamp: m.timestamp || new Date(0).toISOString(),
+              message: m.message,
+              studentStatus: m.student_status || m.studentStatus || 'Pending',
+              subject: 'Message Conversation',
+              room: applicantRoom
+            },
+          };
         }
 
         const exists = grouped[key].messages.some(existingMsg => {
