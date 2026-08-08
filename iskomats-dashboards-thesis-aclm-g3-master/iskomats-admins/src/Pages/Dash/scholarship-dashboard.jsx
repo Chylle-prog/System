@@ -1172,6 +1172,18 @@ export default function ScholarshipDashboard({
         const messages = histData.messages || [];
         if (!roomId || messages.length === 0) return;
 
+        // Skip non-applicant rooms entirely
+        if (
+          roomId.startsWith('provider_room_') ||
+          roomId.startsWith('superadmin_room_') ||
+          roomId.startsWith('admin_room') ||
+          /^0\+/.test(roomId)
+        ) return;
+
+        // Only process if it looks like a real applicant room (e.g. "2+1")
+        const roomApplicantNo = roomId.includes('+') ? roomId.split('+')[0] : null;
+        if (!roomApplicantNo || !/^[1-9]\d*$/.test(roomApplicantNo)) return;
+
         setData(prev => {
           const existingIds = new Set((prev.inbox || []).map(m => String(m.m_id)).filter(Boolean));
           const newMsgs = [];
@@ -1183,7 +1195,9 @@ export default function ScholarshipDashboard({
             const isAdminMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
             const resolvedApplicantNo = msg.applicant_no
               ? String(msg.applicant_no)
-              : (roomId.includes('+') ? roomId.split('+')[0] : roomId);
+              : roomApplicantNo;
+
+            if (!resolvedApplicantNo || !/^[1-9]\d*$/.test(resolvedApplicantNo)) return;
 
             newMsgs.push({
               id: msg.m_id || (Date.now() + Math.random()),
@@ -1276,23 +1290,37 @@ export default function ScholarshipDashboard({
 
     messagingAPI.getAllMessages(activeProviderNo).then(res => {
       if (res.data?.messages && Array.isArray(res.data.messages)) {
-        const normalized = res.data.messages.map(m => ({
-          id: m.m_id,
-          m_id: m.m_id,
-          studentName: m.username || `Applicant ${m.applicant_no}`,
-          studentEmail: m.username || '',
-          applicant_no: m.applicant_no ? String(m.applicant_no) : (m.room?.includes('+') ? m.room.split('+')[0] : null),
-          pro_no: m.pro_no,
-          room: m.room,
-          message: m.message,
-          timestamp: m.timestamp,
-          sender_id: m.sender_id,
-          is_student_sender: m.is_student_sender,
-          student_status: m.student_status || 'Pending',
-          studentStatus: m.student_status || 'Pending',
-          read: false,
-          starred: false,
-        }));
+        const isValidApplicantRoom = (m) => {
+          if (!m.room) return false;
+          if (m.room.startsWith('provider_room_') || m.room.startsWith('superadmin_room_') || m.room.startsWith('admin_room')) return false;
+          if (/^0\+/.test(m.room)) return false;
+          const appNo = m.applicant_no ? String(m.applicant_no) : (m.room.includes('+') ? m.room.split('+')[0] : null);
+          return appNo && /^[1-9]\d*$/.test(appNo);
+        };
+
+        const normalized = res.data.messages
+          .filter(isValidApplicantRoom)
+          .map(m => {
+            const appNo = m.applicant_no ? String(m.applicant_no) : m.room.split('+')[0];
+            return {
+              id: m.m_id,
+              m_id: m.m_id,
+              studentName: m.username || `Applicant ${appNo}`,
+              studentEmail: m.username || '',
+              applicant_no: appNo,
+              pro_no: m.pro_no,
+              room: m.room,
+              message: m.message,
+              timestamp: m.timestamp,
+              sender_id: m.sender_id,
+              is_student_sender: m.is_student_sender,
+              student_status: m.student_status || 'Pending',
+              studentStatus: m.student_status || 'Pending',
+              read: false,
+              starred: false,
+            };
+          });
+
         setData(prev => {
           const existingIds = new Set((prev.inbox || []).map(m => String(m.m_id)).filter(Boolean));
           const newMsgs = normalized.filter(m => m.m_id && !existingIds.has(String(m.m_id)));
@@ -2884,7 +2912,15 @@ export default function ScholarshipDashboard({
       });
 
       sortMessages(messages).forEach((m) => {
-        if (!m.room || m.room.startsWith('provider_room_')) return;
+        if (!m.room) return;
+        // Filter out all non-applicant rooms
+        if (
+          m.room.startsWith('provider_room_') ||
+          m.room.startsWith('superadmin_room_') ||
+          m.room.startsWith('admin_room') ||
+          m.room === '0+1' || m.room === '0+2' || m.room === '0+3' ||
+          /^0\+/.test(m.room) // any room starting with applicant_no=0
+        ) return;
 
         let resolvedApplicantNo = m.applicant_no ? m.applicant_no.toString() : '';
         if (!resolvedApplicantNo && m.room && m.room.includes('+')) {
@@ -2902,26 +2938,13 @@ export default function ScholarshipDashboard({
         }
 
         const key = resolvedApplicantNo;
-        if (!key) return;
+        // Only allow positive integer applicant numbers — filters out '0', admin names, etc.
+        if (!key || !/^[1-9]\d*$/.test(key)) return;
 
         if (!grouped[key]) {
-          const applicantRoom = m.room || `${key}+${activeProviderNo || 1}`;
-          grouped[key] = {
-            studentName: m.username || m.studentName || `Applicant ${key}`,
-            studentEmail: m.studentEmail || '',
-            applicant_no: key,
-            room: applicantRoom,
-            isAdminRoom: false,
-            messages: [],
-            unreadCount: 0,
-            lastMessage: {
-              timestamp: m.timestamp || new Date(0).toISOString(),
-              message: m.message,
-              studentStatus: m.student_status || 'Pending',
-              subject: 'Message Conversation',
-              room: applicantRoom
-            },
-          };
+          // Don't auto-create for applicants not in the known list — this prevents
+          // admin/provider names from appearing as fake applicant conversations
+          return;
         }
 
         const exists = grouped[key].messages.some(existingMsg => {
