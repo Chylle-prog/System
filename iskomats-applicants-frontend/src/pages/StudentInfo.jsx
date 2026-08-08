@@ -1893,7 +1893,8 @@ function gpaMatchesText(text, expectedGpa) {
   if (detectedGpaStr !== null) {
     const detVal = parseFloat(detectedGpaStr);
     if (!isNaN(detVal)) {
-      return Math.abs(detVal - roundedInputGpa) <= 0.05;
+      // Strict GPA check: require exact match when rounded to 2 decimal places (allow float precision tolerance 0.005)
+      return Math.abs(detVal - roundedInputGpa) <= 0.005;
     }
   }
 

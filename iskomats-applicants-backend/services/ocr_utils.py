@@ -2972,11 +2972,11 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
             if found_gpa_val:
                 try:
                     f_gpa = float(found_gpa_val)
-                    if abs(e_gpa - f_gpa) > 0.05:
+                    if abs(e_gpa - f_gpa) > 0.005:
                         failures.append(f"GPA mismatch (Expected: '{e_gpa:.2f}', Detected from Grades document: '{f_gpa:.2f}')")
                         print(f"[GPA CHECK] REJECT — Input GPA {e_gpa:.2f} vs Document GPA {f_gpa:.2f} (source: {parsed_fields.get('gpa_source', 'unknown')})", flush=True)
                     else:
-                        print(f"[GPA CHECK] PASS — Input GPA {e_gpa:.2f} matches Document GPA {f_gpa:.2f} (±0.05 tolerance)", flush=True)
+                        print(f"[GPA CHECK] PASS — Input GPA {e_gpa:.2f} matches Document GPA {f_gpa:.2f}", flush=True)
                 except ValueError:
                     pass
             else:
