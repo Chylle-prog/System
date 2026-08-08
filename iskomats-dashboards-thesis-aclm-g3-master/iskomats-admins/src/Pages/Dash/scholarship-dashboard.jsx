@@ -1167,44 +1167,45 @@ export default function ScholarshipDashboard({
         });
       });
 
-      const unsubHistory = socketService.subscribe('history', (data) => {
-        const roomId = data.room;
-        const messages = data.messages || [];
+      const unsubHistory = socketService.subscribe('history', (histData) => {
+        const roomId = histData.room;
+        const messages = histData.messages || [];
+        if (!roomId || messages.length === 0) return;
 
         setData(prev => {
-          const otherMsgs = prev.inbox.filter(m => m.room !== roomId);
-          const roomMsgs = prev.inbox.filter(m => m.room === roomId);
+          const existingIds = new Set((prev.inbox || []).map(m => String(m.m_id)).filter(Boolean));
+          const newMsgs = [];
 
-          const nextMsgs = [...roomMsgs];
           messages.forEach(msg => {
-            const isDuplicate = nextMsgs.some(m => {
-              if (msg.m_id && m.m_id) return String(m.m_id) === String(msg.m_id);
-              return m.message === msg.message && m.username === msg.username && m.timestamp === msg.timestamp;
+            if (msg.m_id && existingIds.has(String(msg.m_id))) return; // skip duplicates
+
+            const isActiveRoom = currentInboxRoomRef.current === roomId;
+            const isAdminMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
+            const resolvedApplicantNo = msg.applicant_no
+              ? String(msg.applicant_no)
+              : (roomId.includes('+') ? roomId.split('+')[0] : roomId);
+
+            newMsgs.push({
+              id: msg.m_id || (Date.now() + Math.random()),
+              m_id: msg.m_id,
+              studentName: msg.username,
+              studentEmail: msg.username,
+              applicant_no: resolvedApplicantNo,
+              studentStatus: msg.student_status || 'Pending',
+              student_status: msg.student_status || 'Pending',
+              message: msg.message,
+              timestamp: msg.timestamp,
+              sender_id: msg.sender_id,
+              is_student_sender: msg.is_student_sender !== undefined ? msg.is_student_sender : !isAdminMessage,
+              read: isActiveRoom || isAdminMessage,
+              room: roomId
             });
-
-            if (!isDuplicate) {
-              const isActiveRoom = currentInboxRoomRef.current === roomId;
-              const isAdminMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
-
-              nextMsgs.push({
-                id: msg.m_id || (Date.now() + Math.random()),
-                m_id: msg.m_id,
-                studentName: msg.username,
-                studentEmail: msg.username,
-                applicant_no: msg.applicant_no || roomId,
-                studentStatus: msg.student_status,
-                message: msg.message,
-                timestamp: msg.timestamp,
-                read: isActiveRoom || isAdminMessage,
-                is_student_sender: !isAdminMessage,
-                room: roomId
-              });
-            }
           });
 
+          if (newMsgs.length === 0) return prev;
           return {
             ...prev,
-            inbox: sortMessages([...otherMsgs, ...nextMsgs])
+            inbox: sortMessages([...(prev.inbox || []), ...newMsgs])
           };
         });
       });
@@ -1271,17 +1272,38 @@ export default function ScholarshipDashboard({
   }, [providerKey, providerName]);
 
   useEffect(() => {
-    if (messagingAPI) {
-      messagingAPI.getAllMessages(activeProviderNo).then(res => {
-        if (res.data?.messages && Array.isArray(res.data.messages)) {
-          setData(prev => ({
-            ...prev,
-            inbox: sortMessages([...(prev.inbox || []), ...res.data.messages])
-          }));
-        }
-      }).catch(err => console.warn('Failed to load REST messages:', err));
-    }
+    if (!messagingAPI) return;
 
+    messagingAPI.getAllMessages(activeProviderNo).then(res => {
+      if (res.data?.messages && Array.isArray(res.data.messages)) {
+        const normalized = res.data.messages.map(m => ({
+          id: m.m_id,
+          m_id: m.m_id,
+          studentName: m.username || `Applicant ${m.applicant_no}`,
+          studentEmail: m.username || '',
+          applicant_no: m.applicant_no ? String(m.applicant_no) : (m.room?.includes('+') ? m.room.split('+')[0] : null),
+          pro_no: m.pro_no,
+          room: m.room,
+          message: m.message,
+          timestamp: m.timestamp,
+          sender_id: m.sender_id,
+          is_student_sender: m.is_student_sender,
+          student_status: m.student_status || 'Pending',
+          studentStatus: m.student_status || 'Pending',
+          read: false,
+          starred: false,
+        }));
+        setData(prev => {
+          const existingIds = new Set((prev.inbox || []).map(m => String(m.m_id)).filter(Boolean));
+          const newMsgs = normalized.filter(m => m.m_id && !existingIds.has(String(m.m_id)));
+          if (newMsgs.length === 0) return prev;
+          return { ...prev, inbox: sortMessages([...(prev.inbox || []), ...newMsgs]) };
+        });
+      }
+    }).catch(err => console.warn('Failed to load REST messages:', err));
+  }, [activeProviderNo]);
+
+  useEffect(() => {
     const allKnown = [
       ...(data.applicants || []),
       ...(data.accepted || []),
@@ -1290,7 +1312,7 @@ export default function ScholarshipDashboard({
       ...(data.cancelled || [])
     ];
     allKnown.forEach(a => {
-      const appNo = a.applicant_no || a.id;
+      const appNo = a.applicant_no || a.applicantNo || a.id;
       if (appNo) {
         socketService.loadHistory(`${appNo}+${activeProviderNo || 1}`);
       }
@@ -2818,10 +2840,11 @@ export default function ScholarshipDashboard({
       ];
 
       allKnownApplicants.forEach(a => {
-        const key = (a.applicant_no || a.id || '').toString();
-        if (!key) return;
+        const rawId = (a.applicant_no || a.applicantNo || a.applicant_id || a.user_no || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id) || '').toString();
+        if (!rawId) return;
+        const key = rawId;
 
-        const normName = normalizeProviderIdentity(a.name || (a.firstName ? `${a.firstName} ${a.lastName}` : ''));
+        const normName = normalizeProviderIdentity(a.name || (a.firstName ? `${a.firstName} ${a.lastName}` : (a.first_name ? `${a.first_name} ${a.last_name}` : '')));
         const normEmail = (a.email || a.emailAddress || '').toLowerCase();
 
         // Skip provider/admin alias accounts from applicant list
@@ -2837,11 +2860,11 @@ export default function ScholarshipDashboard({
           return;
         }
 
-        const applicantRoom = a.scholarshipNo ? `${key}+${activeProviderNo || 1}` : `${key}+${activeProviderNo || 1}`;
+        const applicantRoom = `${key}+${activeProviderNo || 1}`;
 
         if (!grouped[key]) {
           grouped[key] = {
-            studentName: a.name || (a.firstName ? `${a.firstName} ${a.lastName}` : `Applicant ${key}`),
+            studentName: a.name || (a.firstName ? `${a.firstName} ${a.lastName}` : (a.first_name ? `${a.first_name} ${a.last_name}` : `Applicant ${key}`)),
             studentEmail: a.email || a.emailAddress,
             studentPhone: a.mobileNumber || a.phone,
             applicant_no: key,
@@ -2874,16 +2897,44 @@ export default function ScholarshipDashboard({
             (m.studentName && a.name?.toLowerCase() === m.studentName.toLowerCase())
           );
           if (match) {
-            resolvedApplicantNo = (match.applicant_no || match.id || '').toString();
+            resolvedApplicantNo = (match.applicant_no || match.applicantNo || match.applicant_id || (typeof match.id === 'string' ? match.id.split('_')[0] : match.id) || '').toString();
           }
         }
 
         const key = resolvedApplicantNo;
-        if (!key || !grouped[key]) return;
+        if (!key) return;
 
-        grouped[key].messages.push(m);
-        if (!m.read) grouped[key].unreadCount += 1;
-        grouped[key].lastMessage = m;
+        if (!grouped[key]) {
+          const applicantRoom = m.room || `${key}+${activeProviderNo || 1}`;
+          grouped[key] = {
+            studentName: m.username || m.studentName || `Applicant ${key}`,
+            studentEmail: m.studentEmail || '',
+            applicant_no: key,
+            room: applicantRoom,
+            isAdminRoom: false,
+            messages: [],
+            unreadCount: 0,
+            lastMessage: {
+              timestamp: m.timestamp || new Date(0).toISOString(),
+              message: m.message,
+              studentStatus: m.student_status || 'Pending',
+              subject: 'Message Conversation',
+              room: applicantRoom
+            },
+          };
+        }
+
+        const exists = grouped[key].messages.some(existingMsg => {
+          if (m.m_id && existingMsg.m_id) return String(existingMsg.m_id) === String(m.m_id);
+          if (m.id && existingMsg.id) return String(existingMsg.id) === String(m.id);
+          return existingMsg.message === m.message && existingMsg.timestamp === m.timestamp;
+        });
+
+        if (!exists) {
+          grouped[key].messages.push(m);
+          if (!m.read) grouped[key].unreadCount += 1;
+          grouped[key].lastMessage = m;
+        }
       });
     }
 

@@ -5175,16 +5175,28 @@ def get_all_messages_rest(pro_no=None):
             cursor = conn.cursor()
             if pro_no:
                 cursor.execute("""
-                    SELECT m_id, applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender
-                    FROM message
-                    WHERE pro_no = %s OR pro_no IS NULL OR room LIKE 'superadmin%'
-                    ORDER BY timestamp ASC
+                    SELECT m.m_id, m.applicant_no, m.pro_no, m.room, m.username,
+                           m.message, m.timestamp, m.sender_id, m.is_student_sender,
+                           COALESCE(ast.is_accepted, 'Pending') as student_status
+                    FROM message m
+                    LEFT JOIN LATERAL (
+                        SELECT is_accepted FROM applicant_status
+                        WHERE applicant_no = m.applicant_no LIMIT 1
+                    ) ast ON TRUE
+                    WHERE m.pro_no = %s OR m.pro_no IS NULL OR m.room LIKE 'superadmin%%' OR m.room LIKE 'provider_room_%%'
+                    ORDER BY m.timestamp ASC
                 """, (pro_no,))
             else:
                 cursor.execute("""
-                    SELECT m_id, applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender
-                    FROM message
-                    ORDER BY timestamp ASC
+                    SELECT m.m_id, m.applicant_no, m.pro_no, m.room, m.username,
+                           m.message, m.timestamp, m.sender_id, m.is_student_sender,
+                           COALESCE(ast.is_accepted, 'Pending') as student_status
+                    FROM message m
+                    LEFT JOIN LATERAL (
+                        SELECT is_accepted FROM applicant_status
+                        WHERE applicant_no = m.applicant_no LIMIT 1
+                    ) ast ON TRUE
+                    ORDER BY m.timestamp ASC
                 """)
             rows = cursor.fetchall()
             messages = [{
@@ -5196,7 +5208,8 @@ def get_all_messages_rest(pro_no=None):
                 'message': r['message'],
                 'timestamp': r['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(r['timestamp'], 'strftime') else str(r['timestamp']),
                 'sender_id': r['sender_id'],
-                'is_student_sender': r['is_student_sender']
+                'is_student_sender': r['is_student_sender'],
+                'student_status': r['student_status'] or 'Pending'
             } for r in rows]
             return jsonify({'success': True, 'messages': messages}), 200
     except Exception as e:
