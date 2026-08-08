@@ -2920,7 +2920,16 @@ export default function ScholarshipDashboard({
   };
 
   const sendReply = (messageId) => {
-    const room = currentMessage?.room || currentConversation?.room || (currentConversation?.applicant_no ? `${currentConversation.applicant_no}+${activeProviderNo}` : null);
+    const effectiveProNo = activeProviderNo || currentConversation?.pro_no || currentMessage?.pro_no || 1;
+    let room = currentMessage?.room || currentConversation?.room;
+    if (!room && currentConversation?.applicant_no) {
+      room = `${currentConversation.applicant_no}+${effectiveProNo}`;
+    }
+    if (room && (room.includes('+null') || room.includes('+undefined'))) {
+      const parts = room.split('+');
+      room = `${parts[0]}+${effectiveProNo}`;
+    }
+
     if (!replyText.trim() || !room) {
       console.warn('Cannot send reply: Missing message text or room.', { room, replyText });
       return;
@@ -2929,6 +2938,8 @@ export default function ScholarshipDashboard({
     const textToSend = replyText.trim();
     const tempId = `temp-${Date.now()}-${Math.random()}`;
     const nowIso = new Date().toISOString();
+    const resolvedSenderId = currentUserId ? Number(currentUserId) : null;
+    const resolvedUsername = programName || userName || 'Admin';
 
     const optimisticMsg = {
       id: tempId,
@@ -2950,13 +2961,14 @@ export default function ScholarshipDashboard({
     }));
 
     setReplyText('');
-    socketService.sendMessage(room, userName, textToSend, programName);
 
-    if (messagingAPI && room) {
+    if (socketService.isConnected()) {
+      socketService.sendMessage(room, userName, textToSend, programName, false, resolvedSenderId);
+    } else if (messagingAPI && room) {
       messagingAPI.sendMessage(room, {
         message: textToSend,
-        username: programName || userName || 'Admin',
-        sender_id: currentUserId ? Number(currentUserId) : null,
+        username: resolvedUsername,
+        sender_id: resolvedSenderId,
         is_student_sender: false
       }).then(res => {
         if (res.data?.message?.m_id) {

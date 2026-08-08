@@ -524,8 +524,9 @@ const Portal = () => {
 
     if (!currentChatId.startsWith('mock-')) {
       try {
-        socketService.sendMessage(currentChatId, applicantNo, message, currentChatProviderName);
-        if (messagingAPI) {
+        if (socketService.isConnected()) {
+          socketService.sendMessage(currentChatId, applicantNo, message, currentChatProviderName);
+        } else if (messagingAPI) {
           messagingAPI.sendMessage(currentChatId, {
             message: message,
             username: applicantNo || 'Applicant',

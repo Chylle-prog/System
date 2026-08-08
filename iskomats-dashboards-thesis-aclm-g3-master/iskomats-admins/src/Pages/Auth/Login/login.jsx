@@ -61,6 +61,10 @@ const Login = () => {
       localStorage.setItem('userEmail', formData.email);
       localStorage.setItem('userName', response.data.userName);
       localStorage.setItem('userFirstName', response.data.userFirstName);
+      const userId = response.data.userId || response.data.user_id || response.data.user_no || response.data.userNo;
+      if (userId) {
+        localStorage.setItem('userId', String(userId));
+      }
       // ...existing code...
       const role = response.data.userRole;
       switch (role) {

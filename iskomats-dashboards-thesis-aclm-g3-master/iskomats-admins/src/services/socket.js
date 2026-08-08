@@ -120,8 +120,12 @@ class SocketService {
     }
   }
 
-  sendMessage(room, username, message, providerName = null) {
-    const rawSenderId = this.userId || (typeof window !== 'undefined' ? localStorage.getItem('userId') : null);
+  isConnected() {
+    return Boolean(this.socket && this.socket.connected);
+  }
+
+  sendMessage(room, username, message, providerName = null, isStudentSender = false, customSenderId = null) {
+    const rawSenderId = customSenderId || this.userId || (typeof window !== 'undefined' ? localStorage.getItem('userId') : null);
     const numericSenderId = (rawSenderId && !isNaN(rawSenderId)) ? Number(rawSenderId) : null;
 
     this.emit('message', { 
@@ -129,6 +133,7 @@ class SocketService {
       username: providerName || username || this.username, 
       message,
       sender_id: numericSenderId,
+      is_student_sender: Boolean(isStudentSender),
       ...(providerName && { provider_name: providerName })
     });
   }

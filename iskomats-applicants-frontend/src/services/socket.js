@@ -120,6 +120,10 @@ class SocketService {
     }
   }
 
+  isConnected() {
+    return Boolean(this.socket && this.socket.connected);
+  }
+
   sendMessage(room, username, message, providerName = null) {
     const storedApplicantNo = typeof window !== 'undefined' ? localStorage.getItem('applicantNo') : null;
     const fallbackSenderId = storedApplicantNo || (room && room.includes('+') ? room.split('+')[0] : null);
@@ -132,6 +136,7 @@ class SocketService {
         username: username || this.username, 
         message,
         sender_id: numericSenderId,
+        is_student_sender: true,
         ...(providerName && { provider_name: providerName })
       });
     }
