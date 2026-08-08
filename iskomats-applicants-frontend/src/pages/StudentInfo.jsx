@@ -1527,8 +1527,8 @@ function academic_year_matches_expected(text, expectedYear) {
       const pStart = parseInt(m[1], 10);
       const rawEndStr = m[2].toLowerCase().replace(/b/g, '6').replace(/8/g, '6').replace(/g/g, '6').replace(/s/g, '5');
       const pEnd = parseInt(rawEndStr, 10);
-      // Require start year to match expStart AND end year to match expEnd (or allow +/- 1 on end year due to OCR noise)
-      return pStart === expStart && (pEnd === expEnd || Math.abs(pEnd - expEnd) <= 1);
+      // Require BOTH start year to match expStart AND end year to match expEnd exactly (no off-by-one tolerance)
+      return pStart === expStart && pEnd === expEnd;
     });
     if (hasMatchingPair) return true;
     // Explicit year pairs found on document but none matched expected academic year
@@ -4207,8 +4207,10 @@ const StudentInfo = () => {
         const nameOk = (firstOk && lastOk) || nameMatchFront.success || nameMatchBack.success || nameMatchVid.success;
 
         const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, combinedFrontText, true) || studentIdNoMatchesText(idNumber, combinedBackText, true)) : true);
-        const schoolOk = schoolName ? (schoolNameMatchesText(allIdText, schoolName)) : true;
-        const ayOk = isNationalId ? true : (academicYear ? (academic_year_matches_expected(combinedFrontText, academicYear) || academic_year_matches_expected(combinedBackText, academicYear)) : true);
+        const ayOkDocImage = academic_year_matches_expected(frontText, academicYear) || academic_year_matches_expected(backText, academicYear);
+        const ayOkVid = academic_year_matches_expected(combinedFrontText, academicYear) || academic_year_matches_expected(combinedBackText, academicYear);
+        const hasExplicitDocYear = /\b20\d{2}\s*[\-\/\.\:\+]\s*20\d{2}\b/.test(frontText + " " + backText) || /\b[2-9]\d\s*[\-\/\.]\s*[2-9]\d\b/.test(frontText + " " + backText);
+        const ayOk = isNationalId ? true : (academicYear ? (hasExplicitDocYear ? ayOkDocImage : (ayOkDocImage || ayOkVid)) : true);
 
         // National ID: Street / Barangay address verification (replaces student ID & year level checks)
         const addrOk = isNationalId ? (targetBarangay ? addressMatchesText(allIdText, targetBarangay) : true) : true;
