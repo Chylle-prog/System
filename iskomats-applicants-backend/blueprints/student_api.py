@@ -2929,21 +2929,22 @@ def update_profile():
                     raw_val = request.form[field_key]
                 
                 if raw_val:
-                    # If it's already a URL, we don't need to decode or upload
-                    if isinstance(raw_val, str) and (raw_val.startswith('http') or raw_val.startswith('https')):
-                        # If it is a backend proxy URL, it means the user did not change the file, so skip updating it
-                        if '/applicant/document/raw/' in raw_val or '/applicant-image/' in raw_val:
-                            print(f"[UPDATE PROFILE] Field {field_key} is a backend proxy URL. Skipping update.", flush=True)
+                    if isinstance(raw_val, str):
+                        s_val = raw_val.strip()
+                        if s_val.startswith('blob:') or s_val.startswith('data:video'):
+                            print(f"[UPDATE PROFILE] Field {field_key} is a local blob/data URL. Skipping URL persistence.", flush=True)
                             continue
-                        
-                        print(f"[UPDATE PROFILE] Field {field_key} is already a URL. Saving directly.", flush=True)
-                        if db_col == 'profile_picture' and has_profile_picture_column:
-                            add_update(db_col, raw_val)
-                        else:
-                            document_updates[db_col] = raw_val
-                        continue
-                    else:
-                        blob_bytes = decode_base64(raw_val)
+                        if s_val.startswith('http') or s_val.startswith('https'):
+                            if '/applicant/document/raw/' in s_val or '/applicant-image/' in s_val:
+                                print(f"[UPDATE PROFILE] Field {field_key} is a backend proxy URL. Skipping update.", flush=True)
+                                continue
+                            print(f"[UPDATE PROFILE] Field {field_key} is already a URL. Saving directly.", flush=True)
+                            if db_col == 'profile_picture' and has_profile_picture_column:
+                                add_update(db_col, s_val)
+                            else:
+                                document_updates[db_col] = s_val
+                            continue
+                    blob_bytes = decode_base64(raw_val)
                 
                 if blob_bytes:
                     print(f"[UPDATE PROFILE] Field {field_key} -> {db_col}: {len(blob_bytes)} bytes detected. Cloud? {use_storage()}", flush=True)
@@ -3381,9 +3382,14 @@ def submit_application():
             for form_key, db_col in document_field_mapping.items():
                 if form_key in request_payload:
                     val = request_payload[form_key]
-                    if isinstance(val, str) and ('/applicant/document/raw/' in val or 'onrender.com' in val or 'localhost' in val):
-                        print(f"[SUBMIT APPLICATION] Field {form_key} is a backend proxy URL. Skipping update.", flush=True)
-                        continue
+                    if isinstance(val, str):
+                        s_val = val.strip()
+                        if s_val.startswith('blob:') or s_val.startswith('data:video'):
+                            print(f"[SUBMIT APPLICATION] Field {form_key} is a local blob/data URL. Skipping persistence.", flush=True)
+                            continue
+                        if ('/applicant/document/raw/' in s_val or 'onrender.com' in s_val or 'localhost' in s_val):
+                            print(f"[SUBMIT APPLICATION] Field {form_key} is a backend proxy URL. Skipping update.", flush=True)
+                            continue
                     document_updates[db_col] = val
 
             binary_map = {

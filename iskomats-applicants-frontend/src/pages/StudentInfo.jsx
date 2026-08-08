@@ -693,8 +693,17 @@ function extractOcrKeyValues(rawText) {
     }
   }
   if (!fields.studentId) {
-    const idMatch = rawText.match(/\b((?:120|20)\d{7,8}|\b\d{9,11}\b)\b/);
-    if (idMatch) fields.studentId = idMatch[1];
+    // Match common DLSL/PH student ID formats: 20xxxxxxxx (10 digits) or 15xxxxxxxx etc.
+    // Avoid matching with a spurious leading digit from OCR artifacts (e.g. "1 2021305751" -> "12021305751")
+    const idMatch = rawText.match(/\b(20\d{8}|15\d{8}|19\d{8}|18\d{8}|\d{9,10})\b/);
+    if (idMatch) {
+      let candidate = idMatch[1];
+      // If 11 digits and starts with 1 followed by a known prefix (20, 15, 19), strip the leading 1
+      if (candidate.length === 11 && /^1(?:20|15|19|18)/.test(candidate)) {
+        candidate = candidate.slice(1);
+      }
+      fields.studentId = candidate;
+    }
   }
   if (!fields.course) {
     const crsMatch = rawText.match(/(BACHELOR\s+(?:OF\s+SCIENCE|OF\s+ARTS|IN)\s+[A-Z\s]{4,50}|BS[A-Z]{2,6})/i);
@@ -755,8 +764,15 @@ function formatExtractedRequirementsSummary(rawText) {
   // 2. Student No Extraction
   let studentNo = kv.studentId;
   if (!studentNo || studentNo === 'No' || !/\d/.test(studentNo)) {
-    const idMatch = rawText.match(/\b(12\d{9}|20\d{8,9}|\d{9,11})\b/);
-    if (idMatch) studentNo = idMatch[1];
+    // Strict: only accept known-length student IDs (9-10 digits), strip leading OCR artifact digit
+    const idMatch = rawText.match(/\b(20\d{8}|15\d{8}|19\d{8}|18\d{8}|\d{9,10})\b/);
+    if (idMatch) {
+      let candidate = idMatch[1];
+      if (candidate.length === 11 && /^1(?:20|15|19|18)/.test(candidate)) {
+        candidate = candidate.slice(1);
+      }
+      studentNo = candidate;
+    }
   }
   if (!studentNo || studentNo === 'No') studentNo = "Not detected";
 
@@ -1309,24 +1325,35 @@ function studentIdNoMatchesText(targetId, text, strict = false) {
   if (kv.studentId) {
     const kvDigits = digitsOnly(kv.studentId);
     const kvMapped = mapOcrToDigits(kv.studentId);
+    // Exact match
     if (kvDigits === tDigits || kvMapped === tDigits) return true;
-    if (tDigits.length >= 6 && (kvDigits.includes(tDigits) || kvMapped.includes(tDigits))) return true;
+    // Allow ONLY off-by-one leading/trailing OCR artifact digit (e.g. "12021305751" -> "2021305751")
+    // Do NOT allow general substring match — "12021305751".includes("2021305751") would be a false pass
+    if (tDigits.length >= 6) {
+      if (kvDigits.length === tDigits.length + 1 && (kvDigits.endsWith(tDigits) || kvDigits.startsWith(tDigits))) return true;
+      if (kvMapped.length === tDigits.length + 1 && (kvMapped.endsWith(tDigits) || kvMapped.startsWith(tDigits))) return true;
+    }
   }
 
-  // 2. Token scan — EXACT match or substring/boundary match
+  // 2. Token scan — EXACT match or off-by-one OCR artifact only (NO general substring)
   const ocrTokens = String(text).match(/\b[0-9a-zA-Z\-]{4,25}\b/g) || [];
   for (const seq of ocrTokens) {
     const seqDigits = digitsOnly(seq);
     const seqMapped = mapOcrToDigits(seq);
     if (seqDigits === tDigits || seqMapped === tDigits) return true;
-    if (tDigits.length >= 6 && (seqDigits.includes(tDigits) || seqMapped.includes(tDigits))) return true;
-    if (tDigits.length >= 6 && seqDigits.length === tDigits.length + 1 && (seqDigits.startsWith(tDigits) || seqDigits.endsWith(tDigits))) return true;
+    // Only accept off-by-one leading/trailing artifact — NOT general substring
+    if (tDigits.length >= 6) {
+      if (seqDigits.length === tDigits.length + 1 && (seqDigits.endsWith(tDigits) || seqDigits.startsWith(tDigits))) return true;
+      if (seqMapped.length === tDigits.length + 1 && (seqMapped.endsWith(tDigits) || seqMapped.startsWith(tDigits))) return true;
+    }
   }
 
-  // 3. Full-text mapped digit sequence — EXACT substring
+  // 3. Full-text digit scan — require word-boundary match, not raw substring
+  // Raw substring would accept "12021305751" when searching for "2021305751"
+  const fullTextBoundaryMatch = new RegExp(`(?<![0-9])${tDigits}(?![0-9])`);
+  if (fullTextBoundaryMatch.test(text)) return true;
   const fullTextMapped = mapOcrToDigits(text);
-  const fullTextDigits = digitsOnly(text.replace(/\s+/g, ''));
-  if (fullTextDigits.includes(tDigits) || fullTextMapped.includes(tDigits)) return true;
+  if (fullTextBoundaryMatch.test(fullTextMapped)) return true;
 
   // In strict mode (e.g. School ID verification), require exact digit sequence match.
   // Bypass fuzzy Levenshtein digit substitution so that incorrect ID digits (e.g. 1500017171 vs 1500017172) are strictly rejected.
@@ -1738,12 +1765,6 @@ function extractGpaFromText(text, expectedGpa = null) {
     if (totalUnits > 0) {
       const calcGpa = totalPts / totalUnits;
       if (calcGpa >= 1.0 && calcGpa <= 5.0) {
-        if (expectedGpa) {
-          const expVal = parseFloat(String(expectedGpa).replace(/[^0-9.]/g, ''));
-          if (!isNaN(expVal) && Math.abs(calcGpa - expVal) <= 0.08) {
-            return toTwoDecimals(expVal);
-          }
-        }
         return toTwoDecimals(calcGpa);
       }
     }
@@ -1756,13 +1777,6 @@ function extractGpaFromText(text, expectedGpa = null) {
     .filter(v => !isNaN(v) && v >= 1.0 && v <= 5.0 && v !== 3.0 && v !== 2.0 && v !== 1.0);
 
   if (decimals.length > 0) {
-    if (expectedGpa) {
-      const expVal = parseFloat(String(expectedGpa).replace(/[^0-9.]/g, ''));
-      if (!isNaN(expVal)) {
-        const matchCand = decimals.find(c => Math.abs(c - expVal) <= 0.08);
-        if (matchCand !== undefined) return toTwoDecimals(matchCand);
-      }
-    }
     const mean = decimals.reduce((a, b) => a + b, 0) / decimals.length;
     return toTwoDecimals(mean);
   }
@@ -1821,7 +1835,7 @@ function coe_type_matches_text(text) {
     'enroilment',
     'ennollment',
     'cnrollment',
-    'enrollnent'
+    'enrollment'
   ];
   return keywords.some(kw => normText.includes(kw));
 }
@@ -1838,14 +1852,16 @@ function grades_type_matches_text(text) {
     'evaluation of grades',
     'gpa',
     'gwa',
+    'cwa',
+    'qpi',
     'tor',
     'tcog',
-  'final grades',
-    'card',
-    'units',
+    'final grades',
     'rating',
     'marks',
-    'course grade'
+    'course grade',
+    'weighted average',
+    'general weighted'
   ];
   return keywords.some(kw => normText.includes(kw));
 }
@@ -4242,7 +4258,7 @@ const StudentInfo = () => {
           const courseOk = course ? courseMatchesText(course, combinedText) : true;
           const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
           const semOk = semesterMatchesText(combinedText, semester || formData.semester, reqSemester);
-          const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText) || studentIdNoMatchesText(idNumber, combinedText)) : true;
+          const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText, true) || studentIdNoMatchesText(idNumber, combinedText, true)) : true;
           const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
           const videoOk = videoCheck ? (videoCheck.valid && videoCheck.isMatched) : (videoUrl ? true : false);
           const coeTypeOk = coe_type_matches_text(combinedText);
@@ -4292,7 +4308,7 @@ const StudentInfo = () => {
           const semOk = semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
           const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
           const courseOk = course ? courseMatchesText(course, combinedText) : true;
-          const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText) || studentIdNoMatchesText(idNumber, combinedText)) : true;
+          const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText, true) || studentIdNoMatchesText(idNumber, combinedText, true)) : true;
           const videoOk = videoCheck ? (videoCheck.valid && videoCheck.isMatched) : (videoUrl ? true : false);
           const gradesTypeOk = grades_type_matches_text(combinedText);
           const detectedDocGpa = extractGpaFromText(detectedText, gpa);
@@ -6402,17 +6418,17 @@ const StudentInfo = () => {
         if (!videoValue) return;
 
         if (typeof videoValue === 'string') {
-          if (videoValue.startsWith('http')) {
+          if (videoValue.startsWith('http://') || videoValue.startsWith('https://')) {
             submissionData.append(fieldName, videoValue);
           } else if (videoValue.startsWith('blob:')) {
             const publicUrl = formData[fieldName];
-            if (publicUrl && publicUrl.startsWith('http')) {
+            if (publicUrl && typeof publicUrl === 'string' && (publicUrl.startsWith('http://') || publicUrl.startsWith('https://'))) {
               submissionData.append(fieldName, publicUrl);
             } else {
-              console.warn(`Local blob URL found for ${fieldName} but no public URL.`);
+              console.warn(`Local blob URL found for ${fieldName} but no public HTTP storage URL available. Omitting blob string.`);
             }
           }
-        } else {
+        } else if (videoValue instanceof Blob || (typeof File !== 'undefined' && videoValue instanceof File)) {
           submissionData.append(fieldName, videoValue, `${fieldName}.webm`);
         }
       };

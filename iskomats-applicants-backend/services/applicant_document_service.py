@@ -162,7 +162,11 @@ def persist_applicant_document_values(cursor, applicant_no, values):
         cleaned_values = {}
         for k, v in document_values.items():
             if isinstance(v, str):
-                cleaned_values[k] = v
+                s = v.strip()
+                if s.startswith('blob:') or s.startswith('data:video'):
+                    print(f"[SERVICE] REJECTED invalid blob/data URL persistence for {k}: {s[:60]}", flush=True)
+                    continue
+                cleaned_values[k] = s
             else:
                 print(f"[SERVICE] WARNING: Rejecting binary persistence for {k} because Cloud Storage is enabled.", flush=True)
         document_values = cleaned_values

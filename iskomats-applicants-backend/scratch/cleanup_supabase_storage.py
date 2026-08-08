@@ -38,7 +38,14 @@ def get_known_applicant_nos():
         with conn.cursor() as cur:
             cur.execute("SELECT applicant_no::text FROM applicants")
             rows = cur.fetchall()
-            return set(str(r[0]) for r in rows)
+            # Handle both dict cursor (RealDictCursor) and tuple cursor
+            result = set()
+            for r in rows:
+                if isinstance(r, dict):
+                    result.add(str(r.get('applicant_no', '')))
+                else:
+                    result.add(str(r[0]))
+            return result
 
 def list_all_files(supa, bucket, folder):
     """Recursively list all files in a bucket folder."""
