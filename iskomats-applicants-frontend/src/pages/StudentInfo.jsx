@@ -657,7 +657,8 @@ function extractOcrKeyValues(rawText) {
       /student\s*name\s*[:\-1l\|\]\}\)]\s*(.+)/i,
       /name\s*of\s*student\s*[:\-1l\|\]\}\)]\s*(.+)/i,
       /pangalan\s*[:\-1l\|\]\}\)]\s*(.+)/i,
-      /name\s+(.+)/i
+      // Strictly restrict "name X" to lines that contain a colon/dash separator or are very short name-like lines
+      /^name\s*[:\-]\s*(.+)/i
     ],
     studentId: [
       /student\s*(?:no|number|id|num)?\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
@@ -738,6 +739,31 @@ function formatExtractedRequirementsSummary(rawText) {
   // 1. Full Name Extraction
   let fullName = kv.name;
 
+  // --- Indigency / Residency Certificate Semantic Anchor ---
+  // Pattern: "certify that MIKAELA YSABEL L. LANTAFE 23 years of age..."
+  // We extract just the name portion before age/civil-status/citizenship phrases.
+  if (!fullName) {
+    const indigencyAnchorPatterns = [
+      /(?:certify|certifies|patunay|katibayan|pinatutunayan)\s+(?:that\s+|na\s+si\s+)?[_\W]*([A-Za-z][A-Za-z\s,\.\-]{2,60}?)(?=\s+\d+\s*(?:years?|yr|yo|taong)|\s+of\s+legal\s+age|\s+(?:single|married|widow|widower|separated|divorced|filipino|pilipino|citizen|is\s+a\s+resident|is\s+a\s+bonafide|a\s+resident|a\s+bonafide|residing|resident|registered)|\r?\n|$)/i,
+      /(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that)\s+[_\W]*([A-Za-z][A-Za-z\s,\.\-]{2,60}?)(?=\s+\d+\s*(?:years?|yr|yo)|\s+of\s+legal\s+age|\s+(?:single|married|widow|separated|filipino|is|a|the|resident|bonafide|residing)|\r?\n|$)/i
+    ];
+    for (const pat of indigencyAnchorPatterns) {
+      const m = nameSearchText.match(pat);
+      if (m && m[1]) {
+        let raw = m[1].trim()
+          // Strip trailing age/civil status/citizenship noise
+          .replace(/\s*(?:\d+\s*years?\s*of\s*age|of\s*legal\s*age|\d+\s*(?:years?|yr))\s*.*$/i, '')
+          .replace(/\s*(?:single|married|widow(?:er)?|separated|divorced|filipino(?:\s*citizen)?|pilipino(?:\s*citizen)?)\s*.*$/i, '')
+          .trim();
+        // Must have at least 2 words (first + last) and only valid name characters
+        if (raw.length >= 3 && /\s/.test(raw) && !/certify|certificate|barangay|office|republic|philippines|punong|that$/i.test(raw)) {
+          fullName = raw;
+          break;
+        }
+      }
+    }
+  }
+
   // DLSL/School-ID format: LASTNAME on its own all-caps line, then "First Middle." on the next line
   // e.g.: "MAGBUHAT\nAlexie Chyle O."
   if (!fullName) {
@@ -813,9 +839,14 @@ function formatExtractedRequirementsSummary(rawText) {
   const subjectRows = [];
   const lines = String(rawText).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
+  // Blacklist: lines that look like subject codes but actually come from Indigency/Residency certificate text
+  const certLineBlacklist = /^(?:issued?|isssued?|certif|barangay|brgy|punong|office|republic|province|city|municipality|purok|zone|sitio|signature|specimen|concern|request|fulfillment|requirement|april|january|february|march|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday|hon\.?|atty\.?|dr\.?)/i;
+
   // Strategy A: Row-based subject matcher
   for (const line of lines) {
     if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(line)) break;
+    // Skip lines that are obviously certificate boilerplate, not subject codes
+    if (certLineBlacklist.test(line.trim())) continue;
 
     const subMatch = line.match(/^([A-Za-z0-9]{3,12})\s+(.+?)\s+([1-6])\s+(?:IT[1-4]B|MB|JRF|[A-Z]{2,4}\d{0,3})/i) ||
                      line.match(/^([A-Za-z0-9]{3,12})\s+(.+?)\s+([1-6])\b/i);
@@ -823,7 +854,7 @@ function formatExtractedRequirementsSummary(rawText) {
       const code = subMatch[1].trim();
       const desc = subMatch[2].trim().slice(0, 32);
       const units = subMatch[3].trim();
-      if (!/total|official|certificate|registration|enrolled|run\s*date|user|student|assessed|fees/i.test(code)) {
+      if (!/total|official|certificate|registration|enrolled|run\s*date|user|student|assessed|fees/i.test(code) && !certLineBlacklist.test(code)) {
         subjectRows.push({ code, desc, units });
       }
     }
@@ -867,6 +898,9 @@ function formatExtractedRequirementsSummary(rawText) {
   const schoolName = schoolMatch ? schoolMatch[0] : "De La Salle Lipa";
 
   // Parse name into First Name, Middle Name, Last Name
+  // For Indigency/Residency certs the extracted name is typically: "MIKAELA YSABEL L. LANTAFE"
+  // In this format the last word is the surname; the second-to-last word that is a single letter
+  // or initial (e.g. "L.") is the middle name; the remainder are the first name.
   let firstName = "Not detected";
   let middleName = "Not detected";
   let lastName = "Not detected";
@@ -874,22 +908,40 @@ function formatExtractedRequirementsSummary(rawText) {
   if (fullName && fullName !== "Not detected") {
     let clean = fullName.trim();
     if (clean.includes(',')) {
+      // Format: "LANTAFE, MIKAELA YSABEL L" or "LANTAFE, MIKAELA YSABEL LINATOC"
       const parts = clean.split(',').map(s => s.trim());
       lastName = parts[0] || "Not detected";
       const rest = (parts[1] || '').split(/\s+/).filter(Boolean);
       if (rest.length >= 2) {
-        middleName = rest[rest.length - 1];
-        firstName = rest.slice(0, rest.length - 1).join(' ');
+        // Last token after comma that is a single letter or has a trailing dot = middle initial
+        const lastToken = rest[rest.length - 1];
+        if (/^[A-Za-z]\.?$/.test(lastToken)) {
+          middleName = lastToken.replace('.', '');
+          firstName = rest.slice(0, rest.length - 1).join(' ');
+        } else {
+          // No clear middle initial: treat everything as first name, no middle
+          firstName = rest.join(' ');
+          middleName = "N/A";
+        }
       } else if (rest.length === 1) {
         firstName = rest[0];
         middleName = "N/A";
       }
     } else {
+      // Format: "MIKAELA YSABEL L. LANTAFE" (Indigency style) or "MIKAELA YSABEL LANTAFE"
       const words = clean.split(/\s+/).filter(Boolean);
       if (words.length >= 3) {
         lastName = words[words.length - 1];
-        middleName = words[words.length - 2];
-        firstName = words.slice(0, words.length - 2).join(' ');
+        const potentialMiddle = words[words.length - 2];
+        // Single letter or letter+dot = middle initial; otherwise fold into first name
+        if (/^[A-Za-z]\.?$/.test(potentialMiddle)) {
+          middleName = potentialMiddle.replace('.', '');
+          firstName = words.slice(0, words.length - 2).join(' ');
+        } else {
+          // No middle initial — all words except last are the first name
+          firstName = words.slice(0, words.length - 1).join(' ');
+          middleName = "N/A";
+        }
       } else if (words.length === 2) {
         firstName = words[0];
         lastName = words[1];
@@ -1194,13 +1246,21 @@ function studentNameMatchesText(text, first, middle, last) {
         return !inputFirstWords.some(inpW => isSimilarWord(docW, inpW) || isSimilarWord(inpW, docW) || (inpW.length === 1 && docW.toLowerCase().startsWith(inpW.toLowerCase())));
       });
       if (missingDocFirstWords.length > 0) {
-        // If the ONLY missing word is the last word in candFirstWords (the middle name in Philippine format "LAST, FIRST MIDDLE"), ignore it!
+        // STRICT: Only bypass the trailing-word check when the document name was extracted from a
+        // comma-format entry "LAST, FIRST MIDDLE" where the last token after the comma is a middle name.
+        // For standard "FIRST MIDDLE LAST" certificate format, ALL words in candFirstWords are part of
+        // the first name and MUST be present in the user's input (first + middle combined).
+        const isCommaFormat = cleanCandStr.includes(',');
         const lastCandWord = candFirstWords[candFirstWords.length - 1];
-        if (missingDocFirstWords.length === 1 && (missingDocFirstWords[0] === lastCandWord || isSimilarWord(missingDocFirstWords[0], lastCandWord))) {
-          console.debug('[REVERSE FIRST NAME CHECK] Missing word is trailing middle name:', lastCandWord, '- Passing first name match.');
+        const missingIsOnlyTrailingWord = missingDocFirstWords.length === 1 &&
+          (missingDocFirstWords[0] === lastCandWord || isSimilarWord(missingDocFirstWords[0], lastCandWord));
+
+        // Bypass ONLY for comma format ("LAST, FIRST MIDDLE") where trailing word is a true middle name
+        if (isCommaFormat && missingIsOnlyTrailingWord) {
+          console.debug('[REVERSE FIRST NAME CHECK] Comma-format: Missing word is trailing middle name:', lastCandWord, '- Passing first name match.');
           reverseFirstOk = true;
         } else {
-          console.debug('[REVERSE FIRST NAME CHECK FAILED] Document name has extra first name words missing in input:', missingDocFirstWords);
+          console.debug('[REVERSE FIRST NAME CHECK FAILED] Document name has first name words missing in input:', missingDocFirstWords, 'commaFormat:', isCommaFormat);
           reverseFirstOk = false;
         }
       }
