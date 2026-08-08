@@ -210,9 +210,9 @@ def extract_text_with_google_cloud_vision(image_input, return_debug=False):
                     key_data["private_key"] = key_data["private_key"].replace("\\n", "\n")
             credentials = service_account.Credentials.from_service_account_info(key_data)
             try:
-                client = vision.ImageAnnotatorClient(credentials=credentials, transport='rest')
+                client = vision.ImageAnnotatorClient(credentials=credentials, transport='rest')  # type: ignore
             except Exception:
-                client = vision.ImageAnnotatorClient(credentials=credentials)
+                client = vision.ImageAnnotatorClient(credentials=credentials)  # type: ignore
             debug_msg.append("Client created from GOOGLE_CLOUD_VISION_KEY_JSON (rest transport)")
         except Exception as json_e:
             debug_msg.append(f"JSON key parse error: {json_e}")
@@ -237,9 +237,9 @@ def extract_text_with_google_cloud_vision(image_input, return_debug=False):
                     break
         try:
             try:
-                client = vision.ImageAnnotatorClient(transport='rest')
+                client = vision.ImageAnnotatorClient(transport='rest')  # type: ignore
             except Exception:
-                client = vision.ImageAnnotatorClient()
+                client = vision.ImageAnnotatorClient()  # type: ignore
             debug_msg.append("Client created from default GOOGLE_APPLICATION_CREDENTIALS")
         except Exception as client_e:
             debug_msg.append(f"Default client init error: {client_e}")
@@ -3070,6 +3070,12 @@ def extract_semantic_anchors_from_indigency(raw_text):
             if len(raw_name) >= 3 and ' ' in raw_name and not re.search(r'certify|certificate|barangay|office|republic|philippines|punong|that$', raw_name, re.IGNORECASE):
                 candidate_name = raw_name
                 break
+
+    town_anchor_patterns = [
+        r'(?:resident\s+of|residing\s+at|residing\s+in)\s+([A-Za-z0-9\s,\.\-]+)',
+        r'(?:mamamayan\s+ng|taga|nasasakupan\s+ng|barangay)\s+([A-Za-z0-9\s,\.\-]+)',
+        r'(?:bayan\s+ng|lungsod\s+ng|city\s+of|municipality\s+of)\s+([A-Za-z0-9\s,\.\-]+)'
+    ]
 
     for p in town_anchor_patterns:
         m = re.search(p, clean_text, re.IGNORECASE)
