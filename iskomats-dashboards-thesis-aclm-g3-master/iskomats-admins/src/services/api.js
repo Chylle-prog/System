@@ -237,6 +237,8 @@ export const announcementService = {
 // ===== MESSAGING ENDPOINTS =====
 
 export const messagingAPI = {
+  getAllMessages: (proNo = null) =>
+    api.get(proNo ? `/messages/provider/${proNo}` : '/messages/all'),
   getRoomMessages: (roomId) =>
     api.get(`/messages/${encodeURIComponent(roomId)}`),
   sendMessage: (roomId, messageData) =>

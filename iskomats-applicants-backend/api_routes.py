@@ -5153,6 +5153,43 @@ def handle_superadmin_messages_endpoint():
         except Exception as e:
             return jsonify({'success': False, 'error': str(e), 'messages': []}), 200
 
+@api_bp.route('/messages/all', methods=['GET'])
+@api_bp.route('/messages/provider/<int:pro_no>', methods=['GET'])
+def get_all_messages_rest(pro_no=None):
+    """REST endpoint to fetch all persistent messages for admin inbox."""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            if pro_no:
+                cursor.execute("""
+                    SELECT m_id, applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender
+                    FROM message
+                    WHERE pro_no = %s OR pro_no IS NULL OR room LIKE 'superadmin%'
+                    ORDER BY timestamp ASC
+                """, (pro_no,))
+            else:
+                cursor.execute("""
+                    SELECT m_id, applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender
+                    FROM message
+                    ORDER BY timestamp ASC
+                """)
+            rows = cursor.fetchall()
+            messages = [{
+                'm_id': r['m_id'],
+                'applicant_no': r['applicant_no'],
+                'pro_no': r['pro_no'],
+                'room': r['room'],
+                'username': r['username'],
+                'message': r['message'],
+                'timestamp': r['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(r['timestamp'], 'strftime') else str(r['timestamp']),
+                'sender_id': r['sender_id'],
+                'is_student_sender': r['is_student_sender']
+            } for r in rows]
+            return jsonify({'success': True, 'messages': messages}), 200
+    except Exception as e:
+        print(f"[REST ALL MESSAGES ERROR] {e}", flush=True)
+        return jsonify({'success': False, 'error': str(e), 'messages': []}), 200
+
 @api_bp.route('/messages/<path:room_id>', methods=['GET', 'POST'])
 def handle_room_messages_rest(room_id):
     """REST endpoint to fetch or post messages for any room."""

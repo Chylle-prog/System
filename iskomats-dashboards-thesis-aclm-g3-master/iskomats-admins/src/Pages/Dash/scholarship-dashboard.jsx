@@ -1271,6 +1271,17 @@ export default function ScholarshipDashboard({
   }, [providerKey, providerName]);
 
   useEffect(() => {
+    if (messagingAPI) {
+      messagingAPI.getAllMessages(activeProviderNo).then(res => {
+        if (res.data?.messages && Array.isArray(res.data.messages)) {
+          setData(prev => ({
+            ...prev,
+            inbox: sortMessages([...(prev.inbox || []), ...res.data.messages])
+          }));
+        }
+      }).catch(err => console.warn('Failed to load REST messages:', err));
+    }
+
     const allKnown = [
       ...(data.applicants || []),
       ...(data.accepted || []),
@@ -2947,6 +2958,24 @@ export default function ScholarshipDashboard({
         username: programName || userName || 'Admin',
         sender_id: currentUserId ? Number(currentUserId) : null,
         is_student_sender: false
+      }).then(res => {
+        if (res.data?.message?.m_id) {
+          const serverMsg = res.data.message;
+          setData(prev => {
+            const updatedInbox = (prev.inbox || []).map(m => {
+              if (m.id === tempId) {
+                return {
+                  ...m,
+                  id: serverMsg.m_id,
+                  m_id: serverMsg.m_id,
+                  timestamp: serverMsg.timestamp || m.timestamp
+                };
+              }
+              return m;
+            });
+            return { ...prev, inbox: sortMessages(updatedInbox) };
+          });
+        }
       }).catch(err => console.warn('REST message send fallback notice:', err));
     }
   };
