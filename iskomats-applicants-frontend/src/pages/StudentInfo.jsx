@@ -2271,7 +2271,17 @@ const StudentInfo = () => {
         srcUrl = createdBlobUrl;
       } else if (typeof target === 'string') {
         const trimmed = target.trim();
-        if (trimmed.startsWith('blob:') || trimmed.startsWith('data:')) {
+        if (trimmed.startsWith('blob:')) {
+          try {
+            const testResp = await fetch(trimmed);
+            if (!testResp || !testResp.ok) {
+              return { valid: false, reason: "Local video preview expired. Please re-record or re-upload video proof." };
+            }
+            srcUrl = trimmed;
+          } catch (blobErr) {
+            return { valid: false, reason: "Local video preview expired. Please re-record or re-upload video proof." };
+          }
+        } else if (trimmed.startsWith('data:')) {
           srcUrl = trimmed;
         } else if (trimmed.startsWith('http') || trimmed.startsWith('/') || trimmed.includes('/api/')) {
           try {
