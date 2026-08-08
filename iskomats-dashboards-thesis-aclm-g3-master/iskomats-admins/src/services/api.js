@@ -234,4 +234,13 @@ export const announcementService = {
     api.delete(`/admin/announcements/${ann_no}`),
 };
 
+// ===== MESSAGING ENDPOINTS =====
+
+export const messagingAPI = {
+  getRoomMessages: (roomId) =>
+    api.get(`/messages/${encodeURIComponent(roomId)}`),
+  sendMessage: (roomId, messageData) =>
+    api.post(`/messages/${encodeURIComponent(roomId)}`, messageData),
+};
+
 export default api;

@@ -38,7 +38,7 @@ import {
   FaPlay
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
-import { adminAPI, scholarshipAPI, announcementService, warmBackendConnection } from '../../services/api';
+import { adminAPI, scholarshipAPI, announcementService, messagingAPI, warmBackendConnection } from '../../services/api';
 import { decryptUrl, preloadMediaUrls } from '../../services/CryptoService';
 import socketService from '../../services/socket';
 import iskomatsLogo from '../../assets/logo.png';
@@ -2940,6 +2940,15 @@ export default function ScholarshipDashboard({
 
     setReplyText('');
     socketService.sendMessage(room, userName, textToSend, programName);
+
+    if (messagingAPI && room) {
+      messagingAPI.sendMessage(room, {
+        message: textToSend,
+        username: programName || userName || 'Admin',
+        sender_id: currentUserId ? Number(currentUserId) : null,
+        is_student_sender: false
+      }).catch(err => console.warn('REST message send fallback notice:', err));
+    }
   };
 
   const allMessages = data.inbox || [];
@@ -5834,6 +5843,20 @@ export default function ScholarshipDashboard({
                           room: conv.room
                         });
                         socketService.loadHistory(conv.room);
+
+                        if (conv.room && messagingAPI) {
+                          messagingAPI.getRoomMessages(conv.room).then(res => {
+                            if (res.data?.messages && Array.isArray(res.data.messages)) {
+                              setData(prev => ({
+                                ...prev,
+                                inbox: sortMessages([
+                                  ...(prev.inbox || []).filter(m => m.room !== conv.room),
+                                  ...res.data.messages
+                                ])
+                              }));
+                            }
+                          }).catch(() => {});
+                        }
                       }}
                       className={`p-3 sm:p-4 cursor-pointer transition-colors border-l-4 ${isActive
                         ? 'bg-rose-50/80 border-l-4 border-[#800020] shadow-sm'

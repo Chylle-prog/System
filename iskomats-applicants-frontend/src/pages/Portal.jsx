@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { applicantAPI, applicationAPI, scholarshipAPI, announcementAPI, notificationAPI, API_ORIGIN } from '../services/api';
+import { applicantAPI, applicationAPI, scholarshipAPI, announcementAPI, notificationAPI, messagingAPI, API_ORIGIN } from '../services/api';
 import socketService from '../services/socket';
 import iskoLogo from '../assets/iskologo.png';
 import ChatbotDesign from '../components/ChatbotDesign';
@@ -525,6 +525,14 @@ const Portal = () => {
     if (!currentChatId.startsWith('mock-')) {
       try {
         socketService.sendMessage(currentChatId, applicantNo, message, currentChatProviderName);
+        if (messagingAPI) {
+          messagingAPI.sendMessage(currentChatId, {
+            message: message,
+            username: applicantNo || 'Applicant',
+            sender_id: applicantNo ? Number(applicantNo) : null,
+            is_student_sender: true
+          }).catch(err => console.warn("HTTP REST fallback send info:", err));
+        }
       } catch (err) {
         console.warn("Socket send error:", err);
       }

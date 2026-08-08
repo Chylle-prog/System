@@ -1098,6 +1098,19 @@ export const debugAPI = {
 };
 
 /**
+ * ===== MESSAGING API =====
+ */
+export const messagingAPI = {
+  getRoomMessages: (roomId) =>
+    makeRequest(`/messages/${encodeURIComponent(roomId)}`, { method: 'GET' }),
+  sendMessage: (roomId, messageData) =>
+    makeRequest(`/messages/${encodeURIComponent(roomId)}`, {
+      method: 'POST',
+      body: JSON.stringify(messageData),
+    }),
+};
+
+/**
  * ===== EXPORT ALL API SERVICES =====
  */
 export default {
@@ -1108,4 +1121,5 @@ export default {
   verification: verificationAPI,
   announcements: announcementAPI,
   debug: debugAPI,
+  messaging: messagingAPI,
 };
