@@ -1721,6 +1721,9 @@ def initialize_auto_chat_rooms():
             cursor.execute("ALTER TABLE message ADD COLUMN is_student_sender BOOLEAN")
             
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_app_pro ON message(applicant_no, pro_no)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_room ON message(room)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_timestamp ON message(timestamp)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_pro_no ON message(pro_no)")
             
         # Get all valid applicant-provider pairs
         # Using COALESCE for safer comparison of the 'is_accepted' text field
@@ -1958,22 +1961,16 @@ def init_socketio(socketio):
                     try:
                         app_no, pro_no = map(int, room.split('+'))
                         query = """
-                            SELECT m.m_id, 
-                                   CASE 
-                                       WHEN m.username = (a.first_name || ' ' || a.last_name) OR m.username = a.first_name THEN a.first_name 
-                                       ELSE m.username 
-                                   END as username,
-                                   m.message, m.timestamp,
+                            SELECT m.m_id, m.username, m.message, m.timestamp,
                                    m.sender_id, m.is_student_sender,
-                                   CASE 
-                                       WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
-                                       WHEN s.is_accepted = 'Rejected' THEN 'Rejected'
-                                       WHEN s.is_accepted = 'Cancelled' THEN 'Cancelled'
-                                       ELSE 'Pending'
-                                   END as student_status
+                                   COALESCE(ast.is_accepted, 'Pending') as student_status
                             FROM message m
-                            LEFT JOIN applicant_status s ON m.applicant_no = s.applicant_no
-                            LEFT JOIN applicants a ON m.applicant_no = a.applicant_no
+                            LEFT JOIN LATERAL (
+                                SELECT is_accepted
+                                FROM applicant_status
+                                WHERE applicant_no = m.applicant_no
+                                LIMIT 1
+                            ) ast ON TRUE
                             WHERE (m.room = %s OR (m.applicant_no = %s AND m.pro_no = %s))
                         """
                         params = [room, app_no, pro_no]
@@ -2140,23 +2137,30 @@ def init_socketio(socketio):
 
                 emit('message', msg_payload, to=room)
             
-                # Trigger applicant notification and email only for admin/provider-originated student messages.
+                # Trigger applicant notification and email asynchronously in background so socket emits return instantly.
                 if not is_student_sender and app_no:
                     try:
-                        notification_result = create_notification(
-                            user_no=app_no,
-                            title=f"New Message from {actual_username}",
-                            message=message_text[:100] + ('...' if len(message_text) > 100 else ''),
-                            notif_type='message',
-                            send_email=True,
-                        )
-                        print(
-                            f"[MESSAGE NOTIF] applicant_no={app_no}, room={room}, created={notification_result.get('created')}, "
-                            f"email_sent={notification_result.get('email_sent')}, reason={notification_result.get('reason', 'ok')}",
-                            flush=True,
-                        )
+                        def _bg_create_notif(target_app_no, sender_name, msg_snippet, target_room):
+                            try:
+                                notification_result = create_notification(
+                                    user_no=target_app_no,
+                                    title=f"New Message from {sender_name}",
+                                    message=msg_snippet,
+                                    notif_type='message',
+                                    send_email=True,
+                                )
+                                print(
+                                    f"[MESSAGE NOTIF BG] applicant_no={target_app_no}, room={target_room}, created={notification_result.get('created')}, "
+                                    f"email_sent={notification_result.get('email_sent')}, reason={notification_result.get('reason', 'ok')}",
+                                    flush=True,
+                                )
+                            except Exception as bg_err:
+                                print(f"[NOTIF ERROR BG] Failed to trigger message notification: {bg_err}", flush=True)
+
+                        notif_snippet = message_text[:100] + ('...' if len(message_text) > 100 else '')
+                        threading.Thread(target=_bg_create_notif, args=(app_no, actual_username, notif_snippet, room), daemon=True).start()
                     except Exception as e:
-                        print(f"[NOTIF ERROR] Failed to trigger message notification: {e}")
+                        print(f"[NOTIF ERROR] Failed to spawn notification thread: {e}")
         except Exception as e:
             print(f"Error saving message: {e}")
 

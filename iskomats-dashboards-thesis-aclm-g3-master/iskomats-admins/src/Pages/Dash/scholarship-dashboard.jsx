@@ -3057,8 +3057,11 @@ export default function ScholarshipDashboard({
     || (viewMessage ? allMessages.find((m) => m.id === viewMessage.messageId) : null);
 
   useEffect(() => {
-    currentInboxRoomRef.current = currentMessage?.room || null;
-  }, [currentMessage]);
+    currentInboxRoomRef.current = currentMessage?.room || currentConversation?.room || null;
+    if (section === 'inbox' && currentConversation?.room) {
+      socketService.loadHistory(currentConversation.room);
+    }
+  }, [currentMessage, currentConversation?.room, section]);
 
   useEffect(() => {
     if (section !== 'inbox' || !currentConversation) {
