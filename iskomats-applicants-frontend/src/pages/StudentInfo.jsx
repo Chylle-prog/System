@@ -642,7 +642,7 @@ function extractOcrKeyValues(rawText) {
   const fields = {};
 
   // Multi-column line preprocessor to isolate adjacent fields (e.g. Name : ... Reg No : ...)
-  const rightLabelRegex = /\s+(?=(?:Reg\s*No|Tran\s*Date|College|Pay\s*Type|User|Run\s*Date|Scholarship|Discount|Ref\s*No|Status|Section|Bldg\/Room)\s*[:\-])/i;
+  const rightLabelRegex = /\s+(?=(?:Reg\s*No|Tran\s*Date|College|Pay\s*Type|User|Run\s*Date|Scholarship|Discount|Ref\s*No|Status|Section|Bldg\/Room|Total\s*Units(?:\s+of\s+[A-Za-z\(\)\.\%]+)?)\s*[:\-])/i;
   const splitLines = [];
   for (const line of lines) {
     const parts = line.split(rightLabelRegex);
@@ -653,12 +653,11 @@ function extractOcrKeyValues(rawText) {
 
   const labelMap = {
     name: [
-      /name\s*[:\-1l\|\]\}\)]\s*(.+)/i,
       /student\s*name\s*[:\-1l\|\]\}\)]\s*(.+)/i,
       /name\s*of\s*student\s*[:\-1l\|\]\}\)]\s*(.+)/i,
       /pangalan\s*[:\-1l\|\]\}\)]\s*(.+)/i,
-      // Strictly restrict "name X" to lines that contain a colon/dash separator or are very short name-like lines
-      /^name\s*[:\-]\s*(.+)/i
+      /^name\s*[:\-]\s*(.+)/i,
+      /name\s*[:\-1l\|\]\}\)]\s*(.+)/i
     ],
     studentId: [
       /student\s*(?:no|number|id|num)?\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
@@ -683,7 +682,7 @@ function extractOcrKeyValues(rawText) {
         const match = line.match(regex);
         if (match && match[1] && match[1].trim().length > 0) {
           let val = match[1].trim();
-          val = val.replace(/\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref)\s*[:\-].*/i, '').trim();
+          val = val.replace(/\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref|Total\s*Units|Total)[\s\S]*/i, '').trim();
           if (val.length > 0) {
             // Reject false matches that contain digits or academic year / semester header keywords
             if (key === 'name' && (/\d/.test(val) || /AY\s*\d|School\s*Year|Semester|1st|2nd|3rd|Official|Certificate|Registration/i.test(val))) {
@@ -698,11 +697,11 @@ function extractOcrKeyValues(rawText) {
   }
   // Fallbacks for column-separated OCR text layouts (where labels and values appear in separate column blocks)
   if (!fields.name) {
-    // Restrict fnMatch to single-line spaces (no \n) and filter out noise keywords
+    // Restrict fnMatch to single-line spaces (no \n) and filter out noise/header/address keywords
     const fnMatch = rawText.match(/\b([A-Za-z]{2,20}\s*,\s*[A-Za-z ]{3,40})\b/);
     if (fnMatch && fnMatch[1]) {
       const cand = fnMatch[1].trim();
-      const isNoise = /OFFICIAL|CERTIFICATE|REGISTRATION|COLLEGE|UNIVERSITY|ENGINEERING|INFORMATION|BACHELOR|CERTIFY|AGE|RESIDENT|BARANGAY/i.test(cand);
+      const isNoise = /OFFICIAL|CERTIFICATE|REGISTRATION|COLLEGE|UNIVERSITY|ENGINEERING|INFORMATION|BACHELOR|CERTIFY|AGE|RESIDENT|BARANGAY|PHILIPPINES|BATANGAS|CITY|PROVINCE|HIGHWAY|STREET|ROAD|ADDRESS|TEL|TELEFAX|WWW|PAGE/i.test(cand);
       if (!isNoise) {
         fields.name = cand;
       }
