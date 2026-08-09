@@ -1989,8 +1989,50 @@ function gpaMatchesText(text, expectedGpa) {
   return false;
 }
 
+function isExplicitCorDoc(text) {
+  if (!text) return false;
+  const norm = normalizeForOcr(text);
+  return (
+    norm.includes('certificate of registration') ||
+    norm.includes('official certificate of registration') ||
+    norm.includes('certificate of enrollment') ||
+    norm.includes('certification of registration') ||
+    norm.includes('certification of enrollment') ||
+    norm.includes('official registration') ||
+    (norm.includes('assessed fees') && norm.includes('schedule of payments')) ||
+    (norm.includes('tuition fee') && norm.includes('schedule of payments'))
+  );
+}
+
+function isExplicitGradesDoc(text) {
+  if (!text) return false;
+  const norm = normalizeForOcr(text);
+  return (
+    norm.includes('student s final grades') ||
+    norm.includes('students final grades') ||
+    norm.includes('final grades') ||
+    norm.includes('transcript of record') ||
+    norm.includes('transcript of records') ||
+    norm.includes('official transcript') ||
+    norm.includes('scholastic record') ||
+    norm.includes('evaluation of grades') ||
+    norm.includes('report of grades') ||
+    norm.includes('report card') ||
+    norm.includes('grading system') ||
+    /\bgpa\b|\bgwa\b|\bcwa\b|\bqpi\b/.test(norm) ||
+    (norm.includes('subject') && norm.includes('instructor') && norm.includes('grade'))
+  );
+}
+
 function coe_type_matches_text(text) {
   if (!text) return false;
+  const isCor = isExplicitCorDoc(text);
+  const isGrades = isExplicitGradesDoc(text);
+
+  if (isGrades && !isCor) {
+    return false; // Explicit Grades document uploaded for COR requirement -> REJECT
+  }
+
   const normText = normalizeForOcr(text);
   const keywords = [
     'certificate of registration',
@@ -2025,6 +2067,15 @@ function coe_type_matches_text(text) {
 
 function grades_type_matches_text(text) {
   if (!text) return false;
+  const isCor = isExplicitCorDoc(text);
+  const isGrades = isExplicitGradesDoc(text);
+
+  if (isCor && !isGrades) {
+    return false; // Explicit COR document uploaded for Grades requirement -> REJECT
+  }
+
+  if (isGrades) return true;
+
   const normText = normalizeForOcr(text);
   const keywords = [
     'grade',
@@ -4489,7 +4540,15 @@ const StudentInfo = () => {
           };
           finalMessage = isSuccess
             ? "Enrollment verified successfully client-side!"
-            : (!videoOk ? (videoCheck?.reason || "Enrollment video proof failed validation.") : (!unitsOk ? `Units requirement mismatch: document shows ${detectedUnits || 0} units, scholarship requires exactly ${requiredUnits} units.` : "Enrollment verification mismatch."));
+            : (!coeTypeOk
+              ? (isExplicitGradesDoc(detectedText)
+                ? "Document type mismatch: uploaded file is a Grades / Transcript of Record, but scholarship requires Certificate of Registration / Enrollment."
+                : "Document type mismatch: document does not contain Certificate of Registration or Enrollment keywords.")
+              : (!videoOk
+                ? (videoCheck?.reason || "Enrollment video proof failed validation.")
+                : (!unitsOk
+                  ? `Units requirement mismatch: document shows ${detectedUnits || 0} units, scholarship requires exactly ${requiredUnits} units.`
+                  : "Enrollment verification mismatch.")));
           resultsList = [{ doc: 'Enrollment', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
         }
         else if (docType === 'Grades') {
@@ -4527,7 +4586,15 @@ const StudentInfo = () => {
           };
           finalMessage = isSuccess
             ? "Grades verified successfully client-side!"
-            : (!gradesTypeOk ? "Document type mismatch: document does not contain Transcript or Grades keywords." : (!videoOk ? (videoCheck?.reason || "Grades video proof failed validation.") : !gpaOk ? `GPA mismatch: document shows ${detectedDocGpa || 'N/A'}, you entered ${gpa}.` : "Grades verification mismatch."));
+            : (!gradesTypeOk
+              ? (isExplicitCorDoc(detectedText)
+                ? "Document type mismatch: uploaded file is a Certificate of Registration, but scholarship requires Grades / Transcript of Record."
+                : "Document type mismatch: document does not contain Transcript or Grades keywords.")
+              : (!videoOk
+                ? (videoCheck?.reason || "Grades video proof failed validation.")
+                : (!gpaOk
+                  ? `GPA mismatch: document shows ${detectedDocGpa || 'N/A'}, you entered ${gpa}.`
+                  : "Grades verification mismatch.")));
           resultsList = [{ doc: 'Grades', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
         }
         else if (docType === 'Indigency') {
