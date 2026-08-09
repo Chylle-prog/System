@@ -1243,6 +1243,7 @@ function studentNameMatchesText(text, first, middle, last) {
   // Extract candidate full name from document (e.g. kv.name or certificate anchor)
   // and verify that all first-name words in document's candidate name are present in user's first/middle input.
   let reverseFirstOk = true;
+  let reverseLastOk = true;
   let candidateNameStr = kv.name || null;
   if (!candidateNameStr) {
     const certPatterns = [
@@ -1326,20 +1327,47 @@ function studentNameMatchesText(text, first, middle, last) {
         }
       }
     }
+
+    // Reverse Last Name Check: verify document's extracted surname matches user's input last name
+    if (normCandLast && normCandLast.length >= 2 && !stopWords.includes(normCandLast.toLowerCase())) {
+      const userInputLastNorm = normalizeForOcr(last || '');
+      if (userInputLastNorm) {
+        const lastWords = userInputLastNorm.split(/\s+/).filter(w => w.length >= 2);
+        const matchesLast = lastWords.some(w => isSimilarWord(w, normCandLast) || isSimilarWord(normCandLast, w)) ||
+                            isSimilarWord(userInputLastNorm, normCandLast) ||
+                            isSimilarWord(normCandLast, userInputLastNorm) ||
+                            new RegExp('\\b' + normCandLast.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(userInputLastNorm);
+        if (!matchesLast) {
+          console.debug('[REVERSE LAST NAME CHECK FAILED] Document surname:', normCandLast, 'does not match user input last name:', last);
+          reverseLastOk = false;
+        }
+      }
+    }
+  }
+
+  // Reject stop words (e.g. "age", "years", "city") or pure numbers entered as input last name
+  const nameNoiseWordsList = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines', 'this', 'that', 'years', 'age', 'college', 'course', 'degree', 'year', 'level', 'scholarship', 'discount', 'subject', 'assessed', 'fees', 'units', 'pay', 'type', 'section', 'bldg', 'room', 'faculty', 'days', 'time', 'first', 'second', 'semester', 'sem', 'ay', 'sy'];
+  let inputLastIsStopWord = false;
+  if (last) {
+    const cleanInputLast = normalizeForOcr(last).trim();
+    if (nameNoiseWordsList.includes(cleanInputLast) || /^\d+$/.test(cleanInputLast)) {
+      inputLastIsStopWord = true;
+    }
   }
 
   const finalFirstOk = firstOk && reverseFirstOk;
-  const success = finalFirstOk && lastOk && middleOk;
+  const finalLastOk = lastOk && reverseLastOk && !inputLastIsStopWord;
+  const success = finalFirstOk && finalLastOk && middleOk;
 
-  console.debug('[NAME CHECK]', { first, last, normText: normText.slice(0,200), targetText: targetText.slice(0,200), sequenceOk, firstOk: finalFirstOk, lastOk, reverseFirstOk, success });
+  console.debug('[NAME CHECK]', { first, last, normText: normText.slice(0,200), targetText: targetText.slice(0,200), sequenceOk, firstOk: finalFirstOk, lastOk: finalLastOk, reverseFirstOk, reverseLastOk, success });
 
   return {
     success,
     details: {
       first_ok: finalFirstOk,
       middle_ok: middleOk,
-      last_ok: lastOk,
-      sequence_ok: sequenceOk && reverseFirstOk
+      last_ok: finalLastOk,
+      sequence_ok: sequenceOk && reverseFirstOk && reverseLastOk
     }
   };
 }
