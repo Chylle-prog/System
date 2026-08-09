@@ -1236,7 +1236,23 @@ function studentNameMatchesText(text, first, middle, last) {
 
   const firstOk = checkNameWordGroup(first, targetText) || checkNameWordGroup(first, normText);
   const lastOk = checkNameWordGroup(last, targetText) || checkNameWordGroup(last, normText);
-  const middleOk = middle ? (checkNameWordGroup(middle, targetText) || checkNameWordGroup(middle, normText)) : true;
+
+  let middleOk = true;
+  if (middle) {
+    const normMid = normalizeForOcr(middle);
+    if (normMid) {
+      const matchDirect = checkNameWordGroup(middle, targetText) || checkNameWordGroup(middle, normText);
+      if (matchDirect) {
+        middleOk = true;
+      } else if (normMid.length <= 2) {
+        // Initial prefix match (e.g. input "L." or "L" matching document middle name "LINATOC")
+        const allWords = (normText + " " + targetText).split(/\s+/).filter(w => w.length >= 2);
+        middleOk = allWords.some(w => w.toLowerCase().startsWith(normMid[0].toLowerCase()));
+      } else {
+        middleOk = false;
+      }
+    }
+  }
 
   // --- Two-Way Reverse Candidate First Name Check ---
   // Extract candidate full name from document (e.g. kv.name or certificate anchor)
@@ -1983,27 +1999,17 @@ function gpaMatchesText(text, expectedGpa) {
   const detVal = parseFloat(detectedGpaStr);
   if (isNaN(detVal)) return false;
 
-  // 1. Exact numeric equality (e.g. 3.44 === 3.4400)
+  // 1. Exact numeric equality (e.g. 3.4375 === 3.4375, 3.44 === 3.4400)
   if (Math.abs(detVal - parsedInputGpa) < 0.00001) {
     return true;
   }
 
-  // Determine decimal precision of input string
+  // 2. Strict Mathematical Rounding to input's decimal count
+  // e.g. 3.4375 rounded to 2 decimals is 3.44 (so input 3.44 MATCHES, but input 3.43 FAILS)
   const inputDecParts = rawInputStr.split('.');
   const inputDecCount = inputDecParts.length > 1 ? inputDecParts[1].length : 0;
 
   if (inputDecCount > 0) {
-    // 2. Truncation match: truncate document GPA to input's decimal count without forced round-up
-    const detDecParts = String(detectedGpaStr).split('.');
-    if (detDecParts.length > 1) {
-      const truncatedDetStr = detDecParts[0] + '.' + detDecParts[1].slice(0, inputDecCount);
-      const truncatedDetVal = parseFloat(truncatedDetStr);
-      if (!isNaN(truncatedDetVal) && Math.abs(truncatedDetVal - parsedInputGpa) < 0.00001) {
-        return true;
-      }
-    }
-
-    // 3. Standard rounded match: round document GPA to input's decimal count
     const factor = Math.pow(10, inputDecCount);
     const roundedDetVal = Math.round(detVal * factor) / factor;
     if (Math.abs(roundedDetVal - parsedInputGpa) < 0.00001) {
@@ -4746,6 +4752,7 @@ const StudentInfo = () => {
 
         debugRequirements = {
           "First Name": firstName || 'N/A',
+          "Middle Name": middleName ? middleName : null,
           "Last Name": lastName || 'N/A',
           "School Name": schoolName || 'N/A',
           "Course / Track": course || 'N/A',
@@ -4766,6 +4773,7 @@ const StudentInfo = () => {
 
         debugRequirements = {
           "First Name": firstName || 'N/A',
+          "Middle Name": middleName ? middleName : null,
           "Last Name": lastName || 'N/A',
           "Document Type": 'Grades / Transcript of Record',
           "GPA (Document)": detectedDocGpa || 'Not detected',
