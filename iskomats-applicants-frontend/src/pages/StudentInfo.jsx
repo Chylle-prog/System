@@ -1323,23 +1323,8 @@ function studentNameMatchesText(text, first, middle, last) {
         return !inputFirstWords.some(inpW => isSimilarWord(docW, inpW) || isSimilarWord(inpW, docW) || (inpW.length === 1 && docW.toLowerCase().startsWith(inpW.toLowerCase())));
       });
       if (missingDocFirstWords.length > 0) {
-        // STRICT: Only bypass the trailing-word check when the document name was extracted from a
-        // comma-format entry "LAST, FIRST MIDDLE" where the last token after the comma is a middle name.
-        // For standard "FIRST MIDDLE LAST" certificate format, ALL words in candFirstWords are part of
-        // the first name and MUST be present in the user's input (first + middle combined).
-        const isCommaFormat = cleanCandStr.includes(',');
-        const lastCandWord = candFirstWords[candFirstWords.length - 1];
-        const missingIsOnlyTrailingWord = missingDocFirstWords.length === 1 &&
-          (missingDocFirstWords[0] === lastCandWord || isSimilarWord(missingDocFirstWords[0], lastCandWord));
-
-        // Bypass ONLY for comma format ("LAST, FIRST MIDDLE") where trailing word is a true middle name
-        if (isCommaFormat && missingIsOnlyTrailingWord) {
-          console.debug('[REVERSE FIRST NAME CHECK] Comma-format: Missing word is trailing middle name:', lastCandWord, '- Passing first name match.');
-          reverseFirstOk = true;
-        } else {
-          console.debug('[REVERSE FIRST NAME CHECK FAILED] Document name has first name words missing in input:', missingDocFirstWords, 'commaFormat:', isCommaFormat);
-          reverseFirstOk = false;
-        }
+        console.debug('[REVERSE FIRST NAME CHECK FAILED] Document name has first name words missing in input:', missingDocFirstWords);
+        reverseFirstOk = false;
       }
     }
 
