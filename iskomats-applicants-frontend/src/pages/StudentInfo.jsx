@@ -4584,10 +4584,10 @@ const StudentInfo = () => {
 
           let nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
 
-          const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
-          const courseOk = course ? courseMatchesText(course, combinedText) : true;
-          const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
-          const semOk = semesterMatchesText(combinedText, semester || formData.semester, reqSemester);
+          const schoolOk = schoolName ? (schoolNameMatchesText(detectedText, schoolName) || schoolNameMatchesText(combinedText, schoolName)) : true;
+          const courseOk = course ? (courseMatchesText(course, detectedText) || courseMatchesText(course, combinedText)) : true;
+          const ayOk = academicYear ? (academic_year_matches_expected(detectedText, academicYear) || academic_year_matches_expected(combinedText, academicYear)) : true;
+          const semOk = semesterMatchesText(detectedText, semester || formData.semester, semester || reqSemester) || semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
           const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText, true) || studentIdNoMatchesText(idNumber, combinedText, true)) : true;
           const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
           const videoOk = videoCheck ? (videoCheck.valid && videoCheck.isMatched) : (videoUrl ? true : false);
@@ -4642,10 +4642,10 @@ const StudentInfo = () => {
 
           const nameCheck = studentNameMatchesText(detectedText, firstName, "", lastName);
           const gpaOk = gpa ? gpaMatchesText(detectedText, gpa) : true;
-          const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
-          const semOk = semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
-          const schoolOk = schoolName ? schoolNameMatchesText(combinedText, schoolName) : true;
-          const courseOk = course ? courseMatchesText(course, combinedText) : true;
+          const ayOk = academicYear ? (academic_year_matches_expected(detectedText, academicYear) || academic_year_matches_expected(combinedText, academicYear)) : true;
+          const semOk = semesterMatchesText(detectedText, semester || formData.semester, semester || reqSemester) || semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
+          const schoolOk = schoolName ? (schoolNameMatchesText(detectedText, schoolName) || schoolNameMatchesText(combinedText, schoolName)) : true;
+          const courseOk = course ? (courseMatchesText(course, detectedText) || courseMatchesText(course, combinedText)) : true;
           const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText, true) || studentIdNoMatchesText(idNumber, combinedText, true)) : true;
           const videoOk = videoCheck ? (videoCheck.valid && videoCheck.isMatched) : (videoUrl ? true : false);
           const gradesTypeOk = grades_type_matches_text(combinedText);
