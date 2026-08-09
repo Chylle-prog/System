@@ -501,8 +501,9 @@ const compressImageForOcr = async (blobOrDataUrl, maxDim = 1280, quality = 0.75)
   }
 };
 
-const performGoogleVisionOcrScan = async (imageInput) => {
+const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
   if (!imageInput) return "";
+  if (signal?.aborted) return "";
 
   // Pre-process imageInput safely into resolvedBlob or base64Image before attempting network calls
   let resolvedBlob = null;
@@ -513,7 +514,7 @@ const performGoogleVisionOcrScan = async (imageInput) => {
   } else if (typeof imageInput === 'string') {
     if (imageInput.startsWith('blob:')) {
       try {
-        const blobResp = await fetch(imageInput);
+        const blobResp = await fetch(imageInput, { signal });
         if (blobResp.ok) {
           resolvedBlob = await blobResp.blob();
         } else {
@@ -560,10 +561,12 @@ const performGoogleVisionOcrScan = async (imageInput) => {
   const originsToTry = candidates.filter((v, i, a) => v && a.indexOf(v) === i);
 
   for (const origin of originsToTry) {
+    if (signal?.aborted) return "";
     const cleanOrigin = origin.replace(/\/+$/, '');
     const maxRetries = 3;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (signal?.aborted) return "";
       try {
         const token = localStorage.getItem('authToken');
         const headers = {};
@@ -587,7 +590,8 @@ const performGoogleVisionOcrScan = async (imageInput) => {
         const fetchOptions = {
           method: 'POST',
           headers: isFormData ? (token ? { 'Authorization': `Bearer ${token}` } : {}) : headers,
-          body: requestBody
+          body: requestBody,
+          signal
         };
 
         const resp = await fetch(`${cleanOrigin}/api/student/verification/ocr-scan`, fetchOptions);
@@ -2486,8 +2490,8 @@ const StudentInfo = () => {
     );
   };
 
-  const validateVideoLiveness = async (videoSrc, fieldName = null) => {
-    if (!videoSrc) {
+  const validateVideoLiveness = async (videoSrc, fieldName = null, signal = null) => {
+    if (!videoSrc || signal?.aborted) {
       return { valid: false, reason: "No video uploaded or recorded." };
     }
 
@@ -2514,7 +2518,7 @@ const StudentInfo = () => {
         const trimmed = target.trim();
         if (trimmed.startsWith('blob:')) {
           try {
-            const testResp = await fetch(trimmed);
+            const testResp = await fetch(trimmed, { signal });
             if (!testResp || !testResp.ok) {
               return { valid: false, reason: "Local video preview expired. Please re-record or re-upload video proof." };
             }
@@ -2560,9 +2564,10 @@ const StudentInfo = () => {
 
               let resp = null;
               for (let attempt = 0; attempt < 2; attempt++) {
+                if (signal?.aborted) return { valid: false, reason: "Scan cancelled." };
                 try {
                   const cleanFetchUrl = `${fetchUrl}${cbSep}_cb=${Date.now()}`;
-                  resp = await fetch(cleanFetchUrl, { headers });
+                  resp = await fetch(cleanFetchUrl, { headers, signal });
                   if (resp.ok) break;
                 } catch (retryErr) {
                   if (attempt < 1) await new Promise(r => setTimeout(r, 400));
@@ -3911,11 +3916,23 @@ const StudentInfo = () => {
   const activeOcrControllersRef = useRef({});
 
   const cancelOcrScan = (docType) => {
-    if (docType && activeOcrControllersRef.current[docType]) {
-      activeOcrControllersRef.current[docType].aborted = true;
+    if (docType) {
+      if (activeOcrControllersRef.current[docType]) {
+        activeOcrControllersRef.current[docType].aborted = true;
+        if (activeOcrControllersRef.current[docType].controller) {
+          try { activeOcrControllersRef.current[docType].controller.abort(); } catch (e) {}
+        }
+      } else {
+        activeOcrControllersRef.current[docType] = { aborted: true };
+      }
     } else {
       Object.keys(activeOcrControllersRef.current).forEach(k => {
-        if (activeOcrControllersRef.current[k]) activeOcrControllersRef.current[k].aborted = true;
+        if (activeOcrControllersRef.current[k]) {
+          activeOcrControllersRef.current[k].aborted = true;
+          if (activeOcrControllersRef.current[k].controller) {
+            try { activeOcrControllersRef.current[k].controller.abort(); } catch (e) {}
+          }
+        }
       });
     }
 
@@ -4167,7 +4184,8 @@ const StudentInfo = () => {
       else if (docType === 'SchoolID') { setIdVerified(v); }
     };
 
-    const scanToken = { aborted: false };
+    const controller = new AbortController();
+    const scanToken = { aborted: false, controller };
     activeOcrControllersRef.current[docType] = scanToken;
 
     let progressInterval = null;
@@ -4479,7 +4497,7 @@ const StudentInfo = () => {
       };
 
       const runOcrOnImage = async (imgSource, stepName = "") => {
-        if (!imgSource) return "";
+        if (!imgSource || scanToken.aborted) return "";
         if (!silent) setStatus(`Scanning ${stepName} image with Google Cloud Vision API...`);
 
         try {
@@ -4495,7 +4513,8 @@ const StudentInfo = () => {
             }
           }
 
-          const visionText = await performGoogleVisionOcrScan(scanInput);
+          if (scanToken.aborted) return "";
+          const visionText = await performGoogleVisionOcrScan(scanInput, scanToken.controller?.signal);
           if (realScanBlobUrl && realScanBlobUrl !== imgSource && realScanBlobUrl.startsWith('blob:')) {
             URL.revokeObjectURL(realScanBlobUrl);
           }
@@ -4526,9 +4545,11 @@ const StudentInfo = () => {
         const [frontText, backText, fVidRes, bVidRes] = await Promise.all([
           runOcrOnImage(resolvedParam.front, isNationalId ? "National ID Front" : "School ID Front"),
           resolvedParam.back ? runOcrOnImage(resolvedParam.back, isNationalId ? "National ID Back" : "School ID Back") : Promise.resolve(""),
-          fVid ? validateVideoLiveness(fVid, 'schoolIdFront_video') : Promise.resolve(null),
-          bVid ? validateVideoLiveness(bVid, 'schoolIdBack_video') : Promise.resolve(null)
+          fVid ? validateVideoLiveness(fVid, 'schoolIdFront_video', scanToken.controller?.signal) : Promise.resolve(null),
+          bVid ? validateVideoLiveness(bVid, 'schoolIdBack_video', scanToken.controller?.signal) : Promise.resolve(null)
         ]);
+
+        if (scanToken.aborted) return { isSuccess: false, finalMessage: "Scan cancelled by user." };
 
         frontVidCheck = fVidRes;
         backVidCheck = bVidRes;
@@ -4612,13 +4633,15 @@ const StudentInfo = () => {
         if (!silent) setStatus(`Scanning ${docType} document and validating video proof concurrently...`);
 
         const videoCheckPromise = videoToCheck
-          ? validateVideoLiveness(videoToCheck, videoFieldName)
+          ? validateVideoLiveness(videoToCheck, videoFieldName, scanToken.controller?.signal)
           : Promise.resolve(null);
 
         const [detectedTextRes, videoCheckRes] = await Promise.all([
           runOcrOnImage(resolvedParam, stepLabelMap[docType] || docType),
           videoCheckPromise
         ]);
+
+        if (scanToken.aborted) return { isSuccess: false, finalMessage: "Scan cancelled by user." };
 
         detectedText = detectedTextRes;
         videoCheck = videoCheckRes;
@@ -7979,13 +8002,13 @@ const StudentInfo = () => {
                           <>
                             <button
                               type="button"
-                              onClick={handleIndigencyScan}
-                              disabled={isSavingStep || ocrVerified === 'verifying' || isAnyVideoUploading || !(documentVideos.mayorIndigency_video || formData.mayorIndigency_video)}
+                              onClick={ocrVerified === 'verifying' ? () => cancelOcrScan('Indigency') : handleIndigencyScan}
+                              disabled={isSavingStep || isAnyVideoUploading || (ocrVerified !== 'verifying' && !(documentVideos.mayorIndigency_video || formData.mayorIndigency_video))}
                               style={{
                                 width: '100%',
                                 padding: '0.9rem',
                                 borderRadius: '16px',
-                                background: ocrVerified === 'success' ? '#10b981' : (ocrVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                                background: ocrVerified === 'verifying' ? '#ef4444' : (ocrVerified === 'success' ? '#10b981' : 'var(--primary)'),
                                 color: 'white',
                                 border: 'none',
                                 cursor: 'pointer',
@@ -7996,14 +8019,14 @@ const StudentInfo = () => {
                                 fontSize: '0.95rem',
                                 fontWeight: '800',
                                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                boxShadow: ocrVerified === 'success' ? '0 10px 20px -5px rgba(16, 185, 129, 0.3)' : '0 10px 20px -5px rgba(79, 13, 0, 0.3)',
+                                boxShadow: ocrVerified === 'verifying' ? '0 8px 20px rgba(239, 68, 68, 0.35)' : (ocrVerified === 'success' ? '0 10px 20px -5px rgba(16, 185, 129, 0.3)' : '0 10px 20px -5px rgba(79, 13, 0, 0.3)'),
                                 textTransform: 'uppercase',
                                 letterSpacing: '1px',
                                 marginTop: '1rem'
                               }}
                             >
-                              <i className={`fas ${ocrVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt'}`}></i>
-                              {ocrVerified === 'verifying' ? 'Analyzing...' : (ocrVerified === 'success' ? 'Identity Verified' : (isResidencyDoc ? 'Start Residency Scan' : 'Start Indigency Scan'))}
+                              <i className={`fas ${ocrVerified === 'verifying' ? 'fa-stop-circle' : (ocrVerified === 'success' ? 'fa-check' : 'fa-bolt')}`}></i>
+                              {ocrVerified === 'verifying' ? 'Cancel Scan' : (ocrVerified === 'success' ? 'Identity Verified' : (isResidencyDoc ? 'Start Residency Scan' : 'Start Indigency Scan'))}
                             </button>
 
                             {ocrVerified === 'verifying' && (
@@ -8456,21 +8479,23 @@ const StudentInfo = () => {
                       <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px dashed #e2e8f0' }}>
                         <button
                           type="button"
-                          onClick={handleIdScan}
+                          onClick={idVerified === 'verifying' ? () => cancelOcrScan('SchoolID') : handleIdScan}
                           disabled={
-                            isSavingStep || idVerified === 'verifying' || isAnyVideoUploading ||
-                            !(schoolIdPhotos.front || formData.schoolIdFront) ||
-                            !(documentVideos.schoolIdFront_video || formData.schoolIdFront_video) ||
-                            (!isNationalId && (
-                              !(schoolIdPhotos.back || formData.schoolIdBack) ||
-                              !(documentVideos.schoolIdBack_video || formData.schoolIdBack_video)
+                            isSavingStep || isAnyVideoUploading ||
+                            (idVerified !== 'verifying' && (
+                              !(schoolIdPhotos.front || formData.schoolIdFront) ||
+                              !(documentVideos.schoolIdFront_video || formData.schoolIdFront_video) ||
+                              (!isNationalId && (
+                                !(schoolIdPhotos.back || formData.schoolIdBack) ||
+                                !(documentVideos.schoolIdBack_video || formData.schoolIdBack_video)
+                              ))
                             ))
                           }
                           style={{
                             width: '100%',
                             padding: '1rem',
                             borderRadius: '18px',
-                            background: idVerified === 'success' ? '#10b981' : (idVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                            background: idVerified === 'verifying' ? '#ef4444' : (idVerified === 'success' ? '#10b981' : 'var(--primary)'),
                             color: 'white',
                             border: 'none',
                             cursor: 'pointer',
@@ -8481,13 +8506,13 @@ const StudentInfo = () => {
                             fontSize: '1rem',
                             fontWeight: '800',
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                            boxShadow: idVerified === 'success' ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)' : '0 10px 25px -5px rgba(79, 13, 0, 0.3)',
+                            boxShadow: idVerified === 'verifying' ? '0 8px 20px rgba(239, 68, 68, 0.35)' : (idVerified === 'success' ? '0 10px 25px -5px rgba(16, 185, 129, 0.3)' : '0 10px 25px -5px rgba(79, 13, 0, 0.3)'),
                             textTransform: 'uppercase',
                             letterSpacing: '0.5px'
                           }}
                         >
-                          <i className={`fas ${idVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-bolt-lightning'}`}></i>
-                          {idVerified === 'verifying' ? (isNationalId ? 'Analyzing National ID...' : 'Analyzing Front & Back ID...') : (idVerified === 'success' ? (isNationalId ? 'National ID Verified Successfully' : 'Identity Verified Successfully') : (isNationalId ? 'Start National ID Scan' : 'Start Front & Back ID Scan'))}
+                          <i className={`fas ${idVerified === 'verifying' ? 'fa-stop-circle' : (idVerified === 'success' ? 'fa-check' : 'fa-bolt-lightning')}`}></i>
+                          {idVerified === 'verifying' ? (isNationalId ? 'Cancel National ID Scan' : 'Cancel School ID Scan') : (idVerified === 'success' ? (isNationalId ? 'National ID Verified Successfully' : 'Identity Verified Successfully') : (isNationalId ? 'Start National ID Scan' : 'Start Front & Back ID Scan'))}
                         </button>
 
                         {idVerified === 'verifying' && (
@@ -8629,13 +8654,13 @@ const StudentInfo = () => {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                             <button
                               type="button"
-                              onClick={handleCOEScan}
-                              disabled={isSavingStep || coeVerified === 'verifying' || isAnyVideoUploading || !(documentVideos.mayorCOE_video || formData.mayorCOE_video)}
+                              onClick={coeVerified === 'verifying' ? () => cancelOcrScan('Enrollment') : handleCOEScan}
+                              disabled={isSavingStep || isAnyVideoUploading || (coeVerified !== 'verifying' && !(documentVideos.mayorCOE_video || formData.mayorCOE_video))}
                               style={{
                                 width: '100%',
                                 padding: '0.85rem',
                                 borderRadius: '14px',
-                                background: coeVerified === 'success' ? '#10b981' : (coeVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                                background: coeVerified === 'verifying' ? '#ef4444' : (coeVerified === 'success' ? '#10b981' : 'var(--primary)'),
                                 color: 'white',
                                 border: 'none',
                                 cursor: 'pointer',
@@ -8646,12 +8671,12 @@ const StudentInfo = () => {
                                 fontSize: '0.9rem',
                                 fontWeight: '800',
                                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                boxShadow: coeVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)',
+                                boxShadow: coeVerified === 'verifying' ? '0 8px 20px rgba(239, 68, 68, 0.35)' : (coeVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)'),
                                 textTransform: 'uppercase'
                               }}
                             >
-                              <i className={`fas ${coeVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-magnifying-glass'}`}></i>
-                              {coeVerified === 'verifying' ? 'Reviewing...' : (coeVerified === 'success' ? 'COE Verified' : 'Rapid COE Scan')}
+                              <i className={`fas ${coeVerified === 'verifying' ? 'fa-stop-circle' : (coeVerified === 'success' ? 'fa-check' : 'fa-magnifying-glass')}`}></i>
+                              {coeVerified === 'verifying' ? 'Cancel COE Scan' : (coeVerified === 'success' ? 'COE Verified' : 'Rapid COE Scan')}
                             </button>
 
                             {coeVerified === 'verifying' && (
@@ -8791,13 +8816,13 @@ const StudentInfo = () => {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                               <button
                                 type="button"
-                                onClick={handleGradesScan}
-                                disabled={isSavingStep || gradesVerified === 'verifying' || isAnyVideoUploading || !(documentVideos.mayorGrades_video || formData.mayorGrades_video)}
+                                onClick={gradesVerified === 'verifying' ? () => cancelOcrScan('Grades') : handleGradesScan}
+                                disabled={isSavingStep || isAnyVideoUploading || (gradesVerified !== 'verifying' && !(documentVideos.mayorGrades_video || formData.mayorGrades_video))}
                                 style={{
                                   width: '100%',
                                   padding: '0.85rem',
                                   borderRadius: '14px',
-                                  background: gradesVerified === 'success' ? '#10b981' : (gradesVerified === 'verifying' ? '#3b82f6' : 'var(--primary)'),
+                                  background: gradesVerified === 'verifying' ? '#ef4444' : (gradesVerified === 'success' ? '#10b981' : 'var(--primary)'),
                                   color: 'white',
                                   border: 'none',
                                   cursor: 'pointer',
@@ -8808,12 +8833,12 @@ const StudentInfo = () => {
                                   fontSize: '0.9rem',
                                   fontWeight: '800',
                                   transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                  boxShadow: gradesVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)',
+                                  boxShadow: gradesVerified === 'verifying' ? '0 8px 20px rgba(239, 68, 68, 0.35)' : (gradesVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)'),
                                   textTransform: 'uppercase'
                                 }}
                               >
-                                <i className={`fas ${gradesVerified === 'verifying' ? 'fa-sync fa-spin' : 'fa-clipboard-check'}`}></i>
-                                {gradesVerified === 'verifying' ? 'Analyzing...' : (gradesVerified === 'success' ? 'Grades Verified' : 'Rapid Grades Scan')}
+                                <i className={`fas ${gradesVerified === 'verifying' ? 'fa-stop-circle' : (gradesVerified === 'success' ? 'fa-check' : 'fa-clipboard-check')}`}></i>
+                                {gradesVerified === 'verifying' ? 'Cancel Grades Scan' : (gradesVerified === 'success' ? 'Grades Verified' : 'Rapid Grades Scan')}
                               </button>
 
                               {gradesVerified === 'verifying' && (
