@@ -4313,6 +4313,9 @@ const StudentInfo = () => {
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
       const reqSemester = scholarshipDetails?.semester || searchParams.get('semester');
 
+      let effectiveVideoOk = true;
+      let videoTypeErrorMessage = null;
+
       // Resolve/decrypt proxy URLs to local blob URLs for robust local OCR scanning
       let resolvedParam = docParam;
       let tamperCheck = { edited: false, reason: "Authentic document" };
@@ -4885,7 +4888,7 @@ const StudentInfo = () => {
           const hasResidencyHeaderInVideo = /certificate\s*of\s*residency|certificate\s*of\s*residence|katibayan\s*ng\s*pagkapamayanan|office\s*of.*residency|barangay\s*residency/i.test(vidText);
 
           let videoHasKeyword = false;
-          let videoTypeErrorMessage = null;
+          videoTypeErrorMessage = null;
 
           const userFirstStr = (firstName || '').toLowerCase();
           const userLastStr = (lastName || '').toLowerCase();
@@ -4920,7 +4923,7 @@ const StudentInfo = () => {
             }
           }
 
-          const effectiveVideoOk = videoUrl ? (videoOk && videoHasKeyword && !videoTypeErrorMessage && (!videoCheck || videoCheck.valid)) : true;
+          effectiveVideoOk = videoUrl ? (videoOk && videoHasKeyword && !videoTypeErrorMessage && (!videoCheck || videoCheck.valid)) : true;
           const nameOk = nameCheck.success;
 
           // Document photo OCR is primary: if image has Name, Barangay, Town/City, and Document Header, mark as success
