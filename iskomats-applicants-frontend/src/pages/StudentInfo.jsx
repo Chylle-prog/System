@@ -1262,21 +1262,29 @@ function studentNameMatchesText(text, first, middle, last) {
   let candidateNameStr = kv.name || null;
   if (!candidateNameStr) {
     const certPatterns = [
-      /(?:student\s*name|name\s*of\s*student)\s*[:\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]{3,60})(?=\s*(?:total|student|course|reg|scholarship|academic|section|units|\n|$))/i,
-      /(?:certify|certifies|cently|certifye|certiy|patunay|katibayan)\s+(?:that\s+)?[_\W]*([A-Za-z\s,\.\-]{3,60})(?=\s*(?:\d+\s*years|of\s*legal\s*age|single|married|widow|separated|divorced|filipino|pilipino|citizen|is\s+a\s+resident|resident|bonafide|\n|$))/i,
-      /(?:this\s+is\s+to|sto)\s+[a-z]{3,10}\s+that\s+[_\W]*([A-Za-z\s,\.\-]{3,60})(?=\s*(?:\d+\s*years|of\s*legal\s*age|single|married|widow|separated|filipino|citizen|resident|bonafide|\n|$))/i,
-      /that\s+[_\W]*([A-Z\s,\.\-]{5,60})(?=\s*(?:\d+\s*years|of\s*legal\s*age|single|married|widow|separated|filipino|citizen|resident|bonafide|\n|$))/i,
-      /(?:name|pangalan)\s*[:\-]?\s*([A-Za-z\s,\.\-]+?)(?=\s+total|\s+reg|\s+student|\s+id|\s+course|\n|$)/i
+      /(?:^|\n|\r|\:)\s*([A-Z]{2,20}\s*,\s*[A-Z\s]{3,50})/gi,
+      /(?:student\s*name|name\s*of\s*student)\s*[:\-1l\|\]\}\)]*\s*([A-Za-z\s,\.\-]{3,60})/gi,
+      /(?:certify|certifies|cently|certifye|certiy|patunay|katibayan)\s+(?:that\s+)?[_\W]*([A-Za-z\s,\.\-]{3,60})/gi,
+      /(?:this\s+is\s+to|sto)\s+[a-z]{3,10}\s+that\s+[_\W]*([A-Za-z\s,\.\-]{3,60})/gi,
+      /that\s+[_\W]*([A-Z\s,\.\-]{5,60})/gi,
+      /(?:name|pangalan)\s*[:\-]?\s*([A-Za-z\s,\.\-]+?)/gi,
+      /\b([A-Za-z]{2,20}\s*,\s*[A-Za-z ]{3,40})\b/g
     ];
+
+    const addressNoise = /CITY|BATANGAS|PHILIPPINES|HIGHWAY|STREET|ROAD|ADDRESS|BARANGAY|PROVINCE|TEL|TELEFAX|WWW|OFFICE|REGISTRAR|COLLEGE|UNIVERSITY/i;
+
     for (const pat of certPatterns) {
-      const m = text.match(pat);
-      if (m && m[1]) {
-        const rawCand = m[1].replace(/^[^a-zA-Z]+/, '').trim();
-        if (rawCand.length >= 3 && rawCand.includes(' ')) {
-          candidateNameStr = rawCand;
-          break;
+      let match;
+      while ((match = pat.exec(text)) !== null) {
+        if (match && match[1]) {
+          const rawCand = match[1].replace(/^[^a-zA-Z]+/, '').trim();
+          if (rawCand.length >= 3 && rawCand.includes(' ') && !addressNoise.test(rawCand)) {
+            candidateNameStr = rawCand;
+            break;
+          }
         }
       }
+      if (candidateNameStr) break;
     }
   }
 
