@@ -1898,6 +1898,18 @@ function courseMatchesText(expectedCourse, text) {
   return false;
 }
 
+// Helper: truncate to 2 decimal places without rounding up (e.g. 3.5555 -> "3.55", 3.4375 -> "3.43", 3.5 -> "3.50")
+function toTwoDecimalsTruncated(val) {
+  if (val === null || val === undefined) return null;
+  const num = parseFloat(val);
+  if (isNaN(num)) return null;
+  const str = String(num);
+  const parts = str.split('.');
+  if (parts.length === 1) return parts[0] + '.00';
+  const dec = (parts[1] + '00').slice(0, 2);
+  return `${parts[0]}.${dec}`;
+}
+
 function extractGpaFromText(text, expectedGpa = null) {
   if (!text) return null;
 
@@ -1915,10 +1927,7 @@ function extractGpaFromText(text, expectedGpa = null) {
   const cleanedLines = cleaned.split(/[\r\n]+/).filter(l => !/laurel|highway|telefax|1962|lipa\s*city|national\s*h|j\.?p\.?/i.test(l));
   const cleanedBodyText = cleanedLines.join('\n');
 
-  // Helper: round to nearest hundredth (e.g. 3.5555 -> "3.56", 3.3889 -> "3.39", 3.4375 -> "3.44")
-  const toTwoDecimals = (val) => (Math.round(val * 100) / 100).toFixed(2);
-
-  // 1. Explicit keyword match (supports "GPA: 3.5481", "GPA: 3.4375", "GPA: 3.55", "GPA: 355", "GPA 35481", "GPA 3.5555")
+  // 1. Explicit keyword match (supports "GPA: 3.5555", "GPA: 3.5481", "GPA: 3.4375", "GPA: 3.55", "GPA: 355", "GPA 35481")
   for (const rawLine of cleanedLines) {
     if (/(?:GPA|GWA|CWA|QPI|WEIGHTED\s*AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*AVERAGE)/i.test(rawLine)) {
       const kwMatch = rawLine.match(/(?:GPA|GWA|CWA|QPI|WEIGHTED\s*AVERAGE|GENERAL\s*WEIGHTED|FINAL\s*AVERAGE)[^\d]*?([1-5](?:[\.,][0-9]{1,4}|[0-9]{2,5}))\b/i);
@@ -1926,21 +1935,21 @@ function extractGpaFromText(text, expectedGpa = null) {
         const rawVal = kwMatch[1].replace(',', '.');
         if (rawVal.includes('.')) {
           const val = parseFloat(rawVal);
-          if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
+          if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimalsTruncated(val);
         } else if (rawVal.length >= 3 && rawVal.length <= 5) {
           const rawFormatted = rawVal[0] + '.' + rawVal.slice(1);
           const val = parseFloat(rawFormatted);
-          if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
+          if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimalsTruncated(val);
         }
       }
     }
   }
 
-  // 2. High-precision 4-decimal place term GPA on body text (e.g. 3.4375, 3.5481, 3.5555)
+  // 2. High-precision 4-decimal place term GPA on body text (e.g. 3.5555, 3.4375, 3.5481)
   const precisionMatch = cleanedBodyText.match(/\b([1-5]\.[0-9]{3,4})\b/);
   if (precisionMatch && precisionMatch[1]) {
     const val = parseFloat(precisionMatch[1]);
-    if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
+    if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimalsTruncated(val);
   }
 
   // 3. Value immediately before "Total Units" table footer (supports both decimal "3.4375" and integer "34375")
@@ -1949,7 +1958,7 @@ function extractGpaFromText(text, expectedGpa = null) {
     const rawVal = pUnits[1];
     const rawFormatted = rawVal.includes('.') ? rawVal : rawVal[0] + '.' + rawVal.slice(1);
     const val = parseFloat(rawFormatted);
-    if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimals(val);
+    if (!isNaN(val) && val >= 1.0 && val <= 5.0) return toTwoDecimalsTruncated(val);
   }
 
   // Strip ONLY the bottom-left grading scale key (e.g. "GRADING SYSTEM: 98-100 - 4.00")
@@ -1982,7 +1991,7 @@ function extractGpaFromText(text, expectedGpa = null) {
     if (totalUnits > 0) {
       const calcGpa = totalPts / totalUnits;
       if (calcGpa >= 1.0 && calcGpa <= 5.0) {
-        return toTwoDecimals(calcGpa);
+        return toTwoDecimalsTruncated(calcGpa);
       }
     }
   }
@@ -1995,7 +2004,7 @@ function extractGpaFromText(text, expectedGpa = null) {
 
   if (decimals.length > 0) {
     const mean = decimals.reduce((a, b) => a + b, 0) / decimals.length;
-    return toTwoDecimals(mean);
+    return toTwoDecimalsTruncated(mean);
   }
 
   return null;
@@ -2015,30 +2024,21 @@ function gpaMatchesText(text, expectedGpa) {
   const detVal = parseFloat(detectedGpaStr);
   if (isNaN(detVal)) return false;
 
-  // 1. Exact numeric equality (e.g. 3.56 === 3.56, 3.44 === 3.44)
+  // 1. Exact numeric equality (e.g. 3.55 === 3.55)
   if (Math.abs(detVal - parsedInputGpa) < 0.00001) {
     return true;
   }
 
-  // 2. Strict Mathematical Rounding to input's decimal count
-  // e.g. If user enters 3.56 and detected was 3.5555 (which extracted as 3.56) -> MATCHES
-  // If user enters 3.5555 and detected was 3.56 -> round input to 2 decimals (3.56) -> MATCHES
-  const inputDecParts = rawInputStr.split('.');
-  const inputDecCount = inputDecParts.length > 1 ? inputDecParts[1].length : 0;
-
-  if (inputDecCount > 0) {
-    const factor = Math.pow(10, inputDecCount);
-    const roundedDetVal = Math.round(detVal * factor) / factor;
-    const roundedInput = Math.round(parsedInputGpa * factor) / factor;
-    if (Math.abs(roundedDetVal - roundedInput) < 0.00001) {
-      return true;
-    }
+  // 2. Truncated 2-decimal comparison (e.g. user entered 3.55 and document extracted as 3.55)
+  const inputTwoDecStr = toTwoDecimalsTruncated(parsedInputGpa);
+  if (inputTwoDecStr && inputTwoDecStr === detectedGpaStr) {
+    return true;
   }
 
-  // Check 2-decimal rounded match as fallback
-  const inputTwoDec = Math.round(parsedInputGpa * 100) / 100;
-  const detTwoDec = Math.round(detVal * 100) / 100;
-  if (Math.abs(detTwoDec - inputTwoDec) < 0.00001) {
+  // 3. Fallback: Also match if user entered rounded or full decimal (e.g. 3.5555 or 3.56)
+  const inputRounded2Dec = (Math.round(parsedInputGpa * 100) / 100).toFixed(2);
+  const detRounded2Dec = (Math.round(detVal * 100) / 100).toFixed(2);
+  if (inputRounded2Dec === detectedGpaStr || inputTwoDecStr === detRounded2Dec) {
     return true;
   }
 
