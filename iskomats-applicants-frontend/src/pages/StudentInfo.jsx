@@ -1280,6 +1280,24 @@ function studentNameMatchesText(text, first, middle, last) {
     }
   }
 
+  if (!candidateNameStr) {
+    const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const stopHeader = /COLLEGE|UNIVERSITY|DE LA SALLE|LIPA|REPUBLIC|PHILIPPINES|STUDENT|SIGNATURE|VALID|UNTIL|CHANCELLOR|REGISTRAR|SECTION|COURSE|DEGREE|YEAR|LEVEL|GRADE/i;
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i];
+      const words = line.split(/\s+/).filter(w => /^[A-Za-z\.\,]+$/.test(w));
+      if (words.length >= 2 && !stopHeader.test(line)) {
+        const prevLine = i > 0 ? rawLines[i - 1] : '';
+        if (prevLine && /^[A-Za-z]{2,20}$/.test(prevLine) && !stopHeader.test(prevLine)) {
+          candidateNameStr = `${prevLine}, ${line}`;
+        } else {
+          candidateNameStr = line;
+        }
+        break;
+      }
+    }
+  }
+
   if (candidateNameStr && (/\d/.test(candidateNameStr) || /AY\s*\d|School\s*Year|Semester|1st|2nd|3rd|Official|Certificate|Registration/i.test(candidateNameStr))) {
     candidateNameStr = null;
   }
