@@ -1262,10 +1262,11 @@ function studentNameMatchesText(text, first, middle, last) {
   let candidateNameStr = kv.name || null;
   if (!candidateNameStr) {
     const certPatterns = [
+      /(?:student\s*name|name\s*of\s*student)\s*[:\-1l\|\]\}\)]\s*([A-Za-z\s,\.\-]{3,60})(?=\s*(?:total|student|course|reg|scholarship|academic|section|units|\n|$))/i,
       /(?:certify|certifies|cently|certifye|certiy|patunay|katibayan)\s+(?:that\s+)?[_\W]*([A-Za-z\s,\.\-]{3,60})(?=\s*(?:\d+\s*years|of\s*legal\s*age|single|married|widow|separated|divorced|filipino|pilipino|citizen|is\s+a\s+resident|resident|bonafide|\n|$))/i,
       /(?:this\s+is\s+to|sto)\s+[a-z]{3,10}\s+that\s+[_\W]*([A-Za-z\s,\.\-]{3,60})(?=\s*(?:\d+\s*years|of\s*legal\s*age|single|married|widow|separated|filipino|citizen|resident|bonafide|\n|$))/i,
       /that\s+[_\W]*([A-Z\s,\.\-]{5,60})(?=\s*(?:\d+\s*years|of\s*legal\s*age|single|married|widow|separated|filipino|citizen|resident|bonafide|\n|$))/i,
-      /(?:name|pangalan)\s*[:\-]?\s*([A-Za-z\s,\.\-]+?)(?=\s+reg|\s+student|\s+id|\n|$)/i
+      /(?:name|pangalan)\s*[:\-]?\s*([A-Za-z\s,\.\-]+?)(?=\s+total|\s+reg|\s+student|\s+id|\s+course|\n|$)/i
     ];
     for (const pat of certPatterns) {
       const m = text.match(pat);
@@ -4476,13 +4477,13 @@ const StudentInfo = () => {
         const combinedBackText = backText + " " + (backVidCheck?.detectedText || "");
         const allIdText = combinedFrontText + " " + combinedBackText;
 
-        const nameMatchFront = studentNameMatchesText(frontText, firstName, "", lastName);
-        const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: true, last_ok: false } } : studentNameMatchesText(backText, firstName, "", lastName);
-        const nameMatchVid = (frontVidCheck?.detectedText) ? studentNameMatchesText(frontVidCheck.detectedText, firstName, "", lastName) : { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
+        const nameMatchFront = studentNameMatchesText(frontText, firstName, middleName, lastName);
+        const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: true, last_ok: false } } : studentNameMatchesText(backText, firstName, middleName, lastName);
+        const nameMatchVid = (frontVidCheck?.detectedText) ? studentNameMatchesText(frontVidCheck.detectedText, firstName, middleName, lastName) : { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
 
         const firstOk = nameMatchFront.details.first_ok || nameMatchBack.details.first_ok || nameMatchVid.details.first_ok;
         const lastOk = nameMatchFront.details.last_ok || nameMatchBack.details.last_ok || nameMatchVid.details.last_ok;
-        const nameOk = (firstOk && lastOk) || nameMatchFront.success || nameMatchBack.success || nameMatchVid.success;
+        const nameOk = nameMatchFront.success || nameMatchBack.success || nameMatchVid.success;
 
         const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, combinedFrontText, true) || studentIdNoMatchesText(idNumber, combinedBackText, true)) : true);
         const schoolOk = schoolName ? (schoolNameMatchesText(allIdText, schoolName)) : true;
@@ -4625,7 +4626,7 @@ const StudentInfo = () => {
           const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
           const isNationalId = idType === 'National ID';
 
-          const nameCheck = studentNameMatchesText(detectedText, firstName, "", lastName);
+          const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
           const gpaOk = gpa ? gpaMatchesText(detectedText, gpa) : true;
           const ayOk = academicYear ? (academic_year_matches_expected(detectedText, academicYear) || academic_year_matches_expected(combinedText, academicYear)) : true;
           const semOk = semesterMatchesText(detectedText, semester || formData.semester, semester || reqSemester) || semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
