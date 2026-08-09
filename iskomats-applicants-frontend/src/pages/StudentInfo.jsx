@@ -2636,6 +2636,20 @@ const StudentInfo = () => {
           } catch (e) {}
         };
 
+        if (signal?.aborted) {
+          cleanupVideo();
+          return resolveFrames([]);
+        }
+
+        const onAbort = () => {
+          cleanupVideo();
+          resolveFrames([]);
+        };
+
+        if (signal) {
+          signal.addEventListener('abort', onAbort, { once: true });
+        }
+
         const timeout = setTimeout(() => {
           cleanupVideo();
           resolveFrames([]);
@@ -2677,6 +2691,11 @@ const StudentInfo = () => {
             video.playbackRate = 4.0;
 
             for (let i = 0; i < timestamps.length; i++) {
+              if (signal?.aborted) {
+                cleanupVideo();
+                clearTimeout(timeout);
+                break;
+              }
               const seekTime = timestamps[i];
 
               await new Promise((seekResolve) => {
@@ -2903,8 +2922,9 @@ const StudentInfo = () => {
         if (extractedFrames.length > 0) {
           const ocrResults = await Promise.all(
             extractedFrames.map(async ({ time, canvas }) => {
+              if (signal?.aborted) return { time, frameText: '' };
               const frameDataUrl = canvas.toDataURL('image/jpeg', 0.82);
-              const frameText = await performGoogleVisionOcrScan(frameDataUrl);
+              const frameText = await performGoogleVisionOcrScan(frameDataUrl, signal);
               return { time, frameText };
             })
           );
@@ -3947,20 +3967,28 @@ const StudentInfo = () => {
     if (!docType || docType === 'Indigency') {
       setOcrVerified(null);
       setOcrStatus('');
+      setIndigencyResults([]);
       lastIndigencyScanRef.current = { doc: null, vid: null };
+      setOcrDebugLogs(prev => ({ ...prev, Indigency: { status: 'Not Scanned', detectedText: '', requirements: {}, scoreDetails: {} } }));
     }
     if (!docType || docType === 'Enrollment') {
       setCoeVerified(null);
       setCoeStatus('');
+      setCoeResults([]);
+      setOcrDebugLogs(prev => ({ ...prev, Enrollment: { status: 'Not Scanned', detectedText: '', requirements: {}, scoreDetails: {} } }));
     }
     if (!docType || docType === 'Grades') {
       setGradesVerified(null);
       setGradesStatus('');
+      setGradesResults([]);
+      setOcrDebugLogs(prev => ({ ...prev, Grades: { status: 'Not Scanned', detectedText: '', requirements: {}, scoreDetails: {} } }));
     }
     if (!docType || docType === 'SchoolID') {
       setIdVerified(null);
       setIdStatus('');
+      setIdResults([]);
       lastIdScanRef.current = { front: null, back: null, frontVid: null, backVid: null };
+      setOcrDebugLogs(prev => ({ ...prev, SchoolID: { status: 'Not Scanned', detectedText: '', requirements: {}, scoreDetails: {} } }));
     }
 
     setScanProgress(0);
@@ -4564,7 +4592,7 @@ const StudentInfo = () => {
           bVid ? validateVideoLiveness(bVid, 'schoolIdBack_video', scanToken.controller?.signal) : Promise.resolve(null)
         ]);
 
-        if (scanToken.aborted) return { isSuccess: false, finalMessage: "Scan cancelled by user." };
+        if (scanToken.aborted || activeOcrControllersRef.current[docType]?.aborted) return 'aborted';
 
         frontVidCheck = fVidRes;
         backVidCheck = bVidRes;
@@ -4656,7 +4684,7 @@ const StudentInfo = () => {
           videoCheckPromise
         ]);
 
-        if (scanToken.aborted) return { isSuccess: false, finalMessage: "Scan cancelled by user." };
+        if (scanToken.aborted || activeOcrControllersRef.current[docType]?.aborted) return 'aborted';
 
         detectedText = detectedTextRes;
         videoCheck = videoCheckRes;
@@ -4949,13 +4977,15 @@ const StudentInfo = () => {
       }));
 
       // Fire backend audit log in background so network HTTP latency does not block UI verification response
-      applicantAPI.ocrCheck(
-        docType,
-        isSuccess,
-        finalMessage,
-        resultsList,
-        reqNo
-      ).catch(err => console.warn('[OCR Engine] Async DB log save note:', err));
+      if (!scanToken.aborted && !activeOcrControllersRef.current[docType]?.aborted) {
+        applicantAPI.ocrCheck(
+          docType,
+          isSuccess,
+          finalMessage,
+          resultsList,
+          reqNo
+        ).catch(err => console.warn('[OCR Engine] Async DB log save note:', err));
+      }
 
       if (scanToken.aborted || activeOcrControllersRef.current[docType]?.aborted) {
         console.log('[OCR Engine] Verification aborted by user.');
@@ -5024,7 +5054,9 @@ const StudentInfo = () => {
     } finally {
       if (progressInterval) clearInterval(progressInterval);
       if (scanToken.progressInterval) clearInterval(scanToken.progressInterval);
-      if (!silent && !scanToken.aborted && !activeOcrControllersRef.current[docType]?.aborted) {
+      if (scanToken.aborted || activeOcrControllersRef.current[docType]?.aborted) {
+        setScanProgress(0);
+      } else if (!silent) {
         setScanProgress(100);
       }
     }
@@ -5086,6 +5118,8 @@ const StudentInfo = () => {
       if (res === 'aborted' || activeOcrControllersRef.current['Indigency']?.aborted) {
         setOcrVerified(null);
         setOcrStatus('');
+        setIndigencyResults([]);
+        setScanProgress(0);
         return;
       }
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
@@ -5154,6 +5188,8 @@ const StudentInfo = () => {
       if (res === 'aborted' || activeOcrControllersRef.current['Enrollment']?.aborted) {
         setCoeVerified(null);
         setCoeStatus('');
+        setCoeResults([]);
+        setScanProgress(0);
         return;
       }
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
@@ -5220,6 +5256,8 @@ const StudentInfo = () => {
       if (res === 'aborted' || activeOcrControllersRef.current['Grades']?.aborted) {
         setGradesVerified(null);
         setGradesStatus('');
+        setGradesResults([]);
+        setScanProgress(0);
         return;
       }
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
@@ -5328,6 +5366,8 @@ const StudentInfo = () => {
       if (res === 'aborted' || activeOcrControllersRef.current['SchoolID']?.aborted) {
         setIdVerified(null);
         setIdStatus('');
+        setIdResults([]);
+        setScanProgress(0);
         return;
       }
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
@@ -7667,29 +7707,7 @@ const StudentInfo = () => {
               <i className="fas fa-bolt"></i> Pass Step {currentStep} Verifications
             </button>
 
-            {/* Stop/Cancel All Scannings Button */}
-            <button
-              type="button"
-              onClick={stopAllScannings}
-              style={{
-                width: '100%',
-                background: '#dc2626',
-                color: 'white',
-                border: 'none',
-                padding: '7px 12px',
-                borderRadius: '10px',
-                cursor: 'pointer',
-                fontSize: '0.75rem',
-                fontWeight: '800',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                boxShadow: '0 2px 8px rgba(220, 38, 38, 0.3)'
-              }}
-            >
-              <i className="fas fa-hand"></i> Stop / Cancel All Scannings
-            </button>
+
 
             {/* Fill Docs from Supabase Button */}
             <button
@@ -7810,7 +7828,7 @@ const StudentInfo = () => {
           </div>
 
           <form onSubmit={handleApplicationSubmit} noValidate>
-            <fieldset disabled={isAnyScanning || isSavingStep} style={{ border: 'none', padding: 0, margin: 0 }}>
+            <fieldset disabled={isSavingStep || isSubmitting} style={{ border: 'none', padding: 0, margin: 0 }}>
 
               {/* Step 1: Personal Information */}
               <div className={`step-container ${currentStep === 1 ? 'active' : ''}`}>
