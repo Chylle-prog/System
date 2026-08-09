@@ -1298,6 +1298,10 @@ function studentNameMatchesText(text, first, middle, last) {
     }
   }
 
+  if (candidateNameStr) {
+    candidateNameStr = candidateNameStr.replace(/(?:total|student|course|reg|scholarship|academic|section|units|failure|incomplete|blank|drp|status|pay|discount)[\s\S]*/i, '').trim();
+  }
+
   if (candidateNameStr && (/\d/.test(candidateNameStr) || /AY\s*\d|School\s*Year|Semester|1st|2nd|3rd|Official|Certificate|Registration/i.test(candidateNameStr))) {
     candidateNameStr = null;
   }
