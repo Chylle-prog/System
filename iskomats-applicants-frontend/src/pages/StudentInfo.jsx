@@ -698,9 +698,14 @@ function extractOcrKeyValues(rawText) {
   }
   // Fallbacks for column-separated OCR text layouts (where labels and values appear in separate column blocks)
   if (!fields.name) {
-    const fnMatch = rawText.match(/\b([A-Za-z]{2,20}\s*,\s*[A-Za-z\s]{3,40})\b/);
-    if (fnMatch && fnMatch[1] && !/OFFICIAL|CERTIFICATE|REGISTRATION|COLLEGE|UNIVERSITY|ENGINEERING|INFORMATION|BACHELOR/i.test(fnMatch[1])) {
-      fields.name = fnMatch[1].trim();
+    // Restrict fnMatch to single-line spaces (no \n) and filter out noise keywords
+    const fnMatch = rawText.match(/\b([A-Za-z]{2,20}\s*,\s*[A-Za-z ]{3,40})\b/);
+    if (fnMatch && fnMatch[1]) {
+      const cand = fnMatch[1].trim();
+      const isNoise = /OFFICIAL|CERTIFICATE|REGISTRATION|COLLEGE|UNIVERSITY|ENGINEERING|INFORMATION|BACHELOR|CERTIFY|AGE|RESIDENT|BARANGAY/i.test(cand);
+      if (!isNoise) {
+        fields.name = cand;
+      }
     }
   }
   if (!fields.studentId) {
