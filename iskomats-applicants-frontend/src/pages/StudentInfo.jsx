@@ -608,6 +608,9 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
           break; // Server error -> move to next candidate
         }
       } catch (err) {
+        if (signal?.aborted || err?.name === 'AbortError') {
+          return "";
+        }
         console.warn(`[GOOGLE CLOUD VISION CLIENT] Network attempt ${attempt}/${maxRetries} failed on origin (${origin}):`, err?.message || err);
         if (attempt < maxRetries) {
           // Render free tier cold-start: wait 2.5s for container boot to complete before retrying
@@ -3916,21 +3919,26 @@ const StudentInfo = () => {
   const activeOcrControllersRef = useRef({});
 
   const cancelOcrScan = (docType) => {
+    console.log('[OCR] Cancelling scan for:', docType);
     if (docType) {
-      if (activeOcrControllersRef.current[docType]) {
-        activeOcrControllersRef.current[docType].aborted = true;
-        if (activeOcrControllersRef.current[docType].controller) {
-          try { activeOcrControllersRef.current[docType].controller.abort(); } catch (e) {}
+      const token = activeOcrControllersRef.current[docType];
+      if (token) {
+        token.aborted = true;
+        if (token.progressInterval) clearInterval(token.progressInterval);
+        if (token.controller) {
+          try { token.controller.abort(); } catch (e) {}
         }
       } else {
         activeOcrControllersRef.current[docType] = { aborted: true };
       }
     } else {
       Object.keys(activeOcrControllersRef.current).forEach(k => {
-        if (activeOcrControllersRef.current[k]) {
-          activeOcrControllersRef.current[k].aborted = true;
-          if (activeOcrControllersRef.current[k].controller) {
-            try { activeOcrControllersRef.current[k].controller.abort(); } catch (e) {}
+        const token = activeOcrControllersRef.current[k];
+        if (token) {
+          token.aborted = true;
+          if (token.progressInterval) clearInterval(token.progressInterval);
+          if (token.controller) {
+            try { token.controller.abort(); } catch (e) {}
           }
         }
       });
@@ -3938,19 +3946,21 @@ const StudentInfo = () => {
 
     if (!docType || docType === 'Indigency') {
       setOcrVerified(null);
-      setOcrStatus('Indigency / Residency scan cancelled.');
+      setOcrStatus('');
+      lastIndigencyScanRef.current = { doc: null, vid: null };
     }
     if (!docType || docType === 'Enrollment') {
       setCoeVerified(null);
-      setCoeStatus('COE scan cancelled.');
+      setCoeStatus('');
     }
     if (!docType || docType === 'Grades') {
       setGradesVerified(null);
-      setGradesStatus('Grades scan cancelled.');
+      setGradesStatus('');
     }
     if (!docType || docType === 'SchoolID') {
       setIdVerified(null);
-      setIdStatus('ID scan cancelled.');
+      setIdStatus('');
+      lastIdScanRef.current = { front: null, back: null, frontVid: null, backVid: null };
     }
 
     setScanProgress(0);
@@ -4197,12 +4207,17 @@ const StudentInfo = () => {
         setScanProgress(10);
 
         progressInterval = setInterval(() => {
+          if (scanToken.aborted) {
+            clearInterval(progressInterval);
+            return;
+          }
           setScanProgress(prev => {
             if (prev >= 92) return prev;
             const inc = Math.max(1, Math.floor((92 - prev) * 0.12));
             return Math.min(92, prev + inc);
           });
         }, 150);
+        scanToken.progressInterval = progressInterval;
 
         if (docType === 'Indigency') setIndigencyResults([]);
         else if (docType === 'Enrollment') setCoeResults([]);
@@ -8034,33 +8049,9 @@ const StudentInfo = () => {
                                 <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                                   <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
                                 </div>
-                                <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                                  <div style={{ padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700', flex: 1 }}>
-                                    <i className="fas fa-spinner fa-spin"></i>
-                                    <span>{ocrStatus || 'Scanning document...'}</span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => cancelOcrScan('Indigency')}
-                                    style={{
-                                      background: '#ef4444',
-                                      color: 'white',
-                                      border: 'none',
-                                      padding: '0.75rem 1.2rem',
-                                      borderRadius: '12px',
-                                      fontWeight: '700',
-                                      fontSize: '0.82rem',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '6px',
-                                      boxShadow: '0 2px 8px rgba(239, 68, 68, 0.3)',
-                                      transition: 'all 0.2s ease',
-                                      whiteSpace: 'nowrap'
-                                    }}
-                                  >
-                                    <i className="fas fa-times-circle"></i> Cancel Scan
-                                  </button>
+                                <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700', width: '100%' }}>
+                                  <i className="fas fa-spinner fa-spin"></i>
+                                  <span>{ocrStatus || 'Scanning document...'}</span>
                                 </div>
                               </div>
                             )}
@@ -8520,33 +8511,9 @@ const StudentInfo = () => {
                             <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                               <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
                             </div>
-                            <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                              <div style={{ padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700', flex: 1 }}>
-                                <i className="fas fa-spinner fa-spin"></i>
-                                <span>{idStatus || 'Scanning ID...'}</span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => cancelOcrScan('SchoolID')}
-                                style={{
-                                  background: '#ef4444',
-                                  color: 'white',
-                                  border: 'none',
-                                  padding: '0.75rem 1.2rem',
-                                  borderRadius: '12px',
-                                  fontWeight: '700',
-                                  fontSize: '0.82rem',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  boxShadow: '0 2px 8px rgba(239, 68, 68, 0.3)',
-                                  transition: 'all 0.2s ease',
-                                  whiteSpace: 'nowrap'
-                                }}
-                              >
-                                <i className="fas fa-times-circle"></i> Cancel Scan
-                              </button>
+                            <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700', width: '100%' }}>
+                              <i className="fas fa-spinner fa-spin"></i>
+                              <span>{idStatus || 'Scanning ID...'}</span>
                             </div>
                           </div>
                         )}
@@ -8684,33 +8651,9 @@ const StudentInfo = () => {
                                 <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                                   <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
                                 </div>
-                                <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                                  <div style={{ padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700', flex: 1 }}>
-                                    <i className="fas fa-spinner fa-spin"></i>
-                                    <span>{coeStatus || 'Scanning COE...'}</span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => cancelOcrScan('Enrollment')}
-                                    style={{
-                                      background: '#ef4444',
-                                      color: 'white',
-                                      border: 'none',
-                                      padding: '0.75rem 1.2rem',
-                                      borderRadius: '12px',
-                                      fontWeight: '700',
-                                      fontSize: '0.82rem',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '6px',
-                                      boxShadow: '0 2px 8px rgba(239, 68, 68, 0.3)',
-                                      transition: 'all 0.2s ease',
-                                      whiteSpace: 'nowrap'
-                                    }}
-                                  >
-                                    <i className="fas fa-times-circle"></i> Cancel Scan
-                                  </button>
+                                <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700', width: '100%' }}>
+                                  <i className="fas fa-spinner fa-spin"></i>
+                                  <span>{coeStatus || 'Scanning COE...'}</span>
                                 </div>
                               </div>
                             )}
@@ -8846,33 +8789,9 @@ const StudentInfo = () => {
                                   <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                                     <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
                                   </div>
-                                  <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                                    <div style={{ padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700', flex: 1 }}>
-                                      <i className="fas fa-spinner fa-spin"></i>
-                                      <span>{gradesStatus || 'Scanning Grades...'}</span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => cancelOcrScan('Grades')}
-                                      style={{
-                                        background: '#ef4444',
-                                        color: 'white',
-                                        border: 'none',
-                                        padding: '0.75rem 1.2rem',
-                                        borderRadius: '12px',
-                                        fontWeight: '700',
-                                        fontSize: '0.82rem',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        boxShadow: '0 2px 8px rgba(239, 68, 68, 0.3)',
-                                        transition: 'all 0.2s ease',
-                                        whiteSpace: 'nowrap'
-                                      }}
-                                    >
-                                      <i className="fas fa-times-circle"></i> Cancel Scan
-                                    </button>
+                                  <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#eff6ff', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '10px', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: '700', width: '100%' }}>
+                                    <i className="fas fa-spinner fa-spin"></i>
+                                    <span>{gradesStatus || 'Scanning Grades...'}</span>
                                   </div>
                                 </div>
                               )}
