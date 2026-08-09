@@ -2851,14 +2851,50 @@ const StudentInfo = () => {
         }
 
         if (isIndigencyVideo) {
-          const hasIndigencyKeywords = /certificate\s*of\s*indigency|certificate\s*of\s*residency|punong\s*barangay|office\s*of\s*the\s*punong\s*barangay|indigent|indigency|residency|resident/i.test(rawCombined);
-          if (!hasIndigencyKeywords) {
-            return {
-              valid: false,
-              isMatched: false,
-              reason: "Indigency video proof failed: Video does not contain Certificate of Indigency or Residency keywords.",
-              detectedText: (textLogs || []).join("\n\n") || "No Certificate of Indigency or Residency keywords found in video frames."
-            };
+          const _vidResType = String(scholarshipDetails?.residencyDocType || scholarshipDetails?.residency_doc_type || '').toLowerCase();
+          const _vidIsResidency = _vidResType.includes('residency');
+
+          const hasExplicitIndigencyInVideo = /certificate\s*of\s*indigency|katibayan\s*ng\s*kawalang|office\s*of.*indigency|\bindigent\b|\bindigency\b/i.test(rawCombined);
+          const hasExplicitResidencyInVideo = /certificate\s*of\s*residency|katibayan\s*ng\s*pagkapamayanan|office\s*of.*residency|\bresidency\b|\bresident\b|\bresiding\b|\bnaninirahan\b/i.test(rawCombined);
+
+          if (_vidIsResidency) {
+            // Scholarship requires Certificate of Residency: reject if video shows Indigency
+            if (hasExplicitIndigencyInVideo && !hasExplicitResidencyInVideo) {
+              return {
+                valid: false,
+                isMatched: false,
+                reason: "Video proof mismatch: Video is for a Certificate of Indigency, but scholarship requires a Certificate of Residency.",
+                detectedText: (textLogs || []).join("\n\n")
+              };
+            }
+            const hasResidencyKeywords = hasExplicitResidencyInVideo || /punong\s*barangay|office\s*of\s*the\s*punong\s*barangay|barangay|resident|residency/i.test(rawCombined);
+            if (!hasResidencyKeywords) {
+              return {
+                valid: false,
+                isMatched: false,
+                reason: "Residency video proof failed: Video does not contain Certificate of Residency keywords.",
+                detectedText: (textLogs || []).join("\n\n") || "No Certificate of Residency keywords found in video frames."
+              };
+            }
+          } else {
+            // Scholarship requires Certificate of Indigency: reject if video shows Residency
+            if (hasExplicitResidencyInVideo && !hasExplicitIndigencyInVideo) {
+              return {
+                valid: false,
+                isMatched: false,
+                reason: "Video proof mismatch: Video is for a Certificate of Residency, but scholarship requires a Certificate of Indigency.",
+                detectedText: (textLogs || []).join("\n\n")
+              };
+            }
+            const hasIndigencyKeywords = hasExplicitIndigencyInVideo || /punong\s*barangay|office\s*of\s*the\s*punong\s*barangay|barangay|indigent|indigency/i.test(rawCombined);
+            if (!hasIndigencyKeywords) {
+              return {
+                valid: false,
+                isMatched: false,
+                reason: "Indigency video proof failed: Video does not contain Certificate of Indigency keywords.",
+                detectedText: (textLogs || []).join("\n\n") || "No Certificate of Indigency keywords found in video frames."
+              };
+            }
           }
         }
 
@@ -4837,19 +4873,44 @@ const StudentInfo = () => {
             }
           }
 
-          const _requiredDocKeywords = isResidencyDoc
-            ? ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan']
-            : ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang'];
+          // Strictly distinguish between Certificate of Indigency and Certificate of Residency in VIDEO proof
+          const hasExplicitIndigencyVideo = /certificate\s*of\s*indigency|katibayan\s*ng\s*kawalang|office\s*of.*indigency|\bindigent\b|\bindigency\b/i.test(vidText);
+          const hasExplicitResidencyVideo = /certificate\s*of\s*residency|katibayan\s*ng\s*pagkapamayanan|office\s*of.*residency|\bresidency\b|\bresident\b|\bresiding\b|\bnaninirahan\b/i.test(vidText);
 
-          // Video PROOF passes if it contains required document keywords or applicant name, or if no video was uploaded
+          let videoHasKeyword = false;
+          let videoTypeErrorMessage = null;
+
           const userFirstStr = (firstName || '').toLowerCase();
           const userLastStr = (lastName || '').toLowerCase();
-          const videoHasKeyword = videoCheck
-            ? (_requiredDocKeywords.some(k => vidText.includes(k)) || (userFirstStr && vidText.includes(userFirstStr)) || (userLastStr && vidText.includes(userLastStr)) || videoCheck.isMatched)
-            : true;
+          const hasNameInVideo = (userFirstStr && vidText.includes(userFirstStr)) || (userLastStr && vidText.includes(userLastStr));
 
-          const effectiveVideoOk = videoUrl ? (videoOk && videoHasKeyword) : true;
-          // Use nameCheck.success (includes two-way reverse first name check) — same as COR
+          if (isResidencyDoc) {
+            // Scholarship requires Certificate of Residency:
+            // Video MUST NOT be a Certificate of Indigency
+            if (hasExplicitIndigencyVideo && !hasExplicitResidencyVideo) {
+              videoHasKeyword = false;
+              videoTypeErrorMessage = 'Video proof mismatch: uploaded video is a Certificate of Indigency, but scholarship requires a Certificate of Residency.';
+            } else {
+              const residencyKeywords = ['residency', 'resident', 'residing', 'pagkapamayanan', 'naninirahan', 'maninirahan', 'pamayanan'];
+              videoHasKeyword = videoCheck
+                ? (residencyKeywords.some(k => vidText.includes(k)) || hasNameInVideo || videoCheck.isMatched)
+                : true;
+            }
+          } else {
+            // Scholarship requires Certificate of Indigency:
+            // Video MUST NOT be a Certificate of Residency
+            if (hasExplicitResidencyVideo && !hasExplicitIndigencyVideo) {
+              videoHasKeyword = false;
+              videoTypeErrorMessage = 'Video proof mismatch: uploaded video is a Certificate of Residency, but scholarship requires a Certificate of Indigency.';
+            } else {
+              const indigencyKeywords = ['indigency', 'indigent', 'kawalang', 'kapos', 'pagkakawalang'];
+              videoHasKeyword = videoCheck
+                ? (indigencyKeywords.some(k => vidText.includes(k)) || hasNameInVideo || videoCheck.isMatched)
+                : true;
+            }
+          }
+
+          const effectiveVideoOk = videoUrl ? (videoOk && videoHasKeyword && !videoTypeErrorMessage) : true;
           const nameOk = nameCheck.success;
 
           // Document photo OCR is primary: if image has Name, Barangay, Town/City, and Document Header, mark as success
@@ -4865,13 +4926,14 @@ const StudentInfo = () => {
             "Document Type": imageHasKeyword,
             "Video Proof": videoUrl ? effectiveVideoOk : true
           };
-          const _docTypeFail = docTypeErrorMessage || (!imageHasKeyword
+
+          const _docTypeFail = docTypeErrorMessage || videoTypeErrorMessage || (!imageHasKeyword
             ? `Document type mismatch: image does not contain ${docLabel} keywords.`
             : (!videoHasKeyword ? `Video proof mismatch: video does not show ${docLabel} keywords.` : null));
           finalMessage = isSuccess
             ? `${docLabel.replace('Certificate of ', '')} verified successfully client-side!`
-            : (!videoOk
-                ? (videoCheck?.reason || `${docLabel.replace('Certificate of ', '')} video proof failed validation.`)
+            : (!videoOk || !effectiveVideoOk
+                ? (videoTypeErrorMessage || videoCheck?.reason || `${docLabel.replace('Certificate of ', '')} video proof failed validation.`)
                 : (_docTypeFail || `${docLabel.replace('Certificate of ', '')} verification mismatch.`));
           resultsList = [{ doc: 'Indigency', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
         }
