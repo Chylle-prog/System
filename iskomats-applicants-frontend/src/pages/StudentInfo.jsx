@@ -4957,8 +4957,9 @@ const StudentInfo = () => {
         reqNo
       ).catch(err => console.warn('[OCR Engine] Async DB log save note:', err));
 
-      if (scanToken.aborted) {
-        return false;
+      if (scanToken.aborted || activeOcrControllersRef.current[docType]?.aborted) {
+        console.log('[OCR Engine] Verification aborted by user.');
+        return 'aborted';
       }
 
       if (!silent) setScanProgress(100);
@@ -4980,6 +4981,9 @@ const StudentInfo = () => {
 
         return true;
       } else {
+        if (scanToken.aborted || activeOcrControllersRef.current[docType]?.aborted) {
+          return 'aborted';
+        }
         setVerified('failed');
         setStatus(finalMessage);
 
@@ -4997,7 +5001,10 @@ const StudentInfo = () => {
         return false;
       }
     } catch (err) {
-      if (scanToken.aborted) return false;
+      if (scanToken.aborted || activeOcrControllersRef.current[docType]?.aborted || err?.name === 'AbortError' || String(err?.message || '').toLowerCase().includes('abort')) {
+        console.log('[OCR Engine] Verification successfully aborted by user.');
+        return 'aborted';
+      }
       console.error('Client-Side OCR Error:', err);
       const errMsg = `Technical Issue: ${err.message}`;
       setOcrDebugLogs((prev) => ({
@@ -5016,7 +5023,10 @@ const StudentInfo = () => {
       return false;
     } finally {
       if (progressInterval) clearInterval(progressInterval);
-      if (!silent && !scanToken.aborted) setScanProgress(100);
+      if (scanToken.progressInterval) clearInterval(scanToken.progressInterval);
+      if (!silent && !scanToken.aborted && !activeOcrControllersRef.current[docType]?.aborted) {
+        setScanProgress(100);
+      }
     }
   }
 
@@ -5073,7 +5083,11 @@ const StudentInfo = () => {
 
     try {
       const res = await performOcrVerification('Indigency', indigencyDoc, { townCity: formData.townCityMunicipality, barangay: formData.barangay, isResidencyDoc }, videoUrl);
-      if (activeOcrControllersRef.current['Indigency']?.aborted) return;
+      if (res === 'aborted' || activeOcrControllersRef.current['Indigency']?.aborted) {
+        setOcrVerified(null);
+        setOcrStatus('');
+        return;
+      }
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         setOcrVerified('success');
@@ -5137,7 +5151,11 @@ const StudentInfo = () => {
         semester,
         academicYear: targetAcademicYear
       }, videoUrl);
-      if (activeOcrControllersRef.current['Enrollment']?.aborted) return;
+      if (res === 'aborted' || activeOcrControllersRef.current['Enrollment']?.aborted) {
+        setCoeVerified(null);
+        setCoeStatus('');
+        return;
+      }
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         if (scholarshipDetails) {
@@ -5199,7 +5217,11 @@ const StudentInfo = () => {
         semester: expectedGradesSemester,
         academicYear: targetAcademicYear
       }, videoUrl);
-      if (activeOcrControllersRef.current['Grades']?.aborted) return;
+      if (res === 'aborted' || activeOcrControllersRef.current['Grades']?.aborted) {
+        setGradesVerified(null);
+        setGradesStatus('');
+        return;
+      }
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         // Do NOT auto-fill or overwrite formData.gpa from OCR
@@ -5303,7 +5325,11 @@ const StudentInfo = () => {
         },
         { front: frontVideoUrl, back: backVideoUrl }
       );
-      if (activeOcrControllersRef.current['SchoolID']?.aborted) return;
+      if (res === 'aborted' || activeOcrControllersRef.current['SchoolID']?.aborted) {
+        setIdVerified(null);
+        setIdStatus('');
+        return;
+      }
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         setIdVerified('success');
