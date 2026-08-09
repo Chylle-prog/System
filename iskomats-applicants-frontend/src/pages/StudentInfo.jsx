@@ -991,6 +991,21 @@ function formatExtractedRequirementsSummary(rawText) {
       const cleanFirst = firstName.split(/\s+/).filter(w => !certStopWords.includes(w.toLowerCase())).join(' ');
       if (cleanFirst) firstName = cleanFirst;
     }
+
+    // Safety check: Ensure lastName is not a residual noise word (e.g. "age", "years") or purely digits
+    const nameNoiseWordsList = [
+      'age', 'years', 'year', 'yr', 'yo', 'of', 'legal', 'taong', 'gulang',
+      'single', 'married', 'widow', 'widower', 'separated', 'divorced',
+      'filipino', 'pilipino', 'citizen', 'resident', 'bonafide', 'residing',
+      'this', 'is', 'to', 'certify', 'that', 'sto', 'certifies', 'patunay',
+      'katibayan', 'pinatutunayan', 'na', 'si', 'the', 'a', 'and'
+    ];
+    if (lastName && lastName !== "Not detected") {
+      const cleanLast = lastName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (nameNoiseWordsList.includes(cleanLast) || /^\d+$/.test(cleanLast)) {
+        lastName = "Not detected";
+      }
+    }
   }
 
   const divider = "============================================================";

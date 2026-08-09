@@ -3610,9 +3610,9 @@ def get_applicants(current_user_id, pro_no, role, program):
                         ({applicant_document_expr(cursor, 'schoolid_back_vid_url', 'a', 'ad')} IS NOT NULL) as "has_schoolid_back_vid",
                         ({applicant_document_expr(cursor, 'id_vid_url', 'a', 'ad')} IS NOT NULL) as "has_id_vid"
                 FROM applicants a
-                INNER JOIN applicant_status s ON a.applicant_no = s.applicant_no
-                INNER JOIN scholarships esc ON s.scholarship_no = esc.req_no
-                INNER JOIN scholarship_providers p ON esc.pro_no = p.pro_no
+                LEFT JOIN applicant_status s ON a.applicant_no = s.applicant_no
+                LEFT JOIN scholarships esc ON s.scholarship_no = esc.req_no
+                LEFT JOIN scholarship_providers p ON esc.pro_no = p.pro_no
                 LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
                 {document_join}
                 WHERE 1=1
