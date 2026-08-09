@@ -1238,21 +1238,6 @@ function studentNameMatchesText(text, first, middle, last) {
   const lastOk = checkNameWordGroup(last, targetText) || checkNameWordGroup(last, normText);
 
   let middleOk = true;
-  if (middle) {
-    const normMid = normalizeForOcr(middle);
-    if (normMid) {
-      const matchDirect = checkNameWordGroup(middle, targetText) || checkNameWordGroup(middle, normText);
-      if (matchDirect) {
-        middleOk = true;
-      } else if (normMid.length <= 2) {
-        // Initial prefix match (e.g. input "L." or "L" matching document middle name "LINATOC")
-        const allWords = (normText + " " + targetText).split(/\s+/).filter(w => w.length >= 2);
-        middleOk = allWords.some(w => w.toLowerCase().startsWith(normMid[0].toLowerCase()));
-      } else {
-        middleOk = false;
-      }
-    }
-  }
 
   // --- Two-Way Reverse Candidate First Name Check ---
   // Extract candidate full name from document (e.g. kv.name or certificate anchor)
@@ -1262,11 +1247,11 @@ function studentNameMatchesText(text, first, middle, last) {
   let candidateNameStr = kv.name || null;
   if (!candidateNameStr) {
     const certPatterns = [
+      /(?:certify|certifies|cently|certifye|certiy)\s+(?:that\s+)?[_\W]*([A-Za-z\s,\.\-]{3,60})(?=\s*(?:is\s+a|\d+\s*years|of\s*legal\s*age|single|married|widow|separated|divorced|filipino|pilipino|citizen|resident|bonafide|purok|barangay|\n|$))/gi,
+      /(?:this\s+is\s+to|sto)\s+[a-z]{3,10}\s+that\s+[_\W]*([A-Za-z\s,\.\-]{3,60})(?=\s*(?:is\s+a|\d+\s*years|of\s*legal\s*age|single|married|widow|separated|filipino|citizen|resident|bonafide|purok|barangay|\n|$))/gi,
+      /that\s+[_\W]*([A-Z\s,\.\-]{5,60})(?=\s*(?:is\s+a|\d+\s*years|of\s*legal\s*age|single|married|widow|separated|filipino|citizen|resident|bonafide|purok|barangay|\n|$))/gi,
       /(?:^|\n|\r|\:)\s*([A-Z]{2,20}\s*,\s*[A-Z\s]{3,50})/gi,
       /(?:student\s*name|name\s*of\s*student)\s*[:\-1l\|\]\}\)]*\s*([A-Za-z\s,\.\-]{3,60})/gi,
-      /(?:certify|certifies|cently|certifye|certiy|patunay|katibayan)\s+(?:that\s+)?[_\W]*([A-Za-z\s,\.\-]{3,60})/gi,
-      /(?:this\s+is\s+to|sto)\s+[a-z]{3,10}\s+that\s+[_\W]*([A-Za-z\s,\.\-]{3,60})/gi,
-      /that\s+[_\W]*([A-Z\s,\.\-]{5,60})/gi,
       /(?:name|pangalan)\s*[:\-]?\s*([A-Za-z\s,\.\-]+?)/gi,
       /\b([A-Za-z]{2,20}\s*,\s*[A-Za-z ]{3,40})\b/g
     ];
@@ -1307,7 +1292,7 @@ function studentNameMatchesText(text, first, middle, last) {
   }
 
   if (candidateNameStr) {
-    candidateNameStr = candidateNameStr.replace(/(?:total|student|course|reg|scholarship|academic|section|units|failure|incomplete|blank|drp|status|pay|discount)[\s\S]*/i, '').trim();
+    candidateNameStr = candidateNameStr.replace(/(?:is\s+a\s+|bonafide|resident|indigent|citizen|filipino|single|married|widow|separated|divorced|of\s+legal\s+age|\d+\s*years|purok|barangay|bayan|lipa|batangas|punong|kagawad|seal|signature|date|issued|total|student|course|reg|scholarship|academic|section|units|failure|incomplete|blank|drp|status|pay|discount)[\s\S]*/i, '').trim();
   }
 
   if (candidateNameStr && (/\d/.test(candidateNameStr) || /AY\s*\d|School\s*Year|Semester|1st|2nd|3rd|Official|Certificate|Registration/i.test(candidateNameStr))) {
@@ -1336,7 +1321,7 @@ function studentNameMatchesText(text, first, middle, last) {
 
     const normCandFirst = normalizeForOcr(candFirstStr.replace(/[^a-zA-Z\s]/g, ' '));
     const normCandLast = normalizeForOcr(candLastStr.replace(/[^a-zA-Z\s]/g, ' '));
-    const stopWords = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines', 'this', 'that', 'years', 'age', 'college', 'course', 'degree', 'year', 'level', 'scholarship', 'discount', 'subject', 'assessed', 'fees', 'units', 'pay', 'type', 'section', 'bldg', 'room', 'faculty', 'days', 'time', 'first', 'second', 'semester', 'sem', 'ay', 'sy'];
+    const stopWords = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines', 'this', 'that', 'years', 'age', 'college', 'course', 'degree', 'year', 'level', 'scholarship', 'discount', 'subject', 'assessed', 'fees', 'units', 'pay', 'type', 'section', 'bldg', 'room', 'faculty', 'days', 'time', 'first', 'second', 'semester', 'sem', 'ay', 'sy', 'is', 'a', 'indigent'];
 
     const candFirstWords = normCandFirst.split(/\s+/).filter(w => {
       if (w.length < 2 || stopWords.includes(w.toLowerCase())) return false;
@@ -4702,7 +4687,7 @@ const StudentInfo = () => {
           const docOnlyText = (detectedText || "").toLowerCase();
           const combinedText = (detectedText + " " + (videoCheck?.detectedText || "")).toLowerCase();
           // Use full name (including middle) with the same strict reverse-candidate check as COR
-          const nameCheck = studentNameMatchesText(docOnlyText, firstName, middleName, lastName);
+          const nameCheck = studentNameMatchesText(docOnlyText, firstName, "", lastName);
           const addrOk = targetBarangay ? addressMatchesText(docOnlyText, targetBarangay) : true;
           const townCityOk = townCity ? addressMatchesText(docOnlyText, townCity) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
@@ -4761,7 +4746,7 @@ const StudentInfo = () => {
 
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
-            "Middle Name": middleName ? nameCheck.details.middle_ok : null,
+            "Middle Name": null,
             "Last Name": nameCheck.details.last_ok,
             "Barangay Address": targetBarangay ? addrOk : null,
             "Town / City": townCity ? townCityOk : null,
@@ -6153,15 +6138,12 @@ const StudentInfo = () => {
         } else if (type === 'mayorIndigency_photo') {
           setOcrVerified(null);
           setOcrStatus('');
-          triggerAutoScan('Indigency');
         } else if (type === 'mayorCOE_photo') {
           setCoeVerified(null);
           setCoeStatus('');
-          triggerAutoScan('Enrollment');
         } else if (type === 'mayorGrades_photo') {
           setGradesVerified(null);
           setGradesStatus('');
-          triggerAutoScan('Grades');
         }
 
         setHasInteracted(true);
@@ -6205,69 +6187,7 @@ const StudentInfo = () => {
 
   const [hasInteracted, setHasInteracted] = useState(false);
 
-  useEffect(() => {
-    // AUTO-SCAN LOGIC
-    if (isAnyScanning || isSavingStep || !autoScanTrigger) return;
-
-    const baseScanType = String(autoScanTrigger).split('_')[0];
-
-    const autoTrigger = async () => {
-      // Step 1: Indigency
-      if (currentStep === 1 && baseScanType === 'Indigency' && ocrVerified === null) {
-        const doc = getVerificationDocumentSource(photos.mayorIndigency_photo, formData.mayorIndigency_photo);
-        const vid = documentVideos.mayorIndigency_video || formData.mayorIndigency_video;
-        if (doc && vid) {
-          handleIndigencyScan();
-          setAutoScanTrigger(null);
-        }
-      }
-
-      // Step 3: School ID, COE, Grades
-      if (currentStep === 3) {
-        // School ID
-        if (baseScanType === 'SchoolID' && idVerified === null) {
-          const front = getVerificationDocumentSource(schoolIdPhotos.front, formData.schoolIdFront);
-          const back = getVerificationDocumentSource(schoolIdPhotos.back, formData.schoolIdBack);
-          const fVid = documentVideos.schoolIdFront_video || formData.schoolIdFront_video;
-          const bVid = documentVideos.schoolIdBack_video || formData.schoolIdBack_video;
-          if (front && back && fVid && bVid) {
-            handleIdScan();
-            setAutoScanTrigger(null);
-          }
-        }
-
-        // COE
-        if (baseScanType === 'Enrollment' && coeVerified === null) {
-          const doc = getVerificationDocumentSource(photos.mayorCOE_photo, formData.mayorCOE_photo);
-          const vid = documentVideos.mayorCOE_video || formData.mayorCOE_video;
-          if (doc && vid) {
-            handleCOEScan();
-            setAutoScanTrigger(null);
-          }
-        }
-
-        // Grades
-        if (baseScanType === 'Grades' && gradesVerified === null) {
-          const doc = getVerificationDocumentSource(photos.mayorGrades_photo, formData.mayorGrades_photo);
-          const vid = documentVideos.mayorGrades_video || formData.mayorGrades_video;
-          if (doc && vid) {
-            handleGradesScan();
-            setAutoScanTrigger(null);
-          }
-        }
-      }
-    };
-
-    autoTrigger();
-  }, [
-    autoScanTrigger,
-    currentStep, ocrVerified, idVerified, coeVerified, gradesVerified,
-    photos.mayorIndigency_photo, documentVideos.mayorIndigency_video,
-    schoolIdPhotos.front, schoolIdPhotos.back, documentVideos.schoolIdFront_video, documentVideos.schoolIdBack_video,
-    photos.mayorCOE_photo, documentVideos.mayorCOE_video,
-    photos.mayorGrades_photo, documentVideos.mayorGrades_video,
-    isAnyScanning, isSavingStep
-  ]);
+  // Auto-scan on image + video input disabled per user configuration. Scanning must be manually initiated by user.
 
   const handleInputChange = (e) => {
     if (isAnyScanning || isSavingStep) return;
