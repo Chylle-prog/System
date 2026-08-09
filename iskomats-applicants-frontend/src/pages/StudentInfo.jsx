@@ -2595,16 +2595,16 @@ const StudentInfo = () => {
         return { valid: false, isMatched: false, reason: "No video proof source provided.", detectedText: "No video file provided for verification." };
       }
 
-      // --- NEW SEEK-BASED VIDEO FRAME EXTRACTOR (FROM TEST FOLDER) ---
-      // Quota Optimization: 2 strategic frames max
+      // --- SEEK-BASED HIGH-SPEED VIDEO FRAME EXTRACTOR ---
+      // Quota & Speed Optimization: 2 strategic frames at 900px resolution
       const sampleRatios = [0.25, 0.65];
-      const maxDim = 1600;
+      const maxDim = 900;
 
       const extractedFrames = await new Promise((resolveFrames) => {
         const video = document.createElement('video');
         video.muted = true;
         video.playsInline = true;
-        video.preload = 'auto';
+        video.preload = 'metadata';
 
         let cleanedUp = false;
         const cleanupVideo = () => {
@@ -2621,7 +2621,7 @@ const StudentInfo = () => {
         const timeout = setTimeout(() => {
           cleanupVideo();
           resolveFrames([]);
-        }, 20000);
+        }, 12000);
 
         video.onerror = (e) => {
           console.warn('[VIDEO OCR] video loading error:', e);
@@ -2656,6 +2656,7 @@ const StudentInfo = () => {
 
             const timestamps = sampleRatios.map(r => Math.max(0.1, Math.min(duration - 0.1, duration * r)));
             const resultCanvases = [];
+            video.playbackRate = 4.0;
 
             for (let i = 0; i < timestamps.length; i++) {
               const seekTime = timestamps[i];
@@ -2670,7 +2671,7 @@ const StudentInfo = () => {
                   canvas.height = targetH;
                   const ctx = canvas.getContext('2d');
                   ctx.imageSmoothingEnabled = true;
-                  ctx.imageSmoothingQuality = 'high';
+                  ctx.imageSmoothingQuality = 'medium';
                   ctx.drawImage(video, 0, 0, targetW, targetH);
 
                   // Canvas 2: Header crop (Top 65%)
@@ -2680,7 +2681,7 @@ const StudentInfo = () => {
                   headerCanvas.height = targetH;
                   const hCtx = headerCanvas.getContext('2d');
                   hCtx.imageSmoothingEnabled = true;
-                  hCtx.imageSmoothingQuality = 'high';
+                  hCtx.imageSmoothingQuality = 'medium';
                   if ('filter' in hCtx) hCtx.filter = 'contrast(125%) brightness(98%)';
                   hCtx.drawImage(video, 0, 0, vw, headerH, 0, 0, targetW, targetH);
 
@@ -2689,7 +2690,11 @@ const StudentInfo = () => {
                 };
 
                 video.addEventListener('seeked', onSeeked, { once: true });
-                video.currentTime = seekTime;
+                if ('fastSeek' in video) {
+                  try { video.fastSeek(seekTime); } catch (e) { video.currentTime = seekTime; }
+                } else {
+                  video.currentTime = seekTime;
+                }
               });
             }
 
@@ -2771,6 +2776,9 @@ const StudentInfo = () => {
 
         const isSchoolIdVideo = fieldName?.includes('schoolId') || fieldName?.includes('schoolid') || fieldName?.includes('schoolIdFront') || fieldName?.includes('schoolIdBack') || fieldName?.includes('face_video') || fieldName?.includes('id_vid');
         const isBackIdVideo = fieldName?.includes('schoolIdBack') || fieldName?.includes('backVid');
+        const isCoeVideo = fieldName?.includes('COE') || fieldName?.includes('enrollment') || fieldName?.includes('certificate') || fieldName?.includes('mayorCOE') || fieldName?.includes('cor');
+        const isGradesVideo = fieldName?.includes('Grades') || fieldName?.includes('grades') || fieldName?.includes('mayorGrades') || fieldName?.includes('reportCard');
+        const isIndigencyVideo = fieldName?.includes('Indigency') || fieldName?.includes('indigency') || fieldName?.includes('Residency') || fieldName?.includes('residency');
 
         const targetBarangay = formData?.barangay || userProfile?.barangay || '';
         const hasNameMatch = allNameWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
@@ -2779,6 +2787,43 @@ const StudentInfo = () => {
         const hasSchoolMatch = schoolWords.length > 0 && schoolWords.some(w => cleanText.includes(w) || rawCombined.includes(w));
         const hasIdMatch = cleanStudentId.length >= 4 && (cleanText.includes(cleanStudentId.toLowerCase()) || rawCombined.includes(cleanStudentId.toLowerCase()));
         const hasAnyDocumentWord = /certificate|registration|enrollment|grade|grades|transcript|report|card|student|college|university|school|semester|academic|course|units|official|republic|philippines|certify|whom/i.test(rawCombined);
+
+        // --- STRICT DOCUMENT-TYPE KEYWORD REJECTION FOR VIDEO PROOF ---
+        if (isCoeVideo) {
+          const hasCorKeywords = /certificate\s*of\s*registration|certificate\s*of\s*enrollment|certification\s*of\s*registration|official\s*receipt|registration|enrollment|\bcor\b|\bcoe\b|enrolled|units|matriculation|assessment|tuition|student\s*load|schedule\s*of\s*classes/i.test(rawCombined);
+          if (!hasCorKeywords) {
+            return {
+              valid: false,
+              isMatched: false,
+              reason: "Enrollment video proof failed: Video does not contain Certificate of Registration or Enrollment keywords.",
+              detectedText: (textLogs || []).join("\n\n") || "No Certificate of Registration or Enrollment keywords found in video frames."
+            };
+          }
+        }
+
+        if (isGradesVideo) {
+          const hasGradesKeywords = /transcript\s*of\s*records?|scholastic\s*records?|student'?s?\s*final\s*grades?|final\s*grades?|report\s*card|gpa|gwa|cwa|qpi|weighted\s*average|general\s*weighted|\bgrades?\b|remarks|passed|rating|evaluation/i.test(rawCombined);
+          if (!hasGradesKeywords) {
+            return {
+              valid: false,
+              isMatched: false,
+              reason: "Grades video proof failed: Video does not contain Transcript or Grades keywords.",
+              detectedText: (textLogs || []).join("\n\n") || "No Transcript or Grades keywords found in video frames."
+            };
+          }
+        }
+
+        if (isIndigencyVideo) {
+          const hasIndigencyKeywords = /certificate\s*of\s*indigency|certificate\s*of\s*residency|punong\s*barangay|office\s*of\s*the\s*punong\s*barangay|indigent|indigency|residency|resident/i.test(rawCombined);
+          if (!hasIndigencyKeywords) {
+            return {
+              valid: false,
+              isMatched: false,
+              reason: "Indigency video proof failed: Video does not contain Certificate of Indigency or Residency keywords.",
+              detectedText: (textLogs || []).join("\n\n") || "No Certificate of Indigency or Residency keywords found in video frames."
+            };
+          }
+        }
 
         if (isSchoolIdVideo) {
           const isIndigencyDocVideo = /punong\s*barangay|barangay\s*inosluban|to\s*whom\s*it\s*may\s*concern|resident\s*of\s*this\s*barangay|residing\s*at|specimen\s*signature|kawalang\s*kabuhayan/i.test(rawCombined) ||
@@ -2834,25 +2879,22 @@ const StudentInfo = () => {
         };
       };
 
-      // --- RUN GOOGLE CLOUD VISION API OCR ON SEEKED FRAMES WITH EARLY MATCH EXIT ---
+      // --- RUN GOOGLE CLOUD VISION API OCR ON SEEKED FRAMES CONCURRENTLY ---
       const accumulatedText = [];
       try {
         if (extractedFrames.length > 0) {
-          for (let i = 0; i < extractedFrames.length; i++) {
-            const { time, canvas } = extractedFrames[i];
-            const frameDataUrl = canvas.toDataURL('image/jpeg', 0.90);
-            const frameText = await performGoogleVisionOcrScan(frameDataUrl);
+          const ocrResults = await Promise.all(
+            extractedFrames.map(async ({ time, canvas }) => {
+              const frameDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+              const frameText = await performGoogleVisionOcrScan(frameDataUrl);
+              return { time, frameText };
+            })
+          );
 
+          for (let i = 0; i < ocrResults.length; i++) {
+            const { time, frameText } = ocrResults[i];
             if (frameText && frameText.length >= 3) {
               accumulatedText.push(`[Frame at ${time.toFixed(1)}s]: "${frameText}"`);
-              console.log(`[VIDEO OCR VISION API] Frame ${i + 1} (${time.toFixed(1)}s) text:`, frameText.substring(0, 120));
-
-              // Check if accumulated text satisfies validation early to stop unnecessary GCP Vision API requests
-              const earlyEval = evaluateVideoText(accumulatedText);
-              if (earlyEval && earlyEval.valid && earlyEval.isMatched) {
-                console.log(`[VIDEO OCR VISION API] Early match confirmed on frame ${i + 1} (${time.toFixed(1)}s). Stopping further frame scans to conserve GCP quota.`);
-                break;
-              }
             }
           }
         }
@@ -4081,12 +4123,22 @@ const StudentInfo = () => {
       else if (docType === 'SchoolID') { setIdVerified(v); }
     };
 
+    let progressInterval = null;
     try {
       visionOcrCache.clear();
       if (!silent) {
         setVerified('verifying');
         setStatus(`Initializing in-browser WebAssembly OCR Engine...`);
-        setScanProgress(5);
+        setScanProgress(10);
+
+        progressInterval = setInterval(() => {
+          setScanProgress(prev => {
+            if (prev >= 92) return prev;
+            const inc = Math.max(1, Math.floor((92 - prev) * 0.12));
+            return Math.min(92, prev + inc);
+          });
+        }, 150);
+
         if (docType === 'Indigency') setIndigencyResults([]);
         else if (docType === 'Enrollment') setCoeResults([]);
         else if (docType === 'Grades') setGradesResults([]);
@@ -4872,6 +4924,9 @@ const StudentInfo = () => {
       setVerified('failed');
       setStatus(errMsg);
       return false;
+    } finally {
+      if (progressInterval) clearInterval(progressInterval);
+      if (!silent) setScanProgress(100);
     }
   }
 
