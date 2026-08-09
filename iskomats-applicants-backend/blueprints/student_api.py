@@ -823,17 +823,17 @@ def build_restriction_identity(first_name=None, middle_name=None, last_name=None
     }
 
 
-def build_duplicate_account_identity(first_name=None, middle_name=None, last_name=None, barangay=None):
+def build_duplicate_account_identity(first_name=None, middle_name=None, last_name=None, school=None):
     applicant_full_name = normalize_identity_name(' '.join(filter(None, [first_name, middle_name, last_name])))
-    barangay = normalize_identity_name(barangay)
+    school = normalize_identity_name(school)
 
-    if not applicant_full_name or not barangay:
+    if not applicant_full_name or not school:
         return None
 
     return {
         'applicant_full_name': applicant_full_name,
-        'barangay': barangay,
-        'identity_key': '|'.join([applicant_full_name, barangay]),
+        'school': school,
+        'identity_key': '|'.join([applicant_full_name, school]),
     }
 
 
@@ -869,13 +869,13 @@ def build_duplicate_account_identity_from_applicant(applicant, source_data=None)
     first_name = source_data.get('firstName') or source_data.get('first_name') or applicant.get('first_name')
     middle_name = source_data.get('middleName') or source_data.get('middle_name') or applicant.get('middle_name')
     last_name = source_data.get('lastName') or source_data.get('last_name') or applicant.get('last_name')
-    barangay = source_data.get('streetBarangay') or source_data.get('street_brgy') or applicant.get('street_brgy') or applicant.get('barangay')
+    school = source_data.get('schoolName') or source_data.get('school_name') or source_data.get('school') or applicant.get('school') or applicant.get('school_name')
 
     return build_duplicate_account_identity(
         first_name=first_name,
         middle_name=middle_name,
         last_name=last_name,
-        barangay=barangay
+        school=school
     )
 
 
@@ -912,7 +912,7 @@ def get_matching_duplicate_applicant_ids(cursor, applicant, source_data=None):
 
     cursor.execute(
         """
-        SELECT applicant_no, first_name, middle_name, last_name, street_brgy as barangay
+        SELECT applicant_no, first_name, middle_name, last_name, school
         FROM applicants
         """
     )
