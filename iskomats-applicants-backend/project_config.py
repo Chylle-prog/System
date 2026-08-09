@@ -59,8 +59,8 @@ def _init_pool():
         
         # Adjust pool size based on environment
         # For managed DBs like Render (limit 20), we keep these very conservative
-        min_conn = int(os.environ.get('DB_POOL_MIN', '1'))
-        max_conn = int(os.environ.get('DB_POOL_MAX', '15'))
+        min_conn = int(os.environ.get('DB_POOL_MIN', '2'))
+        max_conn = int(os.environ.get('DB_POOL_MAX', '40'))
         
         try:
             _CONNECTION_POOL = pool.ThreadedConnectionPool(

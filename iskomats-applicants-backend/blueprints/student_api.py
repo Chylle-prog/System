@@ -56,6 +56,32 @@ def try_int(val):
     except (ValueError, TypeError):
         return None
 
+# ─── IN-MEMORY TTL CACHING FOR HIGH-CONCURRENCY ENDPOINTS ───────────────────
+_TTL_CACHE = {}
+_TTL_CACHE_LOCK = threading.Lock()
+
+def get_cached_response(key, ttl_seconds=60):
+    now = time.time()
+    with _TTL_CACHE_LOCK:
+        if key in _TTL_CACHE:
+            entry = _TTL_CACHE[key]
+            if now < entry['expires']:
+                return entry['data']
+    return None
+
+def set_cached_response(key, data, ttl_seconds=60):
+    now = time.time()
+    with _TTL_CACHE_LOCK:
+        _TTL_CACHE[key] = {
+            'data': data,
+            'expires': now + ttl_seconds
+        }
+
+def invalidate_public_caches():
+    with _TTL_CACHE_LOCK:
+        _TTL_CACHE.clear()
+
+
 def normalize_semester_label(value):
     if not value: return None
     v = str(value).lower().strip()
@@ -2133,21 +2159,31 @@ def student_reset_password():
 
 @student_api_bp.route('/scholarships', methods=['GET'])
 @student_api_bp.route('/scholarships/all', methods=['GET'])
-
-# --- Optimized Scholarships Endpoint ---
-@student_api_bp.route('/scholarships', methods=['GET'])
 def get_all_scholarships():
     start = time.time()
     limit = int(request.args.get('limit', 50))
     offset = int(request.args.get('offset', 0))
-    # Optimization: Bypass invalid global 'cache' reference that causes 500
+    cache_key = f"scholarships_all_{limit}_{offset}"
+    
+    # 1. Check in-memory TTL cache (60s lifetime)
+    cached_data = get_cached_response(cache_key, ttl_seconds=60)
+    if cached_data is not None:
+        resp = jsonify(cached_data)
+        resp.headers['Cache-Control'] = 'public, max-age=60, s-maxage=300, stale-while-revalidate=30'
+        resp.headers['X-Cache-Status'] = 'HIT'
+        return resp
+
     try:
         with get_db() as conn:
             cur = conn.cursor()
             cur.execute('SELECT req_no, scholarship_name, deadline, gpa, parent_finance, location, "desc" as description, semester, year, units, COALESCE(residency_doc_type, \'Indigency Document\') as "residencyDocType", COALESCE(id_type, \'School ID\') as "idType" FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
             rows = cur.fetchall()
-            print(f"[PERF] /scholarships took {time.time() - start:.3f}s (limit={limit}, offset={offset})")
-            return jsonify(rows)
+            set_cached_response(cache_key, rows, ttl_seconds=60)
+            print(f"[PERF] /scholarships DB query took {time.time() - start:.3f}s (limit={limit}, offset={offset})", flush=True)
+            resp = jsonify(rows)
+            resp.headers['Cache-Control'] = 'public, max-age=60, s-maxage=300, stale-while-revalidate=30'
+            resp.headers['X-Cache-Status'] = 'MISS'
+            return resp
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
 
@@ -3811,6 +3847,14 @@ def update_application_status(req_no):
 
 @student_api_bp.route('/announcements', methods=['GET'])
 def get_announcements():
+    cache_key = "announcements_all"
+    cached_data = get_cached_response(cache_key, ttl_seconds=60)
+    if cached_data is not None:
+        resp = jsonify(cached_data)
+        resp.headers['Cache-Control'] = 'public, max-age=60, s-maxage=300, stale-while-revalidate=30'
+        resp.headers['X-Cache-Status'] = 'HIT'
+        return resp
+
     try:
         with get_db() as conn:
             cur = conn.cursor()
@@ -3910,7 +3954,12 @@ def get_announcements():
                     
                     announcements[ann_no]['announcementImages'].append(image_url)
 
-            return jsonify(list(announcements.values()))
+            result_list = list(announcements.values())
+            set_cached_response(cache_key, result_list, ttl_seconds=60)
+            resp = jsonify(result_list)
+            resp.headers['Cache-Control'] = 'public, max-age=60, s-maxage=300, stale-while-revalidate=30'
+            resp.headers['X-Cache-Status'] = 'MISS'
+            return resp
     except Exception as e:
         return jsonify({'message': f"Error fetching announcements: {str(e)}"}), 500
 
