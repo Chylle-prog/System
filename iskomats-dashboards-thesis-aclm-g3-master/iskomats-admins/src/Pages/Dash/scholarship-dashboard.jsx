@@ -1312,11 +1312,12 @@ export default function ScholarshipDashboard({
             else if (m.room === '0+3' || m.room === 'superadmin_room_3') normRoom = 'provider_room_3';
 
             const appNo = m.applicant_no ? String(m.applicant_no) : (normRoom.includes('+') ? normRoom.split('+')[0] : null);
+            const isStudentName = m.username && !m.username.toLowerCase().includes('admin') && !m.username.toLowerCase().includes('mayor') && !m.username.toLowerCase().includes('ched') && !m.username.toLowerCase().includes('vilma');
             return {
               id: m.m_id,
               m_id: m.m_id,
-              studentName: m.username || (appNo ? `Applicant ${appNo}` : 'Admin'),
-              studentEmail: m.username || '',
+              studentName: isStudentName ? m.username : (appNo ? `Applicant ${appNo}` : 'Admin'),
+              studentEmail: isStudentName ? m.username : '',
               applicant_no: appNo,
               pro_no: m.pro_no,
               room: normRoom,
@@ -2885,16 +2886,18 @@ export default function ScholarshipDashboard({
         }
       });
     } else {
-      // Applicant mode: Group applicant messages (excluding rejected and declined applicants)
+      // Applicant mode: Group applicant messages (including all applicant statuses)
       const allKnownApplicants = [
         ...(data.applicants || []),
         ...(data.accepted || []),
+        ...(data.rejected || []),
+        ...(data.declined || []),
         ...(data.cancelled || [])
       ];
 
       allKnownApplicants.forEach(a => {
         const rawId = (a.applicant_no || a.applicantNo || a.applicant_id || a.user_no || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id) || '').toString();
-        if (!rawId) return;
+        if (!rawId || !/^[1-9]\d*$/.test(rawId)) return;
         const key = rawId;
 
         const normName = normalizeProviderIdentity(a.name || (a.firstName ? `${a.firstName} ${a.lastName}` : (a.first_name ? `${a.first_name} ${a.last_name}` : '')));
@@ -2914,10 +2917,11 @@ export default function ScholarshipDashboard({
         }
 
         const applicantRoom = `${key}+${activeProviderNo || 1}`;
+        const officialName = a.name || (a.firstName ? `${a.firstName} ${a.lastName}` : (a.first_name ? `${a.first_name} ${a.last_name}` : `Applicant ${key}`));
 
         if (!grouped[key]) {
           grouped[key] = {
-            studentName: a.name || (a.firstName ? `${a.firstName} ${a.lastName}` : (a.first_name ? `${a.first_name} ${a.last_name}` : `Applicant ${key}`)),
+            studentName: officialName,
             studentEmail: a.email || a.emailAddress,
             studentPhone: a.mobileNumber || a.phone,
             applicant_no: key,
@@ -2928,11 +2932,18 @@ export default function ScholarshipDashboard({
             lastMessage: {
               timestamp: a.dateApplied || a.createdAt || new Date(0).toISOString(),
               message: "No messages yet",
-              studentStatus: a.status || getStudentStatus(key, a.name),
+              studentStatus: a.status || getStudentStatus(key, officialName),
               subject: 'No conversations started yet',
               room: applicantRoom
             },
           };
+        } else {
+          grouped[key].studentName = officialName;
+          grouped[key].studentEmail = a.email || a.emailAddress || grouped[key].studentEmail;
+          grouped[key].studentPhone = a.mobileNumber || a.phone || grouped[key].studentPhone;
+          if (a.status) {
+            grouped[key].lastMessage.studentStatus = a.status;
+          }
         }
       });
 
@@ -2966,12 +2977,19 @@ export default function ScholarshipDashboard({
         // Only allow positive integer applicant numbers — filters out '0', admin names, etc.
         if (!key || !/^[1-9]\d*$/.test(key)) return;
 
+        const match = allKnownApplicants.find(a =>
+          String(a.applicant_no || a.applicantNo || a.applicant_id || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id)) === String(key)
+        );
+        const resolvedStudentName = match
+          ? (match.name || (match.firstName ? `${match.firstName} ${match.lastName}` : (match.first_name ? `${match.first_name} ${match.last_name}` : `Applicant ${key}`)))
+          : (m.is_student_sender && m.username && !m.username.toLowerCase().includes('admin') && !m.username.toLowerCase().includes('mayor') && !m.username.toLowerCase().includes('ched') && !m.username.toLowerCase().includes('vilma') ? m.username : `Applicant ${key}`);
+
         if (!grouped[key]) {
           const applicantRoom = m.room || `${key}+${activeProviderNo || 1}`;
           grouped[key] = {
-            studentName: m.username || m.studentName || `Applicant ${key}`,
-            studentEmail: m.studentEmail || '',
-            studentPhone: m.studentPhone || '',
+            studentName: resolvedStudentName,
+            studentEmail: m.studentEmail || match?.email || match?.emailAddress || '',
+            studentPhone: m.studentPhone || match?.mobileNumber || '',
             applicant_no: key,
             room: applicantRoom,
             isAdminRoom: false,
@@ -2985,6 +3003,8 @@ export default function ScholarshipDashboard({
               room: applicantRoom
             },
           };
+        } else if (match && (grouped[key].studentName.startsWith('Applicant ') || grouped[key].studentName.toLowerCase().includes('admin') || grouped[key].studentName.toLowerCase().includes('mayor'))) {
+          grouped[key].studentName = resolvedStudentName;
         }
 
         const exists = grouped[key].messages.some(existingMsg => {

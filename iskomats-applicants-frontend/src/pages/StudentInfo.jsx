@@ -751,12 +751,17 @@ function formatExtractedRequirementsSummary(rawText) {
       const m = nameSearchText.match(pat);
       if (m && m[1]) {
         let raw = m[1].trim()
+          // Strip leading certificate boilerplate phrases if captured by greedy regex
+          .replace(/^(?:this\s+is\s+to\s+|sto\s+)?(?:certify|certifies|patunay|katibayan|pinatutunayan)\s*(?:that|na\s+si)?\s*/i, '')
+          .replace(/^(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|certify\s+that|pinatutunayan\s+na\s+si)\s*/i, '')
+          .replace(/^[^a-zA-Z]+/, '')
           // Strip trailing age/civil status/citizenship noise
-          .replace(/\s*(?:\d+\s*years?\s*of\s*age|of\s*legal\s*age|\d+\s*(?:years?|yr))\s*.*$/i, '')
-          .replace(/\s*(?:single|married|widow(?:er)?|separated|divorced|filipino(?:\s*citizen)?|pilipino(?:\s*citizen)?)\s*.*$/i, '')
+          .replace(/\s*(?:\d+\s*)?(?:years?\s*of\s*age|of\s*legal\s*age|years?\s*old|years?|yr|yo|taong|age)\b.*$/i, '')
+          .replace(/\s*(?:single|married|widow(?:er)?|separated|divorced|filipino(?:\s*citizen)?|pilipino(?:\s*citizen)?|citizen)\b.*$/i, '')
+          .replace(/\s*(?:is\s+a\s+resident|is\s+a\s+bonafide|resident|bonafide)\b.*$/i, '')
           .trim();
         // Must have at least 2 words (first + last) and only valid name characters
-        if (raw.length >= 3 && /\s/.test(raw) && !/certify|certificate|barangay|office|republic|philippines|punong|that$/i.test(raw)) {
+        if (raw.length >= 3 && /\s/.test(raw) && !/certify|certificate|barangay|office|republic|philippines|punong/i.test(raw)) {
           fullName = raw;
           break;
         }
@@ -929,7 +934,36 @@ function formatExtractedRequirementsSummary(rawText) {
       }
     } else {
       // Format: "MIKAELA YSABEL L. LANTAFE" (Indigency style) or "MIKAELA YSABEL LANTAFE"
-      const words = clean.split(/\s+/).filter(Boolean);
+      let words = clean.split(/\s+/).filter(Boolean);
+
+      const nameNoiseWords = [
+        'age', 'years', 'year', 'yr', 'yo', 'of', 'legal', 'taong', 'gulang',
+        'single', 'married', 'widow', 'widower', 'separated', 'divorced',
+        'filipino', 'pilipino', 'citizen', 'resident', 'bonafide', 'residing',
+        'this', 'is', 'to', 'certify', 'that', 'sto', 'certifies', 'patunay',
+        'katibayan', 'pinatutunayan', 'na', 'si', 'the', 'a', 'and'
+      ];
+
+      // Trim trailing noise words (e.g. "age", "years", "of", "23") from end of words
+      while (words.length > 0) {
+        const lastW = words[words.length - 1].toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (!lastW || nameNoiseWords.includes(lastW) || /^\d+$/.test(lastW)) {
+          words.pop();
+        } else {
+          break;
+        }
+      }
+
+      // Trim leading noise words (e.g. "This", "is", "to", "certify", "that") from start of words
+      while (words.length > 0) {
+        const firstW = words[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (!firstW || nameNoiseWords.includes(firstW)) {
+          words.shift();
+        } else {
+          break;
+        }
+      }
+
       if (words.length >= 3) {
         lastName = words[words.length - 1];
         const potentialMiddle = words[words.length - 2];
@@ -949,6 +983,13 @@ function formatExtractedRequirementsSummary(rawText) {
       } else if (words.length === 1) {
         firstName = words[0];
       }
+    }
+
+    // Strip any residual certificate preamble stop-words (e.g. "This is to certify that") from extracted first name
+    const certStopWords = ['this', 'is', 'to', 'certify', 'that', 'sto', 'certifies', 'patunay', 'katibayan', 'pinatutunayan', 'na', 'si', 'the', 'of', 'a'];
+    if (firstName && firstName !== "Not detected") {
+      const cleanFirst = firstName.split(/\s+/).filter(w => !certStopWords.includes(w.toLowerCase())).join(' ');
+      if (cleanFirst) firstName = cleanFirst;
     }
   }
 
