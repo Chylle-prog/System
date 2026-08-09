@@ -747,7 +747,7 @@ export default function Dash() {
             )}
           </div>
 
-          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className={`flex-1 flex flex-col min-h-0 ${activeTab === 'inbox' ? 'overflow-hidden' : ''}`}>
             {isLoading ? (
               <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-10 text-center h-full flex items-center justify-center">
                 <p className="text-sm font-black uppercase tracking-widest text-gray-500">Loading dashboard data from PostgreSQL...</p>
@@ -969,12 +969,12 @@ export default function Dash() {
                         </button>
                       </div>
                     </div>
-                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-x-auto flex flex-col custom-scrollbar pb-2">
-                      <div className="min-w-[800px] flex flex-col flex-1">
-                        <div>
+                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col pb-2">
+                      <div className="overflow-x-auto overflow-y-auto max-h-[650px] min-h-[300px] custom-scrollbar">
+                        <div className="min-w-[800px]">
                           <table className="w-full text-sm">
-                            <thead>
-                              <tr className="bg-gray-50/50 text-left border-b border-gray-100">
+                            <thead className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur-sm shadow-sm">
+                              <tr className="text-left border-b border-gray-100">
                                 <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 font-black text-gray-400 uppercase tracking-widest text-[9px] sm:text-[10px]">Identified User</th>
                                 <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 font-black text-gray-400 uppercase tracking-widest text-[9px] sm:text-[10px]">System Role</th>
                                 <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 font-black text-gray-400 uppercase tracking-widest text-[9px] sm:text-[10px]">Scholarship Program</th>
@@ -1040,12 +1040,12 @@ export default function Dash() {
                         </button>
                       </div>
                     </div>
-                    <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-x-auto flex flex-col custom-scrollbar pb-2">
-                      <div className="min-w-[800px] flex flex-col flex-1">
-                        <div>
+                    <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col pb-2">
+                      <div className="overflow-x-auto overflow-y-auto max-h-[650px] min-h-[300px] custom-scrollbar">
+                        <div className="min-w-[800px]">
                           <table className="w-full text-sm">
-                            <thead>
-                              <tr className="bg-gray-50/50 text-left text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100">
+                            <thead className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur-sm shadow-sm">
+                              <tr className="text-left text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100">
                                 <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4">Actor</th>
                                 <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4">Action Event</th>
                                 <th className="px-4 sm:px-6 md:px-8 py-3 sm:py-4">Scholarship</th>
