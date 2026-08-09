@@ -4152,7 +4152,7 @@ const StudentInfo = () => {
 
   async function performOcrVerification(docType, docParam, extraParams = {}, videoUrl = null, silent = false) {
     const setStatus = (status) => {
-      if (silent) return;
+      if (silent || scanToken.aborted) return;
       if (docType === 'Indigency') { setOcrStatus(status); }
       else if (docType === 'Enrollment') { setCoeStatus(status); }
       else if (docType === 'Grades') { setGradesStatus(status); }
@@ -4160,7 +4160,7 @@ const StudentInfo = () => {
     };
 
     const setVerified = (v) => {
-      if (silent) return;
+      if (silent || scanToken.aborted) return;
       if (docType === 'Indigency') { setOcrVerified(v); }
       else if (docType === 'Enrollment') { setCoeVerified(v); }
       else if (docType === 'Grades') { setGradesVerified(v); }
@@ -4919,6 +4919,10 @@ const StudentInfo = () => {
         reqNo
       ).catch(err => console.warn('[OCR Engine] Async DB log save note:', err));
 
+      if (scanToken.aborted) {
+        return false;
+      }
+
       if (!silent) setScanProgress(100);
 
       if (isSuccess) {
@@ -4955,6 +4959,7 @@ const StudentInfo = () => {
         return false;
       }
     } catch (err) {
+      if (scanToken.aborted) return false;
       console.error('Client-Side OCR Error:', err);
       const errMsg = `Technical Issue: ${err.message}`;
       setOcrDebugLogs((prev) => ({
@@ -4973,7 +4978,7 @@ const StudentInfo = () => {
       return false;
     } finally {
       if (progressInterval) clearInterval(progressInterval);
-      if (!silent) setScanProgress(100);
+      if (!silent && !scanToken.aborted) setScanProgress(100);
     }
   }
 
@@ -5030,6 +5035,7 @@ const StudentInfo = () => {
 
     try {
       const res = await performOcrVerification('Indigency', indigencyDoc, { townCity: formData.townCityMunicipality, barangay: formData.barangay, isResidencyDoc }, videoUrl);
+      if (activeOcrControllersRef.current['Indigency']?.aborted) return;
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         setOcrVerified('success');
@@ -5093,6 +5099,7 @@ const StudentInfo = () => {
         semester,
         academicYear: targetAcademicYear
       }, videoUrl);
+      if (activeOcrControllersRef.current['Enrollment']?.aborted) return;
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         if (scholarshipDetails) {
@@ -5154,6 +5161,7 @@ const StudentInfo = () => {
         semester: expectedGradesSemester,
         academicYear: targetAcademicYear
       }, videoUrl);
+      if (activeOcrControllersRef.current['Grades']?.aborted) return;
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         // Do NOT auto-fill or overwrite formData.gpa from OCR
@@ -5257,6 +5265,7 @@ const StudentInfo = () => {
         },
         { front: frontVideoUrl, back: backVideoUrl }
       );
+      if (activeOcrControllersRef.current['SchoolID']?.aborted) return;
       const success = res && typeof res === 'object' ? res.isSuccess === true : Boolean(res);
       if (success) {
         setIdVerified('success');
