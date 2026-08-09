@@ -1069,6 +1069,7 @@ function getLevenshteinDistance(a, b) {
 function normalizeNameConfusions(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
     .replace(/1/g, 'i')
+    .replace(/l/g, 'i')
     .replace(/\|/g, 'i')
     .replace(/0/g, 'o')
     .replace(/5/g, 's')
@@ -1078,7 +1079,6 @@ function normalizeNameConfusions(s) {
     .replace(/rn/g, 'm')
     .replace(/cl/g, 'd')
     .replace(/vv/g, 'w')
-    .replace(/l/g, 'i')
     .replace(/y/g, 'i')
     .replace(/j/g, 'i')
     .replace(/u/g, 'v');
@@ -1090,15 +1090,12 @@ function isSimilarWord(expected, actual) {
   const actNorm = actual.toLowerCase().trim();
   if (expNorm === actNorm) return true;
 
-  // Strict OCR glyph confusion match (visual OCR substitutions)
-  const expConf = normalizeNameConfusions(expNorm);
-  const actConf = normalizeNameConfusions(actNorm);
-  if (expConf && expConf === actConf) return true;
-
-  // 1-character OCR edit distance tolerance for names >= 5 chars (e.g. "ysabel" -> "ysabei", "mikaela" -> "mikaeia")
-  const dist = getLevenshteinDistance(expNorm, actNorm);
-  if (expNorm.length >= 5 && actNorm.length >= 5 && dist <= 1) return true;
-  if (expNorm.length >= 8 && dist <= 2) return true;
+  // Strict OCR glyph confusion match (visual OCR substitutions only — requires exact string length match)
+  if (expNorm.length === actNorm.length) {
+    const expConf = normalizeNameConfusions(expNorm);
+    const actConf = normalizeNameConfusions(actNorm);
+    if (expConf && expConf === actConf) return true;
+  }
 
   return false;
 }
