@@ -2835,7 +2835,31 @@ const StudentInfo = () => {
 
         // --- STRICT DOCUMENT-TYPE KEYWORD REJECTION FOR VIDEO PROOF ---
         if (isCoeVideo) {
-          const hasCorKeywords = /certificate\s*of\s*registration|certificate\s*of\s*enrollment|certification\s*of\s*registration|official\s*receipt|registration|enrollment|\bcor\b|\bcoe\b|enrolled|units|matriculation|assessment|tuition|student\s*load|schedule\s*of\s*classes/i.test(rawCombined);
+          // REJECT if video is explicitly a Grades / Transcript document
+          const isGradesDocInVideo = /student'?s?\s*final\s*grades?|final\s*grades?|transcript\s*of\s*records?|scholastic\s*records?|grading\s*system|report\s*card|\bgpa\b|\bgwa\b|\bcwa\b|\bqpi\b|grades\s*in-charge/i.test(rawCombined);
+          if (isGradesDocInVideo) {
+            return {
+              valid: false,
+              isMatched: false,
+              reason: "Enrollment video proof mismatch: Detected Grades / Transcript of Records video instead of Certificate of Registration / Enrollment.",
+              detectedText: (textLogs || []).join("\n\n")
+            };
+          }
+
+          // REJECT if video is a Barangay Indigency / Residency document
+          const isBarangayDocInVideo = /certificate\s*of\s*indigency|certificate\s*of\s*residency|punong\s*barangay|office\s*of\s*the\s*punong\s*barangay|\bindigent\b|\bindigency\b/i.test(rawCombined);
+          if (isBarangayDocInVideo) {
+            return {
+              valid: false,
+              isMatched: false,
+              reason: "Enrollment video proof mismatch: Detected Barangay Indigency/Residency document video instead of Certificate of Registration / Enrollment.",
+              detectedText: (textLogs || []).join("\n\n")
+            };
+          }
+
+          const hasCorKeywords = /certificate\s*of\s*registration|certificate\s*of\s*enrollment|certification\s*of\s*registration|official\s*receipt|\bcor\b|\bcoe\b|matriculation|tuition\s*assessment|student\s*load|schedule\s*of\s*classes|registration\s*form|enrollment\s*form|certificate\s*of\s*matriculation/i.test(rawCombined) ||
+                                (cleanText.includes('registration') && cleanText.includes('certificate')) ||
+                                (cleanText.includes('enrollment') && cleanText.includes('certificate'));
           if (!hasCorKeywords) {
             return {
               valid: false,
@@ -2847,7 +2871,30 @@ const StudentInfo = () => {
         }
 
         if (isGradesVideo) {
-          const hasGradesKeywords = /transcript\s*of\s*records?|scholastic\s*records?|student'?s?\s*final\s*grades?|final\s*grades?|report\s*card|gpa|gwa|cwa|qpi|weighted\s*average|general\s*weighted|\bgrades?\b|remarks|passed|rating|evaluation/i.test(rawCombined);
+          // REJECT if video is explicitly a Certificate of Registration / Enrollment document without Grades
+          const isCorDocInVideo = (/certificate\s*of\s*registration|certification\s*of\s*registration|certificate\s*of\s*enrollment|matriculation|tuition\s*assessment|schedule\s*of\s*classes/i.test(rawCombined) || (cleanText.includes('registration') && cleanText.includes('certificate'))) &&
+                                  !/student'?s?\s*final\s*grades?|final\s*grades?|transcript\s*of\s*records?|scholastic\s*records?|grading\s*system|gpa|gwa|cwa|qpi/i.test(rawCombined);
+          if (isCorDocInVideo) {
+            return {
+              valid: false,
+              isMatched: false,
+              reason: "Grades video proof mismatch: Detected Certificate of Registration / Enrollment video instead of Grades / Transcript of Records.",
+              detectedText: (textLogs || []).join("\n\n")
+            };
+          }
+
+          // REJECT if video is a Barangay Indigency / Residency document
+          const isBarangayDocInVideo = /certificate\s*of\s*indigency|certificate\s*of\s*residency|punong\s*barangay|office\s*of\s*the\s*punong\s*barangay|\bindigent\b|\bindigency\b/i.test(rawCombined);
+          if (isBarangayDocInVideo) {
+            return {
+              valid: false,
+              isMatched: false,
+              reason: "Grades video proof mismatch: Detected Barangay Indigency/Residency document video instead of Grades / Transcript of Records.",
+              detectedText: (textLogs || []).join("\n\n")
+            };
+          }
+
+          const hasGradesKeywords = /transcript\s*of\s*records?|scholastic\s*records?|student'?s?\s*final\s*grades?|final\s*grades?|report\s*card|\bgpa\b|\bgwa\b|\bcwa\b|\bqpi\b|weighted\s*average|general\s*weighted|grading\s*system|\bgrades?\b|grades\s*in-charge/i.test(rawCombined);
           if (!hasGradesKeywords) {
             return {
               valid: false,
@@ -4737,6 +4784,7 @@ const StudentInfo = () => {
 
         if (docType === 'Enrollment') {
           const docOnlyText = (detectedText || "").toLowerCase();
+          const vidText = (videoCheck?.detectedText || "").toLowerCase();
           const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
           const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
           const isNationalId = idType === 'National ID';
@@ -4749,8 +4797,22 @@ const StudentInfo = () => {
           const semOk = semesterMatchesText(detectedText, semester || formData.semester, semester || reqSemester) || semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
           const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText, true) || studentIdNoMatchesText(idNumber, combinedText, true)) : true;
           const yrOk = yearLevel ? yearLevelMatchesText(combinedText, yearLevel) : true;
-          const videoOk = videoCheck ? (videoCheck.valid && videoCheck.isMatched) : (videoUrl ? true : false);
-          const coeTypeOk = coe_type_matches_text(combinedText);
+
+          // Check if video is a Grades document or Barangay document mismatch
+          const isGradesDocInVideo = /student'?s?\s*final\s*grades?|final\s*grades?|transcript\s*of\s*records?|scholastic\s*records?|grading\s*system|\bgpa\b|\bgwa\b|\bcwa\b|\bqpi\b|grades\s*in-charge/i.test(vidText);
+          const isBarangayDocInVideo = /certificate\s*of\s*indigency|certificate\s*of\s*residency|punong\s*barangay|office\s*of\s*the\s*punong\s*barangay|\bindigent\b|\bindigency\b/i.test(vidText);
+
+          if (isGradesDocInVideo) {
+            effectiveVideoOk = false;
+            videoTypeErrorMessage = 'Video proof mismatch: uploaded video is a Grades / Transcript of Records, but scholarship requires Certificate of Registration / Enrollment.';
+          } else if (isBarangayDocInVideo) {
+            effectiveVideoOk = false;
+            videoTypeErrorMessage = 'Video proof mismatch: uploaded video is a Barangay Indigency/Residency document, but scholarship requires Certificate of Registration / Enrollment.';
+          } else {
+            effectiveVideoOk = videoUrl ? (videoCheck ? (videoCheck.valid && videoCheck.isMatched) : true) : true;
+          }
+
+          const coeTypeOk = coe_type_matches_text(detectedText);
 
           const detectedUnits = extractTotalUnitsFromText(docOnlyText) || extractTotalUnitsFromText(detectedText);
           if (detectedUnits !== null && detectedUnits > 0) {
@@ -4765,7 +4827,7 @@ const StudentInfo = () => {
 
           const unitsOk = requiredUnits !== null ? (detectedUnits !== null && detectedUnits === requiredUnits) : true;
 
-          isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && videoOk && coeTypeOk && unitsOk;
+          isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && effectiveVideoOk && coeTypeOk && unitsOk;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
             "Middle Name": middleName ? nameCheck.details.middle_ok : null,
@@ -4778,7 +4840,7 @@ const StudentInfo = () => {
             "ID Number": idNumber ? idOk : null,
             "Document Type": coeTypeOk,
             "Units Requirement": requiredUnits ? (unitsOk ? `Met (${detectedUnits}/${requiredUnits} units)` : `Failed (${detectedUnits || 0}/${requiredUnits} units)`) : (detectedUnits ? `${detectedUnits} units` : null),
-            "Video Proof": videoOk
+            "Video Proof": effectiveVideoOk
           };
           finalMessage = isSuccess
             ? "Enrollment verified successfully client-side!"
@@ -4786,8 +4848,8 @@ const StudentInfo = () => {
               ? (isExplicitGradesDoc(detectedText)
                 ? "Document type mismatch: uploaded file is a Grades / Transcript of Record, but scholarship requires Certificate of Registration / Enrollment."
                 : "Document type mismatch: document does not contain Certificate of Registration or Enrollment keywords.")
-              : (!videoOk
-                ? (videoCheck?.reason || "Enrollment video proof failed validation.")
+              : (!effectiveVideoOk
+                ? (videoTypeErrorMessage || videoCheck?.reason || "Enrollment video proof failed validation.")
                 : (!unitsOk
                   ? `Units requirement mismatch: document shows ${detectedUnits || 0} units, scholarship requires exactly ${requiredUnits} units.`
                   : "Enrollment verification mismatch.")));
@@ -4795,9 +4857,24 @@ const StudentInfo = () => {
         }
         else if (docType === 'Grades') {
           const docOnlyText = (detectedText || "").toLowerCase();
+          const vidText = (videoCheck?.detectedText || "").toLowerCase();
           const combinedText = detectedText + " " + (videoCheck?.detectedText || "");
           const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
           const isNationalId = idType === 'National ID';
+
+          const isCorDocInVideo = (/certificate\s*of\s*registration|certification\s*of\s*registration|certificate\s*of\s*enrollment|matriculation|tuition\s*assessment|schedule\s*of\s*classes/i.test(vidText) || (vidText.includes('registration') && vidText.includes('certificate'))) &&
+                                  !/student'?s?\s*final\s*grades?|final\s*grades?|transcript\s*of\s*records?|scholastic\s*records?|grading\s*system|gpa|gwa|cwa|qpi/i.test(vidText);
+          const isBarangayDocInVideo = /certificate\s*of\s*indigency|certificate\s*of\s*residency|punong\s*barangay|office\s*of\s*the\s*punong\s*barangay|\bindigent\b|\bindigency\b/i.test(vidText);
+
+          if (isCorDocInVideo) {
+            effectiveVideoOk = false;
+            videoTypeErrorMessage = 'Video proof mismatch: uploaded video is a Certificate of Registration / Enrollment, but scholarship requires Grades / Transcript of Record.';
+          } else if (isBarangayDocInVideo) {
+            effectiveVideoOk = false;
+            videoTypeErrorMessage = 'Video proof mismatch: uploaded video is a Barangay Indigency/Residency document, but scholarship requires Grades / Transcript of Record.';
+          } else {
+            effectiveVideoOk = videoUrl ? (videoCheck ? (videoCheck.valid && videoCheck.isMatched) : true) : true;
+          }
 
           const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
           const gpaOk = gpa ? gpaMatchesText(detectedText, gpa) : true;
@@ -4806,11 +4883,10 @@ const StudentInfo = () => {
           const schoolOk = schoolName ? (schoolNameMatchesText(detectedText, schoolName) || schoolNameMatchesText(combinedText, schoolName)) : true;
           const courseOk = course ? (courseMatchesText(course, detectedText) || courseMatchesText(course, combinedText)) : true;
           const idOk = idNumber ? (studentIdNoMatchesText(idNumber, detectedText, true) || studentIdNoMatchesText(idNumber, combinedText, true)) : true;
-          const videoOk = videoCheck ? (videoCheck.valid && videoCheck.isMatched) : (videoUrl ? true : false);
-          const gradesTypeOk = grades_type_matches_text(combinedText);
+          const gradesTypeOk = grades_type_matches_text(detectedText);
           const detectedDocGpa = extractGpaFromText(detectedText, gpa);
 
-          isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && videoOk && gradesTypeOk;
+          isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && effectiveVideoOk && gradesTypeOk;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
             "Middle Name": null,
@@ -4824,7 +4900,7 @@ const StudentInfo = () => {
             "School Name": schoolName ? schoolOk : null,
             "Course / Track": course ? courseOk : null,
             "ID Number": idNumber ? idOk : null,
-            "Video Proof": videoOk
+            "Video Proof": effectiveVideoOk
           };
           finalMessage = isSuccess
             ? "Grades verified successfully client-side!"
@@ -4832,8 +4908,8 @@ const StudentInfo = () => {
               ? (isExplicitCorDoc(detectedText)
                 ? "Document type mismatch: uploaded file is a Certificate of Registration, but scholarship requires Grades / Transcript of Record."
                 : "Document type mismatch: document does not contain Transcript or Grades keywords.")
-              : (!videoOk
-                ? (videoCheck?.reason || "Grades video proof failed validation.")
+              : (!effectiveVideoOk
+                ? (videoTypeErrorMessage || videoCheck?.reason || "Grades video proof failed validation.")
                 : (!gpaOk
                   ? `GPA mismatch: document shows ${detectedDocGpa || 'N/A'}, you entered ${gpa}.`
                   : "Grades verification mismatch.")));
@@ -5002,11 +5078,10 @@ const StudentInfo = () => {
           "ID Number": idNumber || 'N/A',
           "Units Requirement": requiredUnits ? `${detectedUnits !== null ? detectedUnits : 0} / ${requiredUnits} units` : (detectedUnits !== null ? `${detectedUnits} units` : 'N/A'),
           "Document Type": 'Certificate of Registration/Enrollment',
-          "Video Proof": videoOk ? 'Uploaded & Validated' : (videoCheck?.reason || 'No Text Detected in Video')
+          "Video Proof": effectiveVideoOk ? 'Uploaded & Validated' : (videoTypeErrorMessage || videoCheck?.reason || 'No Text Detected in Video')
         };
       } else if (docType === 'Grades') {
-        const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
-        const gradesTypeOk = grades_type_matches_text(combinedText);
+        const gradesTypeOk = grades_type_matches_text(detectedText);
         const detectedDocGpa = extractGpaFromText(detectedText, gpa);
         const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
         const isNationalId = idType === 'National ID';
@@ -5022,7 +5097,7 @@ const StudentInfo = () => {
           "School Name": schoolName || 'N/A',
           "Course / Track": course || 'N/A',
           "ID Number": idNumber || 'N/A',
-          "Video Proof": videoOk ? 'Uploaded & Validated' : (videoCheck?.reason || 'No Text Detected in Video')
+          "Video Proof": effectiveVideoOk ? 'Uploaded & Validated' : (videoTypeErrorMessage || videoCheck?.reason || 'No Text Detected in Video')
         };
       } else if (docType === 'Indigency') {
         const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
