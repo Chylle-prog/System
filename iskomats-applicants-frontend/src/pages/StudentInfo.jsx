@@ -4588,7 +4588,7 @@ const StudentInfo = () => {
           const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
           const isNationalId = idType === 'National ID';
 
-          const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
+          const nameCheck = studentNameMatchesText(detectedText, firstName, "", lastName);
           const gpaOk = gpa ? gpaMatchesText(detectedText, gpa) : true;
           const ayOk = academicYear ? academic_year_matches_expected(combinedText, academicYear) : true;
           const semOk = semesterMatchesText(combinedText, semester || formData.semester, semester || reqSemester);
@@ -4602,7 +4602,7 @@ const StudentInfo = () => {
           isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && videoOk && gradesTypeOk;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
-            "Middle Name": middleName ? nameCheck.details.middle_ok : null,
+            "Middle Name": null,
             "Last Name": nameCheck.details.last_ok,
             "Document Type": gradesTypeOk,
             "GPA (Document)": detectedDocGpa ? (gpaOk ? true : false) : (gpa ? false : null),
@@ -4773,7 +4773,6 @@ const StudentInfo = () => {
 
         debugRequirements = {
           "First Name": firstName || 'N/A',
-          "Middle Name": middleName ? middleName : null,
           "Last Name": lastName || 'N/A',
           "Document Type": 'Grades / Transcript of Record',
           "GPA (Document)": detectedDocGpa || 'Not detected',
