@@ -58,3 +58,11 @@ Reference/
 
 # Verifier Bench
 iskomats-verifier-bench/
+
+# JMeter Load Testing
+jmeter/
+jmeter_html_report/
+*.jtl
+*.jmx
+jmeter.log
+
