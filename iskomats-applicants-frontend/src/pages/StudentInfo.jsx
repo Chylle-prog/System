@@ -744,8 +744,8 @@ function formatExtractedRequirementsSummary(rawText) {
   // We extract just the name portion before age/civil-status/citizenship phrases.
   if (!fullName) {
     const indigencyAnchorPatterns = [
-      /(?:certify|certifies|patunay|katibayan|pinatutunayan)\s+(?:that\s+|na\s+si\s+)?[_\W]*([A-Za-z][A-Za-z\s,\.\-]{2,60}?)(?=\s+\d+\s*(?:years?|yr|yo|taong)|\s+of\s+legal\s+age|\s+(?:single|married|widow|widower|separated|divorced|filipino|pilipino|citizen|is\s+a\s+resident|is\s+a\s+bonafide|a\s+resident|a\s+bonafide|residing|resident|registered)|\r?\n|$)/i,
-      /(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that)\s+[_\W]*([A-Za-z][A-Za-z\s,\.\-]{2,60}?)(?=\s+\d+\s*(?:years?|yr|yo)|\s+of\s+legal\s+age|\s+(?:single|married|widow|separated|filipino|is|a|the|resident|bonafide|residing)|\r?\n|$)/i
+      /(?:certify|certifies|patunay|katibayan|pinatutunayan)\s+(?:that\s+|na\s+si\s+)?[_\W]*([A-Za-z][A-Za-z\s,\.\-]{3,60})(?=\s*(?:\d+\s*years?|of\s*legal\s*age|single|married|widow|separated|divorced|filipino|pilipino|citizen|is\s+a\s+resident|resident|bonafide|\n|$))/i,
+      /(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that)\s+[_\W]*([A-Za-z][A-Za-z\s,\.\-]{3,60})(?=\s*(?:\d+\s*years?|of\s*legal\s*age|single|married|widow|separated|filipino|citizen|resident|bonafide|\n|$))/i
     ];
     for (const pat of indigencyAnchorPatterns) {
       const m = nameSearchText.match(pat);
@@ -1241,9 +1241,9 @@ function studentNameMatchesText(text, first, middle, last) {
   let candidateNameStr = kv.name || null;
   if (!candidateNameStr) {
     const certPatterns = [
-      /(?:certify|certifies|cently|certifye|certiy|patunay|katibayan)\s+(?:that\s+)?[_\W]*([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years|yr|yo|\s+years\s+of\s+age)|\s+(?:is|has|a|the|resident|bonafide|of|residing|registered)|\n|$)/i,
-      /(?:this\s+is\s+to|sto)\s+[a-z]{3,10}\s+that\s+[_\W]*([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years|yr|yo|\s+years\s+of\s+age)|\s+is\s+a\s+resident|\s+a\s+bonafide|\n|$)/i,
-      /that\s+[_\W]*([A-Z\s,\.\-]{5,60}?)(?=\s+\d+\s*(?:years|yr|yo|\s+years\s+of\s+age)|\s+is\s+a\s+resident|\s+a\s+bonafide|\n|$)/i,
+      /(?:certify|certifies|cently|certifye|certiy|patunay|katibayan)\s+(?:that\s+)?[_\W]*([A-Za-z\s,\.\-]{3,60})(?=\s*(?:\d+\s*years|of\s*legal\s*age|single|married|widow|separated|divorced|filipino|pilipino|citizen|is\s+a\s+resident|resident|bonafide|\n|$))/i,
+      /(?:this\s+is\s+to|sto)\s+[a-z]{3,10}\s+that\s+[_\W]*([A-Za-z\s,\.\-]{3,60})(?=\s*(?:\d+\s*years|of\s*legal\s*age|single|married|widow|separated|filipino|citizen|resident|bonafide|\n|$))/i,
+      /that\s+[_\W]*([A-Z\s,\.\-]{5,60})(?=\s*(?:\d+\s*years|of\s*legal\s*age|single|married|widow|separated|filipino|citizen|resident|bonafide|\n|$))/i,
       /(?:name|pangalan)\s*[:\-]?\s*([A-Za-z\s,\.\-]+?)(?=\s+reg|\s+student|\s+id|\n|$)/i
     ];
     for (const pat of certPatterns) {
