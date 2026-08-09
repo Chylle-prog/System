@@ -695,7 +695,19 @@ function extractOcrKeyValues(rawText) {
       }
     }
   }
-  // Fallbacks for column-separated OCR text layouts (where labels and values appear in separate column blocks)
+  // Fallbacks for column-separated OCR text layouts & National ID / PhilSys multi-line formats
+  if (!fields.name) {
+    const philsysFirstMatch = rawText.match(/(?:mga\s*pangalan\s*[\/\-]\s*given\s*names?|given\s*names?|mga\s*pangalan|first\s*name)\s*[:\-\/]*\s*([A-Za-z\s]{2,50})/i);
+    const philsysLastMatch = rawText.match(/(?:apelido\s*[\/\-]\s*last\s*name|last\s*name|surname|apelido)\s*[:\-\/]*\s*([A-Za-z\s]{2,50})/i);
+    if (philsysFirstMatch && philsysLastMatch && philsysFirstMatch[1] && philsysLastMatch[1]) {
+      let firstVal = philsysFirstMatch[1].replace(/^(?:mga\s*pangalan|given\s*names?|[\/\-\:\s])+/i, '').replace(/(?:gitnang|middle|apelido|last|name|sex|date|birth)[\s\S]*/i, '').trim();
+      let lastVal = philsysLastMatch[1].replace(/^(?:apelido|last\s*name|surname|[\/\-\:\s])+/i, '').replace(/(?:mga|pangalan|given|middle|gitnang|sex|date|birth)[\s\S]*/i, '').trim();
+      if (firstVal && lastVal) {
+        fields.name = `${lastVal}, ${firstVal}`;
+      }
+    }
+  }
+
   if (!fields.name) {
     // Restrict fnMatch to single-line spaces (no \n) and filter out noise/header/address keywords
     const fnMatch = rawText.match(/\b([A-Za-z]{2,20}\s*,\s*[A-Za-z ]{3,40})\b/);
