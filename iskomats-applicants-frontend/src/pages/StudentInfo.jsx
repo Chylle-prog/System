@@ -5773,6 +5773,10 @@ const StudentInfo = () => {
 
     const loadProfile = async () => {
       const savedDraft = await loadDraftFromStorage(draftKey);
+      let targetFirstName = '';
+      let targetMiddleName = '';
+      let targetLastName = '';
+      let targetSchool = '';
 
       try {
         setLoadingMessage({ title: 'Loading Profile', message: 'Retrieving your information to pre-fill the application...' });
@@ -5783,9 +5787,9 @@ const StudentInfo = () => {
         const profileFullName = [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(' ');
         const searchFullName = scholarshipSearchProfile?.fullName || '';
 
-        let targetFirstName = profile.first_name || '';
-        let targetMiddleName = profile.middle_name || '';
-        let targetLastName = profile.last_name || '';
+        targetFirstName = profile.first_name || '';
+        targetMiddleName = profile.middle_name || '';
+        targetLastName = profile.last_name || '';
 
         if (searchFullName && searchFullName.trim().toLowerCase() !== profileFullName.trim().toLowerCase()) {
           const parts = splitFullName(searchFullName);
@@ -5801,7 +5805,7 @@ const StudentInfo = () => {
         const targetTown = profile.town_city_municipality || profile.townCity || scholarshipSearchProfile?.town_city_municipality;
         const targetProvince = profile.province || scholarshipSearchProfile?.province;
         const targetZip = profile.zip_code || profile.zipCode || scholarshipSearchProfile?.zip_code;
-        const targetSchool = profile.school || profile.school_name || profile.schoolName || scholarshipSearchProfile?.university || '';
+        targetSchool = profile.school || profile.school_name || profile.schoolName || scholarshipSearchProfile?.university || '';
 
         const updates = {
           firstName: targetFirstName,
