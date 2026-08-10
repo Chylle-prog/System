@@ -849,17 +849,20 @@ def build_restriction_identity(first_name=None, middle_name=None, last_name=None
     }
 
 
-def build_duplicate_account_identity(first_name=None, middle_name=None, last_name=None, school=None):
-    applicant_full_name = normalize_identity_name(' '.join(filter(None, [first_name, middle_name, last_name])))
-    school = normalize_identity_name(school)
+def build_duplicate_account_identity(first_name=None, middle_name=None, last_name=None, *args, **kwargs):
+    first = normalize_identity_name(first_name)
+    middle = normalize_identity_name(middle_name)
+    last = normalize_identity_name(last_name)
 
-    if not applicant_full_name or not school:
+    if not first or not last:
         return None
 
+    identity_key = '|'.join([first, middle, last])
     return {
-        'applicant_full_name': applicant_full_name,
-        'school': school,
-        'identity_key': '|'.join([applicant_full_name, school]),
+        'first_name': first,
+        'middle_name': middle,
+        'last_name': last,
+        'identity_key': identity_key,
     }
 
 
@@ -895,13 +898,11 @@ def build_duplicate_account_identity_from_applicant(applicant, source_data=None)
     first_name = source_data.get('firstName') or source_data.get('first_name') or applicant.get('first_name')
     middle_name = source_data.get('middleName') or source_data.get('middle_name') or applicant.get('middle_name')
     last_name = source_data.get('lastName') or source_data.get('last_name') or applicant.get('last_name')
-    school = source_data.get('schoolName') or source_data.get('school_name') or source_data.get('school') or applicant.get('school') or applicant.get('school_name')
 
     return build_duplicate_account_identity(
         first_name=first_name,
         middle_name=middle_name,
-        last_name=last_name,
-        school=school
+        last_name=last_name
     )
 
 
@@ -938,7 +939,7 @@ def get_matching_duplicate_applicant_ids(cursor, applicant, source_data=None):
 
     cursor.execute(
         """
-        SELECT applicant_no, first_name, middle_name, last_name, school
+        SELECT applicant_no, first_name, middle_name, last_name
         FROM applicants
         """
     )
