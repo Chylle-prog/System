@@ -5754,7 +5754,7 @@ const StudentInfo = () => {
       firstName: searchNameParts.firstName,
       middleName: searchNameParts.middleName,
       lastName: searchNameParts.lastName,
-      schoolName: normalizeSelectValue(scholarshipSearchProfile?.university, SCHOOLS),
+      schoolName: scholarshipSearchProfile?.university || '',
       gpa: urlGpa || scholarshipSearchProfile?.gpa || '',
       parentsGrossIncome: urlIncome || scholarshipSearchProfile?.income || '',
       barangay: normalizeSelectValue(scholarshipSearchProfile?.street_brgy, BARANGAYS),
@@ -5801,6 +5801,7 @@ const StudentInfo = () => {
         const targetTown = profile.town_city_municipality || profile.townCity || scholarshipSearchProfile?.town_city_municipality;
         const targetProvince = profile.province || scholarshipSearchProfile?.province;
         const targetZip = profile.zip_code || profile.zipCode || scholarshipSearchProfile?.zip_code;
+        const targetSchool = profile.school || profile.school_name || profile.schoolName || scholarshipSearchProfile?.university || '';
 
         const updates = {
           firstName: targetFirstName,
@@ -5812,7 +5813,7 @@ const StudentInfo = () => {
           sex: profile.sex === 'M' ? 'Male' : profile.sex === 'F' ? 'Female' : (profile.sex || ''),
           citizenship: profile.citizenship || '',
           schoolIdNumber: profile.school_id_no || '',
-          schoolName: normalizeSelectValue(profile.school || scholarshipSearchProfile?.university, SCHOOLS),
+          schoolName: targetSchool,
           schoolAddress: profile.school_address || '',
           schoolSector: profile.school_sector || '',
           mobileNumber: profile.mobile_no || '',
@@ -5935,6 +5936,7 @@ const StudentInfo = () => {
 
           return {
             ...merged,
+            schoolName: targetSchool || merged.schoolName || prev.schoolName || '',
             parentsGrossIncome: preservedIncome,
             gpa: preservedGpa,
             firstName: targetFirstName,
@@ -6054,6 +6056,12 @@ const StudentInfo = () => {
           if (savedDraft.formData) {
             setFormData(prev => {
               const updated = { ...prev, ...savedDraft.formData };
+              if (targetSchool) {
+                updated.schoolName = targetSchool;
+              }
+              if (targetFirstName) updated.firstName = targetFirstName;
+              if (targetLastName) updated.lastName = targetLastName;
+              if (targetMiddleName) updated.middleName = targetMiddleName;
               return updated;
             });
           }
@@ -7953,7 +7961,7 @@ const StudentInfo = () => {
             <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '18px', padding: '1rem 1.1rem' }}>
               <div style={{ fontSize: '0.72rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9a3412', marginBottom: '0.4rem' }}>Profile Snapshot</div>
               <div style={{ fontSize: '1rem', fontWeight: '700', color: '#431407' }}>{[formData.firstName, formData.middleName, formData.lastName].filter(Boolean).join(' ') || currentUser}</div>
-              <div style={{ fontSize: '0.82rem', color: '#7c2d12', marginTop: '0.35rem' }}>{formData.schoolName || 'School not set yet'}</div>
+              <div style={{ fontSize: '0.82rem', color: '#7c2d12', marginTop: '0.35rem' }}>{formData.schoolName || userProfile?.school || userProfile?.school_name || userProfile?.schoolName || 'School not set yet'}</div>
             </div>
             <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '18px', padding: '1rem 1.1rem' }}>
               <div style={{ fontSize: '0.72rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#1d4ed8', marginBottom: '0.4rem' }}>Find Scholarship Data</div>
@@ -8424,7 +8432,7 @@ const StudentInfo = () => {
                     <input
                       type="text"
                       name="schoolName"
-                      value={formData.schoolName}
+                      value={formData.schoolName || userProfile?.school || userProfile?.school_name || userProfile?.schoolName || ''}
                       readOnly
                       style={{ backgroundColor: '#f8fafc', color: '#64748b', cursor: 'not-allowed' }}
                       placeholder="School Name"

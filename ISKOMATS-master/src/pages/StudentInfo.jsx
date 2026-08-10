@@ -1394,6 +1394,8 @@ const StudentInfo = () => {
           targetLastName = parts.lastName || targetLastName;
         }
 
+        const targetSchool = profile.school || profile.school_name || profile.schoolName || scholarshipSearchProfile?.university || '';
+
         const updates = {
           firstName: targetFirstName,
           lastName: targetLastName,
@@ -1404,7 +1406,7 @@ const StudentInfo = () => {
           sex: profile.sex === 'M' ? 'Male' : profile.sex === 'F' ? 'Female' : (profile.sex || ''),
           citizenship: profile.citizenship || '',
           schoolIdNumber: profile.school_id_no || '',
-          schoolName: normalizeSelectValue(scholarshipSearchProfile?.university || profile.school, SCHOOLS),
+          schoolName: targetSchool,
           schoolAddress: profile.school_address || '',
           schoolSector: profile.school_sector || '',
           mobileNumber: profile.mobile_no || '',
@@ -1444,6 +1446,7 @@ const StudentInfo = () => {
           const merged = mergeMeaningfulValues(prev, updates);
           return {
             ...merged,
+            schoolName: targetSchool || merged.schoolName || prev.schoolName || '',
             firstName: targetFirstName,
             lastName: targetLastName,
             middleName: targetMiddleName
@@ -3381,7 +3384,7 @@ const StudentInfo = () => {
                   <div className="form-group">
                     <label>Name of School <span style={{ color: '#e74c3c' }}>*</span></label>
                     <>
-                      <input type="text" name="schoolName" value={formData.schoolName} onChange={handleInputChange} placeholder="Type your school name" list="studentinfo-school-options" required={currentStep === 3} />
+                      <input type="text" name="schoolName" value={formData.schoolName || userProfile?.school || userProfile?.school_name || userProfile?.schoolName || ''} onChange={handleInputChange} placeholder="Type your school name" list="studentinfo-school-options" required={currentStep === 3} />
                       <datalist id="studentinfo-school-options">
                         {SCHOOLS.map((school) => (
                           <option key={school} value={school}>{school}</option>
