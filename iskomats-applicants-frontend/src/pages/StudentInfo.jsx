@@ -7772,33 +7772,52 @@ const StudentInfo = () => {
 
           /* Form container & card */
           .form-container {
-            padding: 1rem 3%;
+            padding: 0.75rem 2%;
           }
           .form-card {
-            padding: 1.5rem 1.2rem;
+            padding: 1.2rem 1rem;
             border-radius: 20px;
           }
 
+          /* Scale down inputs & labels so they don't look huge on phone screens */
+          .form-group {
+            margin-bottom: 1rem;
+          }
+          .form-group label {
+            font-size: 0.8rem;
+            margin-bottom: 0.35rem;
+          }
+          .form-group input,
+          .form-group textarea,
+          .form-group select {
+            padding: 0.65rem 0.9rem;
+            font-size: 0.88rem;
+            border-radius: 12px;
+          }
+
           /* Section header */
+          .section-header {
+            margin-bottom: 1.5rem;
+          }
           .section-header h2 {
-            font-size: 1.35rem;
+            font-size: 1.25rem;
           }
           .section-header p {
-            font-size: 0.9rem;
+            font-size: 0.85rem;
           }
 
           /* Step indicator */
           .step-indicator {
-            margin-bottom: 2rem;
+            margin-bottom: 1.8rem;
             padding: 0 4px;
           }
           .step-item {
-            width: 60px;
+            width: 50px;
           }
           .step-circle {
-            width: 36px;
-            height: 36px;
-            font-size: 0.9rem;
+            width: 32px;
+            height: 32px;
+            font-size: 0.85rem;
           }
           .step-label {
             display: none;
@@ -7807,13 +7826,13 @@ const StudentInfo = () => {
           /* Form rows — always stack on mobile */
           .form-row {
             grid-template-columns: 1fr !important;
-            gap: 0.8rem;
+            gap: 0.6rem;
           }
 
           /* Requirement & media cards */
           .requirement-card {
-            padding: 1.2rem 1rem;
-            border-radius: 20px;
+            padding: 1rem 0.85rem;
+            border-radius: 16px;
           }
           .media-grid {
             grid-template-columns: 1fr !important;
@@ -7836,7 +7855,8 @@ const StudentInfo = () => {
             width: 100% !important;
             text-align: center;
             justify-content: center;
-            padding: 0.85rem 1rem !important;
+            padding: 0.75rem 1rem !important;
+            font-size: 0.88rem !important;
           }
 
           /* Profile summary grid */
@@ -7847,8 +7867,8 @@ const StudentInfo = () => {
 
           /* Camera modal */
           .camera-modal-content {
-            padding: 1.5rem 1rem;
-            border-radius: 20px;
+            padding: 1.2rem 0.85rem;
+            border-radius: 18px;
             width: 95%;
           }
 
@@ -7859,8 +7879,8 @@ const StudentInfo = () => {
 
           /* Loading modal */
           .loading-modal {
-            padding: 2rem 1.5rem;
-            border-radius: 24px;
+            padding: 1.8rem 1.2rem;
+            border-radius: 20px;
           }
 
           /* Wizard steps horizontal scroll */
@@ -7877,26 +7897,26 @@ const StudentInfo = () => {
             gap: 0.6rem;
           }
           .logout-btn {
-            padding: 0.4rem 1rem;
-            font-size: 0.82rem;
+            padding: 0.4rem 0.9rem;
+            font-size: 0.8rem;
           }
           .form-card {
-            padding: 1.2rem 0.9rem;
+            padding: 1rem 0.75rem;
             border-radius: 16px;
           }
           .requirement-card {
-            padding: 1rem 0.85rem;
+            padding: 0.85rem 0.75rem;
           }
           .step-circle {
-            width: 32px;
-            height: 32px;
-            font-size: 0.8rem;
+            width: 30px;
+            height: 30px;
+            font-size: 0.78rem;
           }
           .section-header h2 {
-            font-size: 1.2rem;
+            font-size: 1.15rem;
           }
           .media-grid {
-            gap: 1rem;
+            gap: 0.85rem;
           }
           .doc-media-grid {
             grid-template-columns: 1fr !important;
@@ -7914,50 +7934,60 @@ const StudentInfo = () => {
         /* ── Extra small phones (≤ 480px) ── */
         @media (max-width: 480px) {
           .navbar-brand {
-            font-size: 1.1rem;
+            font-size: 1.05rem;
           }
           .form-container {
-            padding: 0.75rem 2.5%;
+            padding: 0.5rem 1.5%;
           }
           .form-card {
-            padding: 1rem 0.8rem;
+            padding: 0.85rem 0.65rem;
             border-radius: 14px;
           }
+          .form-group input,
+          .form-group textarea,
+          .form-group select {
+            padding: 0.55rem 0.75rem;
+            font-size: 0.82rem;
+            border-radius: 10px;
+          }
+          .form-group label {
+            font-size: 0.78rem;
+          }
           .section-header h2 {
-            font-size: 1.1rem;
+            font-size: 1.05rem;
           }
           .section-header p {
-            font-size: 0.82rem;
+            font-size: 0.8rem;
           }
           .submit-btn {
-            font-size: 0.9rem;
-            padding: 0.85rem 1.2rem;
+            font-size: 0.85rem;
+            padding: 0.75rem 1rem;
           }
           .step-nav-row .submit-btn {
-            font-size: 0.88rem;
+            font-size: 0.85rem;
           }
           /* Camera buttons stack */
           .camera-modal-content {
             width: 98%;
-            padding: 1rem 0.8rem;
+            padding: 1rem 0.75rem;
           }
           /* Image containers adjust */
           .image-container {
-            height: 160px !important;
+            height: 150px !important;
           }
           /* Touch-friendly minimum target sizes */
           button, .submit-btn, .back-to-form-btn, .logout-btn {
-            min-height: 44px;
+            min-height: 40px;
           }
           /* Prompt alert: full width with margin */
           .prompt-alert {
-            left: 16px !important;
-            right: 16px !important;
+            left: 12px !important;
+            right: 12px !important;
             transform: none !important;
-            width: calc(100% - 32px) !important;
+            width: calc(100% - 24px) !important;
             text-align: center;
             justify-content: center;
-            font-size: 0.88rem;
+            font-size: 0.82rem;
           }
           .prompt-alert.active {
             transform: translateY(0) !important;
