@@ -7088,6 +7088,7 @@ const StudentInfo = () => {
           background-color: #f9fafc;
           color: #121826;
           line-height: 1.5;
+          overflow-x: hidden;
         }
 
         :root {
@@ -7222,6 +7223,7 @@ const StudentInfo = () => {
           margin: 0 auto;
           padding: 2rem 5%;
           animation: fadeIn 0.6s ease-out;
+          overflow-x: hidden;
         }
 
         .form-card {
@@ -7337,7 +7339,7 @@ const StudentInfo = () => {
 
         .form-row {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
           gap: 1.2rem;
           margin-bottom: 1.2rem;
         }
@@ -7692,16 +7694,176 @@ const StudentInfo = () => {
           border-radius: 16px;
         }
 
+        /* Signature Pad - ensure it always fills container */
+        .signature-pad-container {
+          width: 100%;
+          height: 100%;
+          display: block;
+          position: relative;
+        }
+        .signature-pad-container canvas {
+          display: block;
+          width: 100% !important;
+          height: 100% !important;
+          touch-action: none;
+        }
+
+        /* Step subtitle */
+        .step-subtitle {
+          font-size: 1.15rem;
+          color: #1a202c;
+          font-weight: 800;
+        }
+
+        /* Debug button — keep off form content on mobile */
         @media (max-width: 768px) {
-          .step-label { display: none; }
-          .form-card { padding: 1.25rem 1rem !important; }
-          .navbar { padding: 1rem 5%; }
-          .media-grid { grid-template-columns: 1fr; }
-          .form-group-row, .grid-2, .grid-3 {
-            grid-template-columns: 1fr !important;
-            flex-direction: column !important;
-            gap: 0.75rem !important;
+          .debug-fab {
+            bottom: 80px !important;
           }
+        }
+
+        /* ==========================================
+           RESPONSIVE BREAKPOINTS — StudentInfo
+           ========================================== */
+
+        /* ── Large screens: widen the form container ── */
+        @media (min-width: 1200px) {
+          .form-container {
+            max-width: 1000px;
+          }
+        }
+
+        /* ── Tablet & below (≤ 900px) ── */
+        @media (max-width: 900px) {
+          .form-container {
+            padding: 1.5rem 4%;
+          }
+          .form-card {
+            padding: 2rem 1.8rem;
+          }
+          .section-header h2 {
+            font-size: 1.5rem;
+          }
+          .requirement-card {
+            padding: 1.4rem;
+          }
+          .profile-summary-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+
+        /* ── Tablet portrait (≤ 768px) ── */
+        @media (max-width: 768px) {
+          /* Navbar */
+          .navbar {
+            padding: 0.8rem 4%;
+            flex-wrap: nowrap;
+            gap: 0.5rem;
+          }
+          .navbar-brand {
+            font-size: 1.3rem;
+          }
+          .navbar-menu {
+            gap: 1rem;
+          }
+          .navbar-menu span {
+            display: none;
+          }
+
+          /* Form container & card */
+          .form-container {
+            padding: 1rem 3%;
+          }
+          .form-card {
+            padding: 1.5rem 1.2rem;
+            border-radius: 20px;
+          }
+
+          /* Section header */
+          .section-header h2 {
+            font-size: 1.35rem;
+          }
+          .section-header p {
+            font-size: 0.9rem;
+          }
+
+          /* Step indicator */
+          .step-indicator {
+            margin-bottom: 2rem;
+            padding: 0 4px;
+          }
+          .step-item {
+            width: 60px;
+          }
+          .step-circle {
+            width: 36px;
+            height: 36px;
+            font-size: 0.9rem;
+          }
+          .step-label {
+            display: none;
+          }
+
+          /* Form rows — always stack on mobile */
+          .form-row {
+            grid-template-columns: 1fr !important;
+            gap: 0.8rem;
+          }
+
+          /* Requirement & media cards */
+          .requirement-card {
+            padding: 1.2rem 1rem;
+            border-radius: 20px;
+          }
+          .media-grid {
+            grid-template-columns: 1fr !important;
+          }
+
+          /* Document media grids (photo + video side by side) */
+          .doc-media-grid {
+            grid-template-columns: 1fr !important;
+            gap: 12px;
+          }
+
+          /* Step nav button rows */
+          .step-nav-row {
+            flex-direction: column-reverse !important;
+            gap: 0.75rem;
+            align-items: stretch !important;
+          }
+          .step-nav-row .submit-btn,
+          .step-nav-row .back-to-form-btn {
+            width: 100% !important;
+            text-align: center;
+            justify-content: center;
+            padding: 0.85rem 1rem !important;
+          }
+
+          /* Profile summary grid */
+          .profile-summary-grid {
+            grid-template-columns: 1fr !important;
+            gap: 0.75rem;
+          }
+
+          /* Camera modal */
+          .camera-modal-content {
+            padding: 1.5rem 1rem;
+            border-radius: 20px;
+            width: 95%;
+          }
+
+          /* Image containers: don't shrink below usable size */
+          .image-container {
+            height: 180px !important;
+          }
+
+          /* Loading modal */
+          .loading-modal {
+            padding: 2rem 1.5rem;
+            border-radius: 24px;
+          }
+
+          /* Wizard steps horizontal scroll */
           .wizard-steps {
             overflow-x: auto;
             padding-bottom: 0.5rem;
@@ -7709,16 +7871,96 @@ const StudentInfo = () => {
           }
         }
 
-        @media (max-width: 480px) {
-          .form-header h2 {
-            font-size: 1.35rem !important;
+        /* ── Small phones (≤ 600px) ── */
+        @media (max-width: 600px) {
+          .navbar-menu {
+            gap: 0.6rem;
+          }
+          .logout-btn {
+            padding: 0.4rem 1rem;
+            font-size: 0.82rem;
           }
           .form-card {
-            border-radius: 16px !important;
+            padding: 1.2rem 0.9rem;
+            border-radius: 16px;
           }
-          .btn-primary, .btn-secondary, .btn-submit {
-            width: 100% !important;
-            padding: 0.85rem 1rem !important;
+          .requirement-card {
+            padding: 1rem 0.85rem;
+          }
+          .step-circle {
+            width: 32px;
+            height: 32px;
+            font-size: 0.8rem;
+          }
+          .section-header h2 {
+            font-size: 1.2rem;
+          }
+          .media-grid {
+            gap: 1rem;
+          }
+          .doc-media-grid {
+            grid-template-columns: 1fr !important;
+          }
+          /* Validation status cards wrap gracefully */
+          .validation-status-card {
+            flex-direction: column;
+            gap: 10px;
+          }
+          .status-icon {
+            align-self: flex-start;
+          }
+        }
+
+        /* ── Extra small phones (≤ 480px) ── */
+        @media (max-width: 480px) {
+          .navbar-brand {
+            font-size: 1.1rem;
+          }
+          .form-container {
+            padding: 0.75rem 2.5%;
+          }
+          .form-card {
+            padding: 1rem 0.8rem;
+            border-radius: 14px;
+          }
+          .section-header h2 {
+            font-size: 1.1rem;
+          }
+          .section-header p {
+            font-size: 0.82rem;
+          }
+          .submit-btn {
+            font-size: 0.9rem;
+            padding: 0.85rem 1.2rem;
+          }
+          .step-nav-row .submit-btn {
+            font-size: 0.88rem;
+          }
+          /* Camera buttons stack */
+          .camera-modal-content {
+            width: 98%;
+            padding: 1rem 0.8rem;
+          }
+          /* Image containers adjust */
+          .image-container {
+            height: 160px !important;
+          }
+          /* Touch-friendly minimum target sizes */
+          button, .submit-btn, .back-to-form-btn, .logout-btn {
+            min-height: 44px;
+          }
+          /* Prompt alert: full width with margin */
+          .prompt-alert {
+            left: 16px !important;
+            right: 16px !important;
+            transform: none !important;
+            width: calc(100% - 32px) !important;
+            text-align: center;
+            justify-content: center;
+            font-size: 0.88rem;
+          }
+          .prompt-alert.active {
+            transform: translateY(0) !important;
           }
         }
       `}</style>
@@ -7956,7 +8198,7 @@ const StudentInfo = () => {
             }</p>
           </div>
 
-          <div style={{
+          <div className="profile-summary-grid" style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
             gap: '1rem',
@@ -8186,7 +8428,7 @@ const StudentInfo = () => {
                           isVerifying: ocrVerified === 'verifying'
                         })}
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+                        <div className="doc-media-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
                           <div className="scanning-container">
                             <div className="image-container" style={{ height: '240px' }} onClick={() => (photos.mayorIndigency_photo || formData.mayorIndigency_photo) && setLightboxSrc(photos.mayorIndigency_photo || formData.mayorIndigency_photo)}>
                               {(photos.mayorIndigency_photo || formData.mayorIndigency_photo) ? (
@@ -8295,7 +8537,7 @@ const StudentInfo = () => {
                   );
                 })()}
 
-                <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end' }}>
+                <div className="step-nav-row" style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end' }}>
                   <button
                     type="button"
                     className="submit-btn"
@@ -8397,7 +8639,7 @@ const StudentInfo = () => {
                 </div>
 
 
-                <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'space-between' }}>
+                <div className="step-nav-row" style={{ marginTop: '2rem', display: 'flex', justifyContent: 'space-between' }}>
                   <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
                     <i className="fas fa-arrow-left" style={{ marginRight: '8px' }}></i> Back: Personal Info
                   </button>
@@ -8575,7 +8817,7 @@ const StudentInfo = () => {
                         </div>
 
                         {/* Media Pickers */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '1.2rem' }}>
+                        <div className="doc-media-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '1.2rem' }}>
                           <div>
                             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '800', color: '#3b82f6', marginBottom: '6px' }}>{isNationalId ? 'National ID Front Media' : 'Front ID Media'}</label>
                             {renderDocumentMediaPicker({
@@ -8795,7 +9037,7 @@ const StudentInfo = () => {
                           isVerifying: coeVerified === 'verifying'
                         })}
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+                        <div className="doc-media-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
                           <div className="scanning-container">
                             <div className="image-container" style={{ height: '240px' }} onClick={() => (photos.mayorCOE_photo || formData.mayorCOE_photo) && setLightboxSrc(photos.mayorCOE_photo || formData.mayorCOE_photo)}>
                               {(photos.mayorCOE_photo || formData.mayorCOE_photo) ? (
@@ -8933,7 +9175,7 @@ const StudentInfo = () => {
                             isVerifying: gradesVerified === 'verifying'
                           })}
 
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+                          <div className="doc-media-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
                             <div className="scanning-container">
                               <div className="image-container" style={{ height: '240px' }} onClick={() => (photos.mayorGrades_photo || formData.mayorGrades_photo) && setLightboxSrc(photos.mayorGrades_photo || formData.mayorGrades_photo)}>
                                 {(photos.mayorGrades_photo || formData.mayorGrades_photo) ? (
@@ -9080,7 +9322,7 @@ const StudentInfo = () => {
                   </div>
                 )}
 
-                <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'space-between' }}>
+                <div className="step-nav-row" style={{ marginTop: '2rem', display: 'flex', justifyContent: 'space-between' }}>
                   <button type="button" className="back-to-form-btn" onClick={handlePrevStep}>
                     <i className="fas fa-arrow-left" style={{ marginRight: '8px' }}></i> Back: Family Background
                   </button>
@@ -9157,7 +9399,7 @@ const StudentInfo = () => {
                               </button>
                             ) : showSignaturePad ? (
                               <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
-                                <div ref={signatureContainerRef} style={{ border: '1.5px solid #eee', borderRadius: '12px', background: '#fcfcfc', marginBottom: '1rem', overflow: 'hidden', height: '180px' }}>
+                                <div ref={signatureContainerRef} style={{ border: '1.5px solid #eee', borderRadius: '12px', background: '#fcfcfc', marginBottom: '1rem', overflow: 'hidden', height: '180px', position: 'relative', touchAction: 'none' }}>
                                   <SignaturePad
                                     ref={sigPad}
                                     canvasProps={{

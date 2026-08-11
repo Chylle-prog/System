@@ -7,8 +7,44 @@ const SignaturePad = forwardRef(({
   penColor = "#000"
 }, ref) => {
   const canvasRef = useRef(null);
+  const containerRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [isEmpty, setIsEmpty] = useState(true);
+
+  // Resize canvas to match the actual rendered container size
+  const resizeCanvas = () => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const rect = container.getBoundingClientRect();
+    const newW = Math.floor(rect.width) || width;
+    const newH = Math.floor(rect.height) || height;
+
+    // Only resize if dimensions changed (avoids clearing a clean canvas)
+    if (canvas.width !== newW || canvas.height !== newH) {
+      // Preserve existing drawing
+      const imageData = canvas.toDataURL();
+      canvas.width = newW;
+      canvas.height = newH;
+
+      // Re-apply context styles after resize
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, newW, newH);
+      ctx.strokeStyle = penColor;
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Restore drawing if canvas wasn't empty
+      if (!isEmpty) {
+        const img = new Image();
+        img.onload = () => ctx.drawImage(img, 0, 0, newW, newH);
+        img.src = imageData;
+      }
+    }
+  };
 
   useImperativeHandle(ref, () => ({
     clear: () => {
@@ -30,17 +66,23 @@ const SignaturePad = forwardRef(({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
 
-    const ctx = canvas.getContext('2d');
-    
-    // Set initial canvas state - Match Verifier Bench specs
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = penColor;
-    ctx.lineWidth = 2.5; // EXACT match with Verifier Bench
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    // Initial resize to match container
+    resizeCanvas();
+
+    // Watch for container size changes (e.g., orientation change, panel open/close)
+    let observer;
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => resizeCanvas());
+      observer.observe(container);
+    }
+
+    return () => {
+      if (observer) observer.disconnect();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [penColor]);
 
   const getCoordinates = (e) => {
@@ -48,10 +90,10 @@ const SignaturePad = forwardRef(({
     const rect = canvas.getBoundingClientRect();
     
     // Handle both mouse and touch events
-    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    const clientX = e.clientX ?? (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY ?? (e.touches && e.touches[0].clientY);
     
-    // Scale coordinates EXACTLY like Verifier Bench
+    // Scale coordinates to match internal canvas resolution
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     
@@ -94,17 +136,22 @@ const SignaturePad = forwardRef(({
   };
 
   return (
-    <div className="signature-pad-container" style={{ width: '100%', overflow: 'hidden' }}>
+    <div
+      ref={containerRef}
+      className="signature-pad-container"
+      style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}
+    >
       <canvas
         ref={canvasRef}
-        width={width}
-        height={height}
         style={{
           cursor: 'crosshair',
           touchAction: 'none',
           backgroundColor: 'white',
           display: 'block',
-          width: '100%'
+          width: '100%',
+          height: '100%',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
         }}
         onMouseDown={startDrawing}
         onMouseMove={draw}
