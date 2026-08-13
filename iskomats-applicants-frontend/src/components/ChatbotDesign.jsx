@@ -1,4 +1,4 @@
-﻿import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 
 const ISKOBOTS_CSS = `
   .iskobots-root *, .iskobots-root *::before, .iskobots-root *::after { box-sizing: border-box; }
@@ -123,7 +123,7 @@ const ISKOBOTS_CSS = `
 `
 
 function ChatbotDesign({
-  apiUrl = import.meta.env.VITE_CHATBOT_API_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:8000',
+  apiUrl: rawApiUrl = import.meta.env.VITE_CHATBOT_API_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || 'https://iskomats-backend.onrender.com',
   botName = 'IskoBots',
   primaryColor = '#4F0D00',
   suggestions = [
@@ -135,6 +135,7 @@ function ChatbotDesign({
   zIndex = 999,
   userName: defaultUserName = '',
 }) {
+  const apiUrl = useMemo(() => (rawApiUrl || '').replace(/system-hxgp\.onrender\.com/, 'iskomats-backend.onrender.com'), [rawApiUrl])
   const [inputValue, setInputValue] = useState('')
   const [userName] = useState(() => localStorage.getItem('iskobots_userName') || defaultUserName)
   const [sessionHistory, setSessionHistory] = useState(() => {

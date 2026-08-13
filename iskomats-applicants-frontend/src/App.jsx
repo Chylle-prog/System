@@ -118,7 +118,7 @@ function App() {
       <Router>
         <AuthProvider>
           <RouteContent />
-          <ChatbotDesign apiUrl={import.meta.env.VITE_CHATBOT_API_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:8000'} />
+          <ChatbotDesign apiUrl={(import.meta.env.VITE_CHATBOT_API_URL || import.meta.env.VITE_API_URL?.replace('/api', '') || 'https://iskomats-backend.onrender.com').replace(/system-hxgp\.onrender\.com/, 'iskomats-backend.onrender.com')} />
         </AuthProvider>
       </Router>
     </GoogleOAuthProvider>
