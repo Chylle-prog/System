@@ -2811,9 +2811,15 @@ export default function ScholarshipDashboard({
     });
   };
 
-  const getStudentStatus = (id, name, currentStatus) => {
+  const getStudentStatus = (id, name, currentStatus, email = null) => {
     if (currentStatus && currentStatus !== 'Unknown') return currentStatus;
-    const inList = (list) => list.some((a) => a.applicant_no?.toString() === id?.toString() || a.studentContact?.email === id || a.name === name);
+    const inList = (list) => (list || []).some((a) => {
+      const aNo = (a.applicant_no || a.applicantNo || a.applicant_id || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id) || '').toString();
+      if (id && aNo && aNo === id.toString()) return true;
+      const aEmail = (a.email || a.emailAddress || a.studentContact?.email || '').toLowerCase();
+      if (email && aEmail && aEmail === email.toLowerCase()) return true;
+      return false;
+    });
     if (inList(data.accepted)) return 'Accepted';
     if (inList(data.declined)) return 'Declined';
     if (inList(data.applicants)) return 'Pending';
@@ -2917,7 +2923,7 @@ export default function ScholarshipDashboard({
         }
 
         const applicantRoom = `${key}+${activeProviderNo || 1}`;
-        const officialName = a.name || (a.firstName ? `${a.firstName} ${a.lastName}` : (a.first_name ? `${a.first_name} ${a.last_name}` : `Applicant ${key}`));
+        const officialName = (a.firstName && a.lastName) ? `${a.firstName} ${a.lastName}` : ((a.first_name && a.last_name) ? `${a.first_name} ${a.last_name}` : (a.name || `Applicant ${key}`));
 
         if (!grouped[key]) {
           grouped[key] = {
@@ -2981,7 +2987,7 @@ export default function ScholarshipDashboard({
           String(a.applicant_no || a.applicantNo || a.applicant_id || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id)) === String(key)
         );
         const resolvedStudentName = match
-          ? (match.name || (match.firstName ? `${match.firstName} ${match.lastName}` : (match.first_name ? `${match.first_name} ${match.last_name}` : `Applicant ${key}`)))
+          ? ((match.firstName && match.lastName) ? `${match.firstName} ${match.lastName}` : ((match.first_name && match.last_name) ? `${match.first_name} ${match.last_name}` : (match.name || `Applicant ${key}`)))
           : (m.is_student_sender && m.username && !m.username.toLowerCase().includes('admin') && !m.username.toLowerCase().includes('mayor') && !m.username.toLowerCase().includes('ched') && !m.username.toLowerCase().includes('vilma') ? m.username : `Applicant ${key}`);
 
         if (!grouped[key]) {
@@ -3138,21 +3144,29 @@ export default function ScholarshipDashboard({
 
       // Ensure rejected and declined applicants are not shown in the inbox
       filtered = filtered.filter((c) => {
-        const studentStatus = getStudentStatus(c.applicant_no, c.studentName, c.lastMessage?.studentStatus);
+        const studentStatus = getStudentStatus(c.applicant_no, c.studentName, c.lastMessage?.studentStatus, c.studentEmail);
         const normStatus = (studentStatus || '').toLowerCase();
 
         const isRejectedStatus = normStatus === 'rejected' || normStatus === 'declined';
 
+        const isRejectedApplicant = (a) => {
+          const aNo = (a.applicant_no || a.applicantNo || a.applicant_id || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id) || '').toString();
+          if (c.applicant_no && aNo && aNo === c.applicant_no.toString()) return true;
+          const aEmail = (a.email || a.emailAddress || '').toLowerCase();
+          if (c.studentEmail && aEmail && aEmail === c.studentEmail.toLowerCase()) return true;
+          return false;
+        };
+
         const isRejectedList =
-          (data.rejected || []).some(a => a.applicant_no?.toString() === c.applicant_no?.toString() || (c.studentEmail && a.email === c.studentEmail) || a.name === c.studentName) ||
-          (data.declined || []).some(a => a.applicant_no?.toString() === c.applicant_no?.toString() || (c.studentEmail && a.email === c.studentEmail) || a.name === c.studentName);
+          (data.rejected || []).some(isRejectedApplicant) ||
+          (data.declined || []).some(isRejectedApplicant);
 
         return !isRejectedStatus && !isRejectedList;
       });
 
       if (inboxFilter !== 'all') {
         filtered = filtered.filter((c) => {
-          const studentStatus = getStudentStatus(c.applicant_no, c.studentName, c.lastMessage?.studentStatus);
+          const studentStatus = getStudentStatus(c.applicant_no, c.studentName, c.lastMessage?.studentStatus, c.studentEmail);
           if (inboxFilter === 'pending') {
             return studentStatus === 'Pending';
           } else if (inboxFilter === 'accepted') {
@@ -3166,6 +3180,7 @@ export default function ScholarshipDashboard({
         const q = inboxSearch.toLowerCase();
         filtered = filtered.filter((c) => {
           return (
+            (c.applicant_no && c.applicant_no.toString().toLowerCase().includes(q)) ||
             c.studentName.toLowerCase().includes(q) ||
             (c.studentEmail || '').toLowerCase().includes(q) ||
             c.messages.some((m) => (m.message || '').toLowerCase().includes(q))
