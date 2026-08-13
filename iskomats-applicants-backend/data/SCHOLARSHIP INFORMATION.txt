@@ -148,6 +148,12 @@ A: Your application may be marked as incomplete or you may be asked to upload th
 
 Q: What type of merits can I input?
 
-A: You can input both Academic and Non-Academic merits or achievements, such as: Academic Merits: Academic honors (Valedictorian, Salutatorian, Dean’s List, Honor Roll), quiz bees, science/math olympiads, subject-specific awards, and research or thesis recognitions. Non-Academic Merits: Leadership roles (Student Council, Club Officer), sports achievements, campus journalism, arts/culture awards, community service, and extracurricular competition placements. Tip: Be sure to mention the level of the award (e.g., School, District, Regional, or National level) when filling in your application.
+A: You can input academic or non-academic achievements. They are evaluated based on scope and tier level (0 to 20 points):
+• School Level (1-5 pts): Honor student, Class Officer, local club leader.
+• Division / City Level (6-10 pts): With Honors / High Honors, City competition placements.
+• Regional / Provincial Level (11-15 pts): Regional Science Fair / Athletic meet medalist.
+• National / International Level (16-20 pts): Valedictorian, Summa Cum Laude, National Olympiad placer.
+
+Tip: Be sure to specify the award level (School, Division, Regional, or National) when filling in your application for accurate evaluation.
 
 ------------------------------------------------------------
