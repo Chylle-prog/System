@@ -1,12 +1,14 @@
 import sys
 import os
 import random
-from werkzeug.security import generate_password_hash
+from flask_bcrypt import Bcrypt
 
 # Add parent dir to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from project_config import get_db
+
+bcrypt = Bcrypt()
 
 COR_DOC = "https://choqncwkxobwsouyotih.supabase.co/storage/v1/object/public/document_videos/videos/coe/TEST_COR.jpg"
 COR_VID = "https://choqncwkxobwsouyotih.supabase.co/storage/v1/object/public/document_videos/videos/coe/COE_Vid.mp4"
@@ -29,7 +31,7 @@ COURSES = ["BS Computer Science", "BS Information Technology", "BS Business Admi
 YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
 
 def seed():
-    password_hash = generate_password_hash("password")
+    password_hash = bcrypt.generate_password_hash("password").decode('utf-8')
     
     with get_db() as conn:
         cur = conn.cursor()

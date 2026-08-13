@@ -4,6 +4,7 @@ import json
 from decimal import Decimal
 from flask import Blueprint, request, jsonify, send_file, url_for, session
 from flask_bcrypt import Bcrypt
+from werkzeug.security import check_password_hash as werkzeug_check_password_hash
 import functools
 from functools import wraps
 from flask_socketio import emit, join_room
@@ -232,6 +233,31 @@ def decrypt_image_to_data_url(encrypted_data):
         return None
 
 bcrypt = Bcrypt()
+
+def safe_check_password_hash(stored_hash, candidate_password):
+    """
+    Safely check candidate_password against stored_hash using bcrypt or werkzeug fallback.
+    Prevents crashing with 500 (ValueError: Invalid salt) when stored_hash is non-bcrypt (e.g., pbkdf2/scrypt/legacy/corrupted).
+    Returns tuple: (is_valid: bool, needs_rehash: bool).
+    """
+    if not stored_hash or not candidate_password:
+        return False, False
+
+    # 1. Try bcrypt verification
+    try:
+        if bcrypt.check_password_hash(stored_hash, candidate_password):
+            return True, False
+    except Exception:
+        pass
+
+    # 2. Try Werkzeug security fallback (for legacy/seeded accounts using pbkdf2/scrypt)
+    try:
+        if werkzeug_check_password_hash(stored_hash, candidate_password):
+            return True, True
+    except Exception:
+        pass
+
+    return False, False
 
 # ===== JWT CONFIG =====
 # Use common secret key logic
@@ -2253,7 +2279,7 @@ def login():
             
             # Query user from database based on email table joining with user and scholarship_providers
             cursor.execute(f'''
-                SELECT e.password_hash, e.user_no, e.is_locked, e.is_verified, u.user_name, u.pro_no, p.provider_name
+                SELECT e.password_hash, e.user_no, e.is_locked, e.is_verified, u.user_name, u.pro_no, p.provider_name, e.user_em_no
                 FROM {user_email_table} e
                 LEFT JOIN users u ON e.user_no = u.user_no
                 LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
@@ -2271,7 +2297,8 @@ def login():
         provider_name = (user['provider_name'] or '').strip() or 'All'
         user_name = user['user_name'] or provider_name or normalized_email
         
-        if not bcrypt.check_password_hash(user['password_hash'], data['password']):
+        is_valid, needs_rehash = safe_check_password_hash(user['password_hash'], data['password'])
+        if not is_valid:
             record_admin_activity(
                 actor_user_no=user['user_no'],
                 action='Login Failed',
@@ -2279,6 +2306,16 @@ def login():
                 status='failed',
             )
             return jsonify({'message': 'Incorrect password'}), 401
+
+        if needs_rehash and user.get('user_em_no'):
+            try:
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    new_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+                    cursor.execute(f"UPDATE {user_email_table} SET password_hash = %s WHERE user_em_no = %s", (new_hash, user['user_em_no']))
+                    conn.commit()
+            except Exception as rehash_err:
+                print(f"[AUTH REHASH WARNING] Failed to upgrade admin password hash to bcrypt: {rehash_err}")
         
         # Check if account is locked
         if user.get('is_locked'):

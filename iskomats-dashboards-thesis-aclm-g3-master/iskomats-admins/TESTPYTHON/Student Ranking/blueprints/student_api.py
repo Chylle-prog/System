@@ -21,6 +21,7 @@ import jwt
 from cryptography.fernet import Fernet
 from flask import Blueprint, jsonify, request, url_for
 from flask_bcrypt import Bcrypt
+from werkzeug.security import check_password_hash as werkzeug_check_password_hash
 
 import cv2
 import numpy as np
@@ -99,6 +100,32 @@ except Exception:
 
 student_api_bp = Blueprint('student_api', __name__, url_prefix='/api/student')
 bcrypt = Bcrypt()
+
+def safe_check_password_hash(stored_hash, candidate_password):
+    """
+    Safely check candidate_password against stored_hash using bcrypt or werkzeug fallback.
+    Prevents crashing with 500 (ValueError: Invalid salt) when stored_hash is non-bcrypt (e.g., pbkdf2/scrypt/legacy/corrupted).
+    Returns tuple: (is_valid: bool, needs_rehash: bool).
+    """
+    if not stored_hash or not candidate_password:
+        return False, False
+
+    # 1. Try bcrypt verification
+    try:
+        if bcrypt.check_password_hash(stored_hash, candidate_password):
+            return True, False
+    except Exception:
+        pass
+
+    # 2. Try Werkzeug security fallback (for legacy/seeded accounts using pbkdf2/scrypt)
+    try:
+        if werkzeug_check_password_hash(stored_hash, candidate_password):
+            return True, True
+    except Exception:
+        pass
+
+    return False, False
+
 SECRET_KEY = get_secret_key()
 
 _announcement_image_columns = None
@@ -1351,8 +1378,17 @@ def student_login():
             if not user.get('password_hash'):
                 return jsonify({'message': 'This email is linked to an existing Google account. Please use "Sign in with Google" to access your account.'}), 401
 
-            if not bcrypt.check_password_hash(user['password_hash'], password):
+            is_valid, needs_rehash = safe_check_password_hash(user['password_hash'], password)
+            if not is_valid:
                 return jsonify({'message': 'Incorrect password'}), 401
+
+            if needs_rehash:
+                try:
+                    new_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+                    cur.execute(f"UPDATE {applicant_email_table} SET password_hash = %s WHERE app_em_no = %s", (new_hash, user['app_em_no']))
+                    conn.commit()
+                except Exception as rehash_err:
+                    print(f"[AUTH REHASH WARNING] Failed to upgrade password hash to bcrypt: {rehash_err}")
 
             if not user.get('is_verified', True):
                 # Regenerate verification code if they are in permanent table but not verified

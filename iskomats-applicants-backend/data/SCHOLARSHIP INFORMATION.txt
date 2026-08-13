@@ -143,3 +143,11 @@ A: No. Completing all requirements only means your application can be evaluated.
 Q: What if I upload incomplete documents?
 
 A: Your application may be marked as incomplete or you may be asked to upload the missing or correct documents before your application can proceed.
+
+------------------------------------------------------------
+
+Q: What type of merits can I input?
+
+A: You can input Academic and Non-Academic merits.
+
+------------------------------------------------------------
