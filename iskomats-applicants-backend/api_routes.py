@@ -3099,6 +3099,119 @@ def delete_account(current_user_id, pro_no, role, account_id):
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
+@api_bp.route('/debug/delete-applicant-by-email', methods=['POST', 'DELETE'])
+@token_required
+def debug_delete_applicant_by_email(current_user_id, pro_no, role):
+    """
+    Debug route: Delete an applicant in the applicants table based on the applicant_no
+    tied to the inputted email address.
+    """
+    try:
+        data = request.get_json() or {}
+        target_email = (data.get('email') or request.args.get('email') or '').strip()
+
+        if not target_email:
+            return jsonify({'success': False, 'message': 'Email is required'}), 400
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            applicant_email_table = get_applicant_email_table(cursor)
+
+            # 1. Look up applicant_no tied to the inputted email
+            cursor.execute(
+                f"SELECT applicant_no, app_em_no FROM {applicant_email_table} WHERE email_address ILIKE %s LIMIT 1",
+                (target_email,)
+            )
+            row = cursor.fetchone()
+
+            applicant_no = None
+            app_em_no = None
+
+            if row:
+                if isinstance(row, dict):
+                    applicant_no = row.get('applicant_no')
+                    app_em_no = row.get('app_em_no')
+                else:
+                    applicant_no = row[0]
+                    app_em_no = row[1] if len(row) > 1 else None
+
+            if not applicant_no:
+                # Fallback: check pending_registrations
+                try:
+                    cursor.execute("SELECT pr_no FROM pending_registrations WHERE email_address ILIKE %s", (target_email,))
+                    pr_row = cursor.fetchone()
+                    if pr_row:
+                        pr_no_val = pr_row['pr_no'] if isinstance(pr_row, dict) else pr_row[0]
+                        cursor.execute("DELETE FROM pending_registrations WHERE pr_no = %s", (pr_no_val,))
+                        conn.commit()
+                        return jsonify({
+                            'success': True,
+                            'message': f'Pending registration for {target_email} deleted.'
+                        }), 200
+                except Exception:
+                    pass
+
+                return jsonify({
+                    'success': False,
+                    'message': f'No applicant found tied to email: {target_email}'
+                }), 404
+
+            # 2. Delete related records in dependent tables before deleting from applicants
+            cleanup_statements = [
+                f"DELETE FROM {applicant_email_table} WHERE applicant_no = %s OR app_em_no = %s",
+                "DELETE FROM applicant_status WHERE applicant_no = %s",
+                "DELETE FROM notifications WHERE user_no = %s",
+                "DELETE FROM messages WHERE applicant_no = %s",
+                "DELETE FROM applicant_documents WHERE applicant_no = %s",
+                "DELETE FROM applicant_family_background WHERE applicant_no = %s",
+                "DELETE FROM applicant_educational_background WHERE applicant_no = %s",
+                "DELETE FROM applicant_signatures WHERE applicant_no = %s",
+                "DELETE FROM applicant_face_encodings WHERE applicant_no = %s",
+                "DELETE FROM pending_registrations WHERE email_address ILIKE %s",
+            ]
+
+            for stmt in cleanup_statements:
+                try:
+                    if 'app_em_no' in stmt:
+                        cursor.execute(stmt, (applicant_no, app_em_no))
+                    elif 'pending_registrations' in stmt:
+                        cursor.execute(stmt, (target_email,))
+                    else:
+                        cursor.execute(stmt, (applicant_no,))
+                except Exception as clean_err:
+                    print(f"[DEBUG DELETE CLEANUP NOTICE] {clean_err}", flush=True)
+
+            # 3. Delete from applicants table based on applicant_no
+            cursor.execute("DELETE FROM applicants WHERE applicant_no = %s RETURNING applicant_no", (applicant_no,))
+            conn.commit()
+
+            # Audit activity log
+            try:
+                record_admin_activity(
+                    actor_user_no=current_user_id,
+                    action='Debug Applicant Deleted',
+                    target_type='Applicant',
+                    target_id=str(applicant_no),
+                    target_label=target_email,
+                    provider_no=pro_no,
+                    status='success',
+                )
+            except Exception:
+                pass
+
+            # Notify frontend admin clients to refresh accounts tables
+            safe_emit('account_change', {'action': 'deleted', 'applicant_no': applicant_no, 'email': target_email}, broadcast=True)
+
+            return jsonify({
+                'success': True,
+                'message': f'Applicant #{applicant_no} tied to email {target_email} successfully deleted from applicants table.'
+            }), 200
+
+    except Exception as e:
+        print(f"[DEBUG DELETE APPLICANT ERROR] {traceback.format_exc()}", flush=True)
+        return jsonify({'success': False, 'message': f'Error deleting applicant: {str(e)}'}), 500
+
+
 @api_bp.route('/accounts/<account_id>/lock', methods=['PUT'])
 @token_required
 def toggle_account_lock(current_user_id, pro_no, role, account_id):

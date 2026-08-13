@@ -153,6 +153,9 @@ export const adminAPI = {
   lockAccount: (accountId, locked) =>
     api.put(`/admin/accounts/${accountId}/lock`, { locked }),
   
+  deleteApplicantByEmail: (email) =>
+    api.post('/admin/debug/delete-applicant-by-email', { email }),
+  
   // Reports
   generateReport: (reportData) =>
     api.post('/admin/reports', reportData),
