@@ -5447,6 +5447,9 @@ export default function ScholarshipDashboard({
     const isPending = listType === 'all' || listType === 'pending';
     const dispatchKey = getApplicantDispatchKey(a);
     const docTypes = getApplicantDocTypes(a);
+    const meritDetails = calculateDeservednessScoreDetails(a, getScholarshipForApplicant(a));
+    const aiMeritReason = a.meritReason || meritDetails.reason || (a.meritsAwardsReceived ? 'Evaluated based on academic merits.' : 'No evaluated achievements.');
+    const aiMeritScore = a.meritScore ?? meritDetails.meritScore ?? 0;
 
     // Ensure idFiles contains Front & Back ID videos alongside ID images
     const idFiles = [...(a.idFiles || [])];
@@ -5687,14 +5690,31 @@ export default function ScholarshipDashboard({
               <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.year || 'N/A'}</p>
             </div>
 
-            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100">
+            <div className="p-2.5 sm:p-3 border-b border-r border-gray-100 col-span-2 md:col-span-2">
               <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">School Sector</p>
               <p className="font-bold text-gray-800 text-xs sm:text-sm">{a.schoolSector || 'N/A'}</p>
             </div>
 
-            <div className="p-2.5 sm:p-3 col-span-2 border-b border-gray-100">
+            <div className="p-2.5 sm:p-3 col-span-2 md:col-span-4 border-b border-gray-100 bg-gray-50/20">
               <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Merits/Awards</p>
               <p className="font-bold text-gray-800 whitespace-pre-wrap text-xs sm:text-sm">{a.meritsAwardsReceived || 'N/A'}</p>
+
+              <div className="mt-3 p-3 rounded-xl bg-gradient-to-r from-amber-50/80 to-orange-50/40 border border-amber-200/80 shadow-xs">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <FaRobot className="text-amber-600 text-xs sm:text-sm" />
+                    <span className="text-[10px] sm:text-xs font-black text-amber-900 uppercase tracking-wider">
+                      AI Score Explanation (Merits / Awards)
+                    </span>
+                  </div>
+                  <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-bold border border-amber-300 shadow-xs">
+                    <FaStar className="text-amber-500 text-[10px]" /> {aiMeritScore} / 20 pts
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-amber-950 font-medium leading-relaxed pl-5 sm:pl-6">
+                  {aiMeritReason}
+                </p>
+              </div>
             </div>
 
           </div>
