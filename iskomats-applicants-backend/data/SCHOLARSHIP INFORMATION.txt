@@ -148,6 +148,10 @@ A: Your application may be marked as incomplete or you may be asked to upload th
 
 Q: What type of merits can I input?
 
-A: You can input Academic and Non-Academic merits.
+A: You can input both Academic and Non-Academic merits or achievements, such as:
+
+Academic Merits: Academic honors (Valedictorian, Salutatorian, Dean’s List, Honor Roll), quiz bees, science/math olympiads, subject-specific awards, and research or thesis recognitions.
+Non-Academic Merits: Leadership roles (Student Council, Club Officer), sports achievements, campus journalism, arts/culture awards, community service, and extracurricular competition placements.
+Tip: Be sure to mention the level of the award (e.g., School, District, Regional, or National level) when filling in your application.
 
 ------------------------------------------------------------
