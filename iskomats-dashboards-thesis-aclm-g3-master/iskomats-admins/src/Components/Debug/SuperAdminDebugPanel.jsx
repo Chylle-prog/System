@@ -145,32 +145,32 @@ export default function SuperAdminDebugPanel() {
             </button>
           </div>
 
-          {/* Email Input */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Target Applicant Email
-            </label>
-            <input
-              ref={inputRef}
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              readOnly={!isEditing}
-              style={{
-                background: isEditing ? '#0f172a' : '#1e293b',
-                color: isEditing ? '#ffffff' : '#cbd5e1',
-                border: isEditing ? '1px solid #38bdf8' : '1px solid #334155',
-                borderRadius: '8px',
-                padding: '8px 10px',
-                fontSize: '0.8rem',
-                outline: 'none',
-                width: '100%',
-                boxSizing: 'border-box',
-                transition: 'all 0.2s ease',
-                cursor: isEditing ? 'text' : 'not-allowed'
-              }}
-            />
-          </div>
+          {/* Email Input - Only shown when pressing the gear icon */}
+          {isEditing && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', animation: 'fadeIn 0.15s ease' }}>
+              <label style={{ color: '#94a3b8', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Target Applicant Email
+              </label>
+              <input
+                ref={inputRef}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                style={{
+                  background: '#0f172a',
+                  color: '#ffffff',
+                  border: '1px solid #38bdf8',
+                  borderRadius: '8px',
+                  padding: '8px 10px',
+                  fontSize: '0.8rem',
+                  outline: 'none',
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  transition: 'all 0.2s ease'
+                }}
+              />
+            </div>
+          )}
 
           {/* Controls: Delete button + Gear edit button */}
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

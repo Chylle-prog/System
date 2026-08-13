@@ -822,8 +822,8 @@ export default function Dash() {
                                     <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-gray-500 gap-2">
                                       <span>{provider.provider_name}</span>
                                       <span className="text-right flex gap-2">
-                                        <span style={{ color: '#800020' }}>••••••••••• {provider.usersCount}</span>
-                                        <span style={{ color: '#16a34a' }}>•••••••••••{provider.applicantsCount}</span>
+                                        <span style={{ color: '#800020' }}> {provider.usersCount}</span>
+                                        <span style={{ color: '#16a34a' }}>{provider.applicantsCount}</span>
                                       </span>
                                     </div>
                                     <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
