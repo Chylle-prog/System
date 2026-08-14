@@ -251,8 +251,11 @@ const EMPTY_ADVANCED_SEARCH = {
   scholarshipType: '',
   minGpa: '',
   applicantName: '',
+  familyName: '',
   applicantSchool: '',
-  applicantGpa: ''
+  applicantGpa: '',
+  year: '',
+  accompliteToDate: ''
 };
 
 const getScholarshipField = (post, fieldNames) => {
@@ -311,6 +314,24 @@ const applicantMatchesAdvancedScholarshipFilters = (applicant, advanced, scholar
 
   if (advanced.applicantGpa && applicant.grade && !normalizeSearchText(String(applicant.grade)).includes(normalizeSearchText(advanced.applicantGpa))) {
     return false;
+  }
+
+  if (advanced.familyName && !normalizeSearchText(applicant.lastName || applicant.last_name || applicant.surname || applicant.family_name || applicant.name || '').includes(normalizeSearchText(advanced.familyName))) {
+    return false;
+  }
+
+  if (advanced.year && !normalizeSearchText(String(applicant.year || applicant.year_level || applicant.yearLevel || '')).includes(normalizeSearchText(advanced.year))) {
+    return false;
+  }
+
+  if (advanced.accompliteToDate) {
+    const appliedDate = applicant.createdAt || applicant.created_at || applicant.dateApplied || applicant.date_applied;
+    if (appliedDate) {
+      const appDate = new Date(appliedDate);
+      const cutoff = new Date(advanced.accompliteToDate);
+      cutoff.setHours(23, 59, 59, 999);
+      if (appDate > cutoff) return false;
+    }
   }
 
   if (advanced.courseProgram && applicant.course && !normalizeSearchText(applicant.course).includes(normalizeSearchText(advanced.courseProgram))) {
@@ -703,202 +724,279 @@ export default function ScholarshipDashboard({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-        {isApplicantSearch && (
-          <>
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Applicant Name</label>
-              <input
-                type="text"
-                name="applicantName"
-                value={filters.applicantName}
-                onChange={(e) => setFilters((prev) => ({ ...prev, applicantName: e.target.value }))}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-                placeholder="Search applicant name"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Applicant School</label>
-              <input
-                type="text"
-                name="applicantSchool"
-                value={filters.applicantSchool}
-                onChange={(e) => setFilters((prev) => ({ ...prev, applicantSchool: e.target.value }))}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-                placeholder="Search school name"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Applicant GPA/Grade</label>
-              <input
-                type="text"
-                name="applicantGpa"
-                value={filters.applicantGpa}
-                onChange={(e) => setFilters((prev) => ({ ...prev, applicantGpa: e.target.value }))}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-                placeholder="e.g. 85"
-              />
-            </div>
-          </>
-        )}
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Scholarship name</label>
-          <input
-            type="text"
-            name="scholarshipName"
-            value={filters.scholarshipName}
-            onChange={(e) => setFilters((prev) => ({ ...prev, scholarshipName: e.target.value }))}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-            placeholder="Search title"
-          />
+      {isApplicantSearch ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {/* Row 1: Applicant Name | Family Name | Applicant School */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Applicant Name</label>
+            <input
+              type="text"
+              name="applicantName"
+              value={filters.applicantName}
+              onChange={(e) => setFilters((prev) => ({ ...prev, applicantName: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+              placeholder="Search applicant name"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Family Name (LAST NAME)</label>
+            <input
+              type="text"
+              name="familyName"
+              value={filters.familyName}
+              onChange={(e) => setFilters((prev) => ({ ...prev, familyName: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+              placeholder="Search last name"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Applicant School</label>
+            <input
+              type="text"
+              name="applicantSchool"
+              value={filters.applicantSchool}
+              onChange={(e) => setFilters((prev) => ({ ...prev, applicantSchool: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+              placeholder="Search school name"
+            />
+          </div>
+
+          {/* Row 2: GPA/Grade | Course/Program | Year */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Applicant GPA/Grade</label>
+            <input
+              type="text"
+              name="applicantGpa"
+              value={filters.applicantGpa}
+              onChange={(e) => setFilters((prev) => ({ ...prev, applicantGpa: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+              placeholder="e.g. 85"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Course / Program</label>
+            <input
+              type="text"
+              name="courseProgram"
+              value={filters.courseProgram}
+              onChange={(e) => setFilters((prev) => ({ ...prev, courseProgram: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+              placeholder="Search course or program"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Year</label>
+            <input
+              type="text"
+              name="year"
+              value={filters.year}
+              onChange={(e) => setFilters((prev) => ({ ...prev, year: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+              placeholder="e.g. 1st Year, 2nd Year, 3rd Year"
+            />
+          </div>
+
+          {/* Row 3: Income bracket | Location | Accomplite to Date */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Income bracket</label>
+            <input
+              type="text"
+              name="incomeBracket"
+              value={filters.incomeBracket}
+              onChange={(e) => setFilters((prev) => ({ ...prev, incomeBracket: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+              placeholder="e.g. PHP 100k"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Location</label>
+            <input
+              type="text"
+              name="location"
+              value={filters.location}
+              onChange={(e) => setFilters((prev) => ({ ...prev, location: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+              placeholder="e.g. Lipa City, Batangas"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Accomplite to Date</label>
+            <input
+              type="date"
+              name="accompliteToDate"
+              value={filters.accompliteToDate}
+              onChange={(e) => setFilters((prev) => ({ ...prev, accompliteToDate: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            />
+          </div>
+
+          {/* Row 4: Status */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Status</label>
+            <select
+              name="status"
+              value={filters.status}
+              onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            >
+              <option value="">Any status</option>
+              <option value="Pending">Pending</option>
+              <option value="Accepted">Accepted</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Cancelled">Cancelled</option>
+            </select>
+          </div>
         </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Provider / Organization</label>
-          <select
-            name="provider"
-            value={filters.provider}
-            onChange={(e) => setFilters((prev) => ({ ...prev, provider: e.target.value }))}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-          >
-            <option value="">All providers</option>
-            {advancedFilterOptions.providers.map((provider) => (
-              <option key={provider} value={provider}>{provider}</option>
-            ))}
-          </select>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Scholarship name</label>
+            <input
+              type="text"
+              name="scholarshipName"
+              value={filters.scholarshipName}
+              onChange={(e) => setFilters((prev) => ({ ...prev, scholarshipName: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+              placeholder="Search title"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Provider / Organization</label>
+            <select
+              name="provider"
+              value={filters.provider}
+              onChange={(e) => setFilters((prev) => ({ ...prev, provider: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            >
+              <option value="">All providers</option>
+              {advancedFilterOptions.providers.map((provider) => (
+                <option key={provider} value={provider}>{provider}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Education level</label>
+            <select
+              name="educationLevel"
+              value={filters.educationLevel}
+              onChange={(e) => setFilters((prev) => ({ ...prev, educationLevel: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            >
+              <option value="">Any level</option>
+              {advancedFilterOptions.educationLevels.map((level) => (
+                <option key={level} value={level}>{level}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Course / Program</label>
+            <select
+              name="courseProgram"
+              value={filters.courseProgram}
+              onChange={(e) => setFilters((prev) => ({ ...prev, courseProgram: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            >
+              <option value="">Any course</option>
+              {advancedFilterOptions.coursePrograms.map((course) => (
+                <option key={course} value={course}>{course}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Location</label>
+            <input
+              type="text"
+              name="location"
+              value={filters.location}
+              onChange={(e) => setFilters((prev) => ({ ...prev, location: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+              placeholder="e.g. Lipa City, Batangas"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Academic requirements</label>
+            <input
+              type="text"
+              name="academicRequirements"
+              value={filters.academicRequirements}
+              onChange={(e) => setFilters((prev) => ({ ...prev, academicRequirements: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+              placeholder="GPA / grade requirement"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Income bracket</label>
+            <input
+              type="text"
+              name="incomeBracket"
+              value={filters.incomeBracket}
+              onChange={(e) => setFilters((prev) => ({ ...prev, incomeBracket: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+              placeholder="e.g. PHP 100k"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Status</label>
+            <select
+              name="status"
+              value={filters.status}
+              onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            >
+              <option value="">Any status</option>
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+              <option value="pending">Pending</option>
+              <option value="expired">Expired</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Application deadline from</label>
+            <input
+              type="date"
+              name="deadlineFrom"
+              value={filters.deadlineFrom}
+              onChange={(e) => setFilters((prev) => ({ ...prev, deadlineFrom: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Application deadline to</label>
+            <input
+              type="date"
+              name="deadlineTo"
+              value={filters.deadlineTo}
+              onChange={(e) => setFilters((prev) => ({ ...prev, deadlineTo: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Type of scholarship</label>
+            <select
+              name="scholarshipType"
+              value={filters.scholarshipType}
+              onChange={(e) => setFilters((prev) => ({ ...prev, scholarshipType: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            >
+              <option value="">Any type</option>
+              {advancedFilterOptions.scholarshipTypes.map((type) => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Minimum GPA</label>
+            <input
+              type="text"
+              name="minGpa"
+              value={filters.minGpa}
+              onChange={(e) => setFilters((prev) => ({ ...prev, minGpa: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+              placeholder="e.g. 85"
+            />
+          </div>
         </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Education level</label>
-          <select
-            name="educationLevel"
-            value={filters.educationLevel}
-            onChange={(e) => setFilters((prev) => ({ ...prev, educationLevel: e.target.value }))}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-          >
-            <option value="">Any level</option>
-            {advancedFilterOptions.educationLevels.map((level) => (
-              <option key={level} value={level}>{level}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Course / Program</label>
-          <select
-            name="courseProgram"
-            value={filters.courseProgram}
-            onChange={(e) => setFilters((prev) => ({ ...prev, courseProgram: e.target.value }))}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-          >
-            <option value="">Any course</option>
-            {advancedFilterOptions.coursePrograms.map((course) => (
-              <option key={course} value={course}>{course}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Location</label>
-          <input
-            type="text"
-            name="location"
-            value={filters.location}
-            onChange={(e) => setFilters((prev) => ({ ...prev, location: e.target.value }))}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-            placeholder="e.g. Lipa City, Batangas"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Academic requirements</label>
-          <input
-            type="text"
-            name="academicRequirements"
-            value={filters.academicRequirements}
-            onChange={(e) => setFilters((prev) => ({ ...prev, academicRequirements: e.target.value }))}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-            placeholder="GPA / grade requirement"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Income bracket</label>
-          <input
-            type="text"
-            name="incomeBracket"
-            value={filters.incomeBracket}
-            onChange={(e) => setFilters((prev) => ({ ...prev, incomeBracket: e.target.value }))}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-            placeholder="e.g. PHP 100k"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Status</label>
-          <select
-            name="status"
-            value={filters.status}
-            onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-          >
-            <option value="">Any status</option>
-            {isApplicantSearch ? (
-              <>
-                <option value="Pending">Pending</option>
-                <option value="Accepted">Accepted</option>
-                <option value="Rejected">Rejected</option>
-                <option value="Cancelled">Cancelled</option>
-              </>
-            ) : (
-              <>
-                <option value="open">Open</option>
-                <option value="closed">Closed</option>
-                <option value="pending">Pending</option>
-                <option value="expired">Expired</option>
-              </>
-            )}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Application deadline from</label>
-          <input
-            type="date"
-            name="deadlineFrom"
-            value={filters.deadlineFrom}
-            onChange={(e) => setFilters((prev) => ({ ...prev, deadlineFrom: e.target.value }))}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Application deadline to</label>
-          <input
-            type="date"
-            name="deadlineTo"
-            value={filters.deadlineTo}
-            onChange={(e) => setFilters((prev) => ({ ...prev, deadlineTo: e.target.value }))}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Type of scholarship</label>
-          <select
-            name="scholarshipType"
-            value={filters.scholarshipType}
-            onChange={(e) => setFilters((prev) => ({ ...prev, scholarshipType: e.target.value }))}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-          >
-            <option value="">Any type</option>
-            {advancedFilterOptions.scholarshipTypes.map((type) => (
-              <option key={type} value={type}>{type}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Minimum GPA</label>
-          <input
-            type="text"
-            name="minGpa"
-            value={filters.minGpa}
-            onChange={(e) => setFilters((prev) => ({ ...prev, minGpa: e.target.value }))}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
-            placeholder="e.g. 85"
-          />
-        </div>
-      </div>
+      )}
     </div>
   );
 
