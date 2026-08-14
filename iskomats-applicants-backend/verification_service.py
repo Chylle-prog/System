@@ -156,7 +156,7 @@ async def api_verify_id(req: IDVerificationRequest):
         if not img_bytes:
             return {"success": False, "verified": False, "message": "Invalid image data", "detected_text": "", "match_ratio": 0.0}
 
-        success, message, detected_text, match_ratio = verify_id_with_ocr(
+        res = verify_id_with_ocr(
             img_bytes,
             req.first_name,
             req.middle_name,
@@ -166,6 +166,11 @@ async def api_verify_id(req: IDVerificationRequest):
             expected_school_name=req.school_name,
             expected_year_level=req.year_level
         )
+        if len(res) == 5:
+            success, message, detected_text, match_ratio, meta = res
+        else:
+            success, message, detected_text, match_ratio = res
+            meta = {}
 
         return {
             "success": bool(success),
@@ -173,6 +178,10 @@ async def api_verify_id(req: IDVerificationRequest):
             "message": str(message),
             "detected_text": detected_text,
             "match_ratio": float(match_ratio),
+            "meta": meta,
+            "ai_recommendation": meta.get("ai_recommendation", ""),
+            "security_audit": meta.get("security_audit", {}),
+            "security_flagged": meta.get("security_flagged", False),
             "process_time": time.time() - start_time
         }
     except Exception as e:

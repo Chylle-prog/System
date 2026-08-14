@@ -3411,7 +3411,8 @@ def verify_id_with_ocr(image_bytes, first_name=None, middle_name=None, last_name
         kwargs['expected_address'] = expected_address
 
     success, msg, raw_text, meta = verify_document_with_ocr(image_bytes, 'ID', first_name, middle_name, last_name, **kwargs)
-    return success, msg, raw_text, 1.0 if success else 0.0
+    match_ratio = 1.0 if success else 0.0
+    return success, msg, raw_text, match_ratio, meta
 
 
 def extract_frames_from_video_bytes(video_bytes, sample_positions=[0.15, 0.40, 0.70, 0.90], max_width=1280):
