@@ -2630,7 +2630,9 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
 def detect_document_tampering(image_bytes):
     """
-    Advanced Document Tampering & Digital Manipulation Detector (Python OpenCV).
+    Robust Digital Patch, Whiteout Box, & Tamper Detector:
+    Detects artificial whiteout blocks, spliced rectangular patches, and editing overlays
+    even after JPEG re-compression.
     """
     if not image_bytes:
         return False, "No image provided", 0
@@ -2648,21 +2650,41 @@ def detect_document_tampering(image_bytes):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
         h, w = gray.shape[:2]
 
-        grid_w, grid_h = 20, 15
-        cols, rows = w // grid_w, h // grid_h
+        # 1. Median paper illumination across the document
+        paper_median = float(np.median(gray))
+
+        # 2. High-brightness flat patch detection (Whiteout boxes over Name, ID, Grades)
+        pure_white_mask = (gray >= 238).astype(np.uint8) * 255
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (20, 10))
+        closed = cv2.morphologyEx(pure_white_mask, cv2.MORPH_CLOSE, kernel)
+
+        contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         suspicious_patches = 0
-        for r in range(rows):
-            for c in range(cols):
-                roi = gray[r*grid_h:(r+1)*grid_h, c*grid_w:(c+1)*grid_w]
-                mean_val, std_val = cv2.meanStdDev(roi)
-                m = mean_val[0][0]
-                s = std_val[0][0]
-                if (m >= 253 and s < 0.25) or (m <= 5 and s < 0.25):
+        for cnt in contours:
+            x, y, bw, bh = cv2.boundingRect(cnt)
+            area = bw * bh
+            roi = gray[y:y+bh, x:x+bw]
+            
+            # Measure box background brightness (excluding dark text pixels < 180)
+            box_bg_pixels = roi[roi > 180]
+            if len(box_bg_pixels) > 40:
+                box_bg_mean = float(np.mean(box_bg_pixels))
+                box_bg_std = float(np.std(box_bg_pixels))
+            else:
+                box_bg_mean = float(np.mean(roi))
+                box_bg_std = float(np.std(roi))
+
+            # Flag whiteout overlay box:
+            # Box is bright white (>=236) with noticeable contrast over shaded paper (>=10)
+            # OR box is pure flat white (>=250) with tiny std (<3.0)
+            if area >= 200 and 30 <= bw <= (w * 0.95) and 8 <= bh <= (h * 0.25):
+                contrast = box_bg_mean - paper_median
+                if (box_bg_mean >= 236 and contrast >= 10.0) or (box_bg_mean >= 250 and box_bg_std < 3.0):
                     suspicious_patches += 1
 
-        if suspicious_patches >= 3:
-            return True, f"Digital edit / overlay block detected on document ({suspicious_patches} artificial overlay patches found). Please upload an unedited document.", suspicious_patches
+        if suspicious_patches >= 1:
+            return True, f"Digital edit / whiteout overlay patch detected on document ({suspicious_patches} artificial overlay box(es) found). Please upload an authentic, unedited document.", suspicious_patches
 
         return False, "Authentic document (No digital tampering detected)", 0
     except Exception as exc:

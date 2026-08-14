@@ -4210,11 +4210,24 @@ const StudentInfo = () => {
           const imgData = ctx.getImageData(0, 0, w, h);
           const data = imgData.data;
 
-          // Grid patch variance analysis in text content area (ignore outer 10% page margins)
-          const gridW = 20;
-          const gridH = 15;
-          const marginX = Math.floor(w * 0.10);
-          const marginY = Math.floor(h * 0.10);
+          // 1. Calculate overall document paper brightness (median proxy)
+          const sampleGrays = [];
+          const stepX = Math.max(1, Math.floor(w / 40));
+          const stepY = Math.max(1, Math.floor(h / 40));
+          for (let y = Math.floor(h * 0.1); y < h * 0.9; y += stepY) {
+            for (let x = Math.floor(w * 0.1); x < w * 0.9; x += stepX) {
+              const idx = (y * w + x) * 4;
+              sampleGrays.push(0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
+            }
+          }
+          sampleGrays.sort((a, b) => a - b);
+          const paperMedian = sampleGrays.length > 0 ? sampleGrays[Math.floor(sampleGrays.length * 0.5)] : 220;
+
+          // 2. Scan text region grid for whiteout patches and digital overlays
+          const gridW = 28;
+          const gridH = 18;
+          const marginX = Math.floor(w * 0.08);
+          const marginY = Math.floor(h * 0.08);
           const contentW = w - 2 * marginX;
           const contentH = h - 2 * marginY;
           const cols = Math.floor(contentW / gridW);
@@ -4227,50 +4240,46 @@ const StudentInfo = () => {
               const startX = marginX + c * gridW;
               const startY = marginY + r * gridH;
 
-              let sumR = 0, sumG = 0, sumB = 0;
+              let sumGray = 0;
               let count = 0;
               const pixels = [];
 
               for (let y = startY; y < startY + gridH; y++) {
                 for (let x = startX; x < startX + gridW; x++) {
                   const idx = (y * w + x) * 4;
-                  const red = data[idx];
-                  const green = data[idx + 1];
-                  const blue = data[idx + 2];
-                  sumR += red;
-                  sumG += green;
-                  sumB += blue;
-                  pixels.push(0.299 * red + 0.587 * green + 0.114 * blue);
-                  count++;
+                  const g = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+                  pixels.push(g);
+                  // Exclude dark text pixels (< 175) to measure patch background brightness
+                  if (g >= 175) {
+                    sumGray += g;
+                    count++;
+                  }
                 }
               }
 
-              const avgR = sumR / count;
-              const avgG = sumG / count;
-              const avgB = sumB / count;
-              const avgGray = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
+              if (count >= 15) {
+                const boxBgMean = sumGray / count;
+                let varSum = 0;
+                for (let p of pixels) {
+                  if (p >= 175) varSum += Math.pow(p - boxBgMean, 2);
+                }
+                const boxBgStd = Math.sqrt(varSum / count);
 
-              let varianceSum = 0;
-              for (let p of pixels) {
-                varianceSum += Math.pow(p - avgGray, 2);
-              }
-              const stdDev = Math.sqrt(varianceSum / count);
-
-              // Digital overlay box (pasted in Paint/Photoshop): 
-              // 100% pure artificial digital fill (#FFFFFF or #000000) with ZERO noise (stdDev < 0.25)
-              const isDigitalWhiteBox = (avgR >= 253 && avgG >= 253 && avgB >= 253 && stdDev < 0.25);
-              const isDigitalBlackBox = (avgGray <= 5 && stdDev < 0.25);
-
-              if (isDigitalWhiteBox || isDigitalBlackBox) {
-                suspiciousPatches++;
+                const contrast = boxBgMean - paperMedian;
+                // Whiteout block overlay:
+                // Box is bright white (>=236) on shaded paper (contrast >= 10.0)
+                // OR pure solid white fill (>=250) with low variance (< 3.0)
+                if ((boxBgMean >= 236 && contrast >= 10.0) || (boxBgMean >= 250 && boxBgStd < 3.0)) {
+                  suspiciousPatches++;
+                }
               }
             }
           }
 
-          if (suspiciousPatches >= 3) {
+          if (suspiciousPatches >= 2) {
             resolve({
               edited: true,
-              reason: `Digital edit / overlay block detected on document (${suspiciousPatches} artificial overlay patches found). Please upload an authentic, unedited document.`,
+              reason: `Digital edit / whiteout overlay detected on document (${suspiciousPatches} artificial overlay patch(es) found). Please upload an authentic, unedited document.`,
               patchCount: suspiciousPatches
             });
             return;
@@ -4372,11 +4381,16 @@ const StudentInfo = () => {
           docParam?.front ? applicantAPI.resolveDocument('id_img_front', docParam.front) : Promise.resolve(null),
           docParam?.back ? applicantAPI.resolveDocument('id_img_back', docParam.back) : Promise.resolve(null)
         ]);
-        if (!silent) setStatus("Enhancing School ID images for OCR scanner...");
-        const [enhancedFront, enhancedBack] = await Promise.all([
+        if (!silent) setStatus("Analyzing ID authenticity & enhancing images...");
+        const [frontTamper, backTamper, enhancedFront, enhancedBack] = await Promise.all([
+          resolvedFront ? detectDocumentTampering(resolvedFront).catch(() => ({ edited: false })) : Promise.resolve({ edited: false }),
+          resolvedBack ? detectDocumentTampering(resolvedBack).catch(() => ({ edited: false })) : Promise.resolve({ edited: false }),
           resolvedFront ? preprocessImageForOcr(resolvedFront).catch(() => null) : Promise.resolve(null),
           resolvedBack ? preprocessImageForOcr(resolvedBack).catch(() => null) : Promise.resolve(null)
         ]);
+        if (frontTamper?.edited || backTamper?.edited) {
+          tamperCheck = frontTamper?.edited ? frontTamper : backTamper;
+        }
         resolvedParam = {
           front: enhancedFront || resolvedFront || docParam?.front,
           back: enhancedBack || resolvedBack || docParam?.back
@@ -4391,18 +4405,14 @@ const StudentInfo = () => {
         const rawResolved = isLocalUrl ? docParam : await applicantAPI.resolveDocument(fieldMap[docType] || 'document', docParam);
         const rawSourceForTamper = rawResolved || docParam;
 
-        if (!silent) setStatus("Analyzing document authenticity & preparing image concurrently...");
+        if (!silent) setStatus("Analyzing document authenticity & scanning pixels...");
 
-        // ⚡ COE/Grades: Skip the preprocessImageForOcr step (runOcrOnImage does its own fast downscale)
-        // and skip the tamper check to save ~3-5 seconds
-        const isEnrollmentOrGradesDoc = docType === 'Enrollment' || docType === 'Grades';
         const [tCheck, pParam] = await Promise.all([
-          (!isEnrollmentOrGradesDoc && rawSourceForTamper) ? detectDocumentTampering(rawSourceForTamper).catch(() => ({ edited: false, reason: "Authentic document" })) : Promise.resolve({ edited: false, reason: "Authentic document" }),
-          !isEnrollmentOrGradesDoc ? (rawResolved ? preprocessImageForOcr(rawResolved).catch(() => null) : Promise.resolve(null)) : Promise.resolve(null)
+          rawSourceForTamper ? detectDocumentTampering(rawSourceForTamper).catch(() => ({ edited: false, reason: "Authentic document" })) : Promise.resolve({ edited: false, reason: "Authentic document" }),
+          (rawResolved && docType === 'Indigency') ? preprocessImageForOcr(rawResolved).catch(() => null) : Promise.resolve(null)
         ]);
         tamperCheck = tCheck || { edited: false, reason: "Authentic document" };
-        // For COE/Grades: use rawResolved directly — runOcrOnImage handles its own downscaling
-        resolvedParam = isEnrollmentOrGradesDoc ? (rawResolved || docParam) : (pParam || rawResolved || docParam);
+        resolvedParam = pParam || rawResolved || docParam;
       }
 
       if (tamperCheck.edited) {
