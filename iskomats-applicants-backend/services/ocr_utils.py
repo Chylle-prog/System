@@ -2630,9 +2630,9 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
 def detect_document_tampering(image_bytes):
     """
-    Robust Digital Patch, Whiteout Box, & Tamper Detector:
-    Detects artificial whiteout blocks, spliced rectangular patches, and editing overlays
-    even after JPEG re-compression.
+    Robust Digital Patch, Whiteout Box, Editor UI Artifact, & Tamper Detector:
+    Detects artificial whiteout blocks, spliced rectangular patches, and editing app
+    canvas borders (e.g. Canva/Photoshop magenta crop artifacts).
     """
     if not image_bytes:
         return False, "No image provided", 0
@@ -2647,13 +2647,31 @@ def detect_document_tampering(image_bytes):
         if img is None:
             return False, "Failed to decode image", 0
 
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
-        h, w = gray.shape[:2]
+        h, w = img.shape[:2]
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
-        # 1. Median paper illumination across the document
+        # ── Check 1: Editor Software Canvas / UI Border Artifacts ─────────────
+        # Saturated magenta/pink/cyan UI borders left behind from screenshotting editor canvas
+        m_top = hsv[:int(h * 0.08), :]
+        m_left = hsv[:, :int(w * 0.08)]
+        m_right = hsv[:, int(w * 0.92):]
+        m_bot = hsv[int(h * 0.92):, :]
+
+        # Magenta/Pink (Hue 140-175, Sat > 75, Val > 75)
+        mag_px = int(
+            np.sum((m_top[:,:,0] >= 140) & (m_top[:,:,0] <= 175) & (m_top[:,:,1] >= 75) & (m_top[:,:,2] >= 75)) +
+            np.sum((m_left[:,:,0] >= 140) & (m_left[:,:,0] <= 175) & (m_left[:,:,1] >= 75) & (m_left[:,:,2] >= 75)) +
+            np.sum((m_right[:,:,0] >= 140) & (m_right[:,:,0] <= 175) & (m_right[:,:,1] >= 75) & (m_right[:,:,2] >= 75)) +
+            np.sum((m_bot[:,:,0] >= 140) & (m_bot[:,:,0] <= 175) & (m_bot[:,:,1] >= 75) & (m_bot[:,:,2] >= 75))
+        )
+        if mag_px >= 60:
+            return True, f"Editing canvas border artifact detected ({mag_px} saturated editor UI border pixels found at margins). Please upload an original document.", mag_px
+
+        # ── Check 2: Median paper illumination across the document ─────────────
         paper_median = float(np.median(gray))
 
-        # 2. High-brightness flat patch detection (Whiteout boxes over Name, ID, Grades)
+        # ── Check 3: High-brightness flat patch detection (Whiteout boxes) ──────
         pure_white_mask = (gray >= 238).astype(np.uint8) * 255
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (20, 10))
         closed = cv2.morphologyEx(pure_white_mask, cv2.MORPH_CLOSE, kernel)
@@ -2666,7 +2684,6 @@ def detect_document_tampering(image_bytes):
             area = bw * bh
             roi = gray[y:y+bh, x:x+bw]
             
-            # Measure box background brightness (excluding dark text pixels < 180)
             box_bg_pixels = roi[roi > 180]
             if len(box_bg_pixels) > 40:
                 box_bg_mean = float(np.mean(box_bg_pixels))
@@ -2675,9 +2692,6 @@ def detect_document_tampering(image_bytes):
                 box_bg_mean = float(np.mean(roi))
                 box_bg_std = float(np.std(roi))
 
-            # Flag whiteout overlay box:
-            # Box is bright white (>=236) with noticeable contrast over shaded paper (>=10)
-            # OR box is pure flat white (>=250) with tiny std (<3.0)
             if area >= 200 and 30 <= bw <= (w * 0.95) and 8 <= bh <= (h * 0.25):
                 contrast = box_bg_mean - paper_median
                 if (box_bg_mean >= 236 and contrast >= 10.0) or (box_bg_mean >= 250 and box_bg_std < 3.0):

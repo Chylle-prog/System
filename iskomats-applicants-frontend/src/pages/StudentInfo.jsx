@@ -4210,7 +4210,36 @@ const StudentInfo = () => {
           const imgData = ctx.getImageData(0, 0, w, h);
           const data = imgData.data;
 
-          // 1. Calculate overall document paper brightness (median proxy)
+          // ── Check 1: Saturated Editor UI Border Artifacts (Canva/Photoshop crop artifacts) ──
+          let magentaBorderPx = 0;
+          const checkMarginPx = (x, y) => {
+            const idx = (y * w + x) * 4;
+            const r = data[idx], g = data[idx + 1], b = data[idx + 2];
+            // Saturated magenta/pink/violet: high red, low green, high blue (e.g. #E6007E or #FF0080)
+            if (r >= 140 && g <= 100 && b >= 100 && (r - g) >= 50) {
+              magentaBorderPx++;
+            }
+          };
+
+          const topH = Math.floor(h * 0.08);
+          const leftW = Math.floor(w * 0.08);
+          for (let y = 0; y < topH; y += 2) {
+            for (let x = 0; x < w; x += 2) checkMarginPx(x, y);
+          }
+          for (let y = 0; y < h; y += 2) {
+            for (let x = 0; x < leftW; x += 2) checkMarginPx(x, y);
+          }
+
+          if (magentaBorderPx >= 35) {
+            resolve({
+              edited: true,
+              reason: `Editing canvas border detected (${magentaBorderPx} saturated editor UI border pixels found at margins). Please upload an original unedited document.`,
+              patchCount: magentaBorderPx
+            });
+            return;
+          }
+
+          // ── Check 2: Calculate overall document paper brightness (median proxy) ──
           const sampleGrays = [];
           const stepX = Math.max(1, Math.floor(w / 40));
           const stepY = Math.max(1, Math.floor(h / 40));
@@ -4223,7 +4252,7 @@ const StudentInfo = () => {
           sampleGrays.sort((a, b) => a - b);
           const paperMedian = sampleGrays.length > 0 ? sampleGrays[Math.floor(sampleGrays.length * 0.5)] : 220;
 
-          // 2. Scan text region grid for whiteout patches and digital overlays
+          // ── Check 3: Scan text region grid for whiteout patches and digital overlays ──
           const gridW = 28;
           const gridH = 18;
           const marginX = Math.floor(w * 0.08);
