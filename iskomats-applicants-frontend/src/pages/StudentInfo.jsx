@@ -4257,83 +4257,8 @@ const StudentInfo = () => {
           if (magentaBorderPx >= 45) {
             resolve({
               edited: true,
-              reason: `Editing canvas border detected (${magentaBorderPx} saturated editor UI border pixels found at margins). Please upload an original unedited document.`,
+              reason: `Editing canvas border detected (${magentaBorderPx} saturated editor UI border pixels found at margins). Please upload an authentic, unedited document.`,
               patchCount: magentaBorderPx
-            });
-            return;
-          }
-
-          // ── Check 2: Calculate overall document paper brightness (median proxy) ──
-          const sampleGrays = [];
-          const stepX = Math.max(1, Math.floor(w / 40));
-          const stepY = Math.max(1, Math.floor(h / 40));
-          for (let y = Math.floor(h * 0.1); y < h * 0.9; y += stepY) {
-            for (let x = Math.floor(w * 0.1); x < w * 0.9; x += stepX) {
-              const idx = (y * w + x) * 4;
-              sampleGrays.push(0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
-            }
-          }
-          sampleGrays.sort((a, b) => a - b);
-          const paperMedian = sampleGrays.length > 0 ? sampleGrays[Math.floor(sampleGrays.length * 0.5)] : 220;
-
-          // ── Check 3: Scan text region grid for whiteout patches and digital overlays ──
-          const gridW = 28;
-          const gridH = 18;
-          const marginX = Math.floor(w * 0.08);
-          const marginY = Math.floor(h * 0.08);
-          const contentW = w - 2 * marginX;
-          const contentH = h - 2 * marginY;
-          const cols = Math.floor(contentW / gridW);
-          const rows = Math.floor(contentH / gridH);
-
-          let suspiciousPatches = 0;
-
-          for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-              const startX = marginX + c * gridW;
-              const startY = marginY + r * gridH;
-
-              let sumGray = 0;
-              let count = 0;
-              const pixels = [];
-
-              for (let y = startY; y < startY + gridH; y++) {
-                for (let x = startX; x < startX + gridW; x++) {
-                  const idx = (y * w + x) * 4;
-                  const g = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-                  pixels.push(g);
-                  // Exclude dark text pixels (< 175) to measure patch background brightness
-                  if (g >= 175) {
-                    sumGray += g;
-                    count++;
-                  }
-                }
-              }
-
-              if (count >= 15) {
-                const boxBgMean = sumGray / count;
-                let varSum = 0;
-                for (let p of pixels) {
-                  if (p >= 175) varSum += Math.pow(p - boxBgMean, 2);
-                }
-                const boxBgStd = Math.sqrt(varSum / count);
-
-                const contrast = boxBgMean - paperMedian;
-                // Whiteout block overlay:
-                // Box is bright white (>=236) on shaded paper (contrast >= 10.0)
-                // OR pure solid white fill (>=250) with low variance (< 3.0)
-                if ((boxBgMean >= 236 && contrast >= 10.0) || (boxBgMean >= 250 && boxBgStd < 3.0)) {
-                  suspiciousPatches++;
-                }
-              }
-            }
-          }
-
-          if (suspiciousPatches >= 2) {
-            resolve({
-              edited: true,
-              reason: `Digital edit / whiteout overlay detected on document (${suspiciousPatches} artificial overlay patch(es) found). Please upload an authentic, unedited document.`,
-              patchCount: suspiciousPatches
             });
             return;
           }
