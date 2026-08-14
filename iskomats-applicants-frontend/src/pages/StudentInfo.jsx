@@ -1389,7 +1389,7 @@ function studentNameMatchesText(text, first, middle, last) {
 
   const finalFirstOk = firstOk && reverseFirstOk;
   const finalLastOk = lastOk && reverseLastOk && !inputLastIsStopWord;
-  const success = finalFirstOk && finalLastOk && middleOk;
+  const success = finalFirstOk && finalLastOk;
 
   console.debug('[NAME CHECK]', { first, last, normText: normText.slice(0,200), targetText: targetText.slice(0,200), sequenceOk, firstOk: finalFirstOk, lastOk: finalLastOk, reverseFirstOk, reverseLastOk, success });
 
@@ -1397,7 +1397,7 @@ function studentNameMatchesText(text, first, middle, last) {
     success,
     details: {
       first_ok: finalFirstOk,
-      middle_ok: middleOk,
+      middle_ok: true,
       last_ok: finalLastOk,
       sequence_ok: sequenceOk && reverseFirstOk && reverseLastOk
     }
@@ -4215,22 +4215,30 @@ const StudentInfo = () => {
           const checkMarginPx = (x, y) => {
             const idx = (y * w + x) * 4;
             const r = data[idx], g = data[idx + 1], b = data[idx + 2];
-            // Saturated magenta/pink/violet: high red, low green, high blue (e.g. #E6007E or #FF0080)
-            if (r >= 140 && g <= 100 && b >= 100 && (r - g) >= 50) {
+            // Saturated magenta/violet/pink editor UI border pixels:
+            // High red & blue relative to green (e.g. #52172D, #821745, #E6007E)
+            if (r > g * 1.35 && b > g * 1.15 && (r + b) >= 65 && r >= 35 && b >= 25 && g <= 120) {
               magentaBorderPx++;
             }
           };
 
           const topH = Math.floor(h * 0.08);
           const leftW = Math.floor(w * 0.08);
+          const rightX = Math.floor(w * 0.92);
+          const botY = Math.floor(h * 0.92);
+
           for (let y = 0; y < topH; y += 2) {
+            for (let x = 0; x < w; x += 2) checkMarginPx(x, y);
+          }
+          for (let y = botY; y < h; y += 2) {
             for (let x = 0; x < w; x += 2) checkMarginPx(x, y);
           }
           for (let y = 0; y < h; y += 2) {
             for (let x = 0; x < leftW; x += 2) checkMarginPx(x, y);
+            for (let x = rightX; x < w; x += 2) checkMarginPx(x, y);
           }
 
-          if (magentaBorderPx >= 35) {
+          if (magentaBorderPx >= 50) {
             resolve({
               edited: true,
               reason: `Editing canvas border detected (${magentaBorderPx} saturated editor UI border pixels found at margins). Please upload an original unedited document.`,
