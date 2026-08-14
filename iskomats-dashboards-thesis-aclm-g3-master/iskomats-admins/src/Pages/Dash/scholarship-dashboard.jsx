@@ -338,10 +338,26 @@ const applicantMatchesAdvancedScholarshipFilters = (applicant, advanced, scholar
     return false;
   }
 
-  if (advanced.location && (applicant.municipality || applicant.address || applicant.streetBrgy || applicant.street_brgy || applicant.province)) {
+  if (advanced.location) {
     const fullAddr = getApplicantAddressDisplay(applicant);
-    const locationMatch = normalizeSearchText(fullAddr).includes(normalizeSearchText(advanced.location));
-    if (!locationMatch) return false;
+    const locationFields = [
+      fullAddr,
+      applicant.municipality,
+      applicant.town_city_municipality,
+      applicant.townCity,
+      applicant.city,
+      applicant.address,
+      applicant.location,
+      applicant.streetBrgy,
+      applicant.street_brgy,
+      applicant.street,
+      applicant.barangay,
+      applicant.province
+    ].map(s => String(s || '').toLowerCase()).join(' ');
+
+    if (!locationFields.includes(normalizeSearchText(advanced.location))) {
+      return false;
+    }
   }
 
   if (advanced.incomeBracket && (applicant.income || applicant.financial_income_of_parents || applicant.parentFinance || applicant.family?.grossIncome) && !normalizeSearchText(String(applicant.income || applicant.financial_income_of_parents || applicant.parentFinance || applicant.family?.grossIncome)).includes(normalizeSearchText(advanced.incomeBracket))) {
@@ -4270,186 +4286,12 @@ export default function ScholarshipDashboard({
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-20 bg-[#800020] text-white">
               <tr className="bg-[#800020] text-white select-none">
-                <th className="px-4 py-3 text-left font-semibold relative sort-dropdown-container">
-                  <div className="flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'name' ? null : 'name'); }}>
-                    <span>Name</span>
-                    <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'name' ? 'rotate-180' : ''}`} />
-                  </div>
-                  {activeDropdown === 'name' && (
-                    <div className="absolute left-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-2xl z-50 text-gray-800 font-normal py-2 px-3">
-                      <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Name</div>
-                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={sortConfig.column === 'name' && sortConfig.direction === 'asc'}
-                          onChange={() => handleSortCheck('name', 'asc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
-                        />
-                        <span className="text-sm">A - Z</span>
-                      </label>
-                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={sortConfig.column === 'name' && sortConfig.direction === 'desc'}
-                          onChange={() => handleSortCheck('name', 'desc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
-                        />
-                        <span className="text-sm">Z - A</span>
-                      </label>
-                    </div>
-                  )}
-                </th>
-
-                <th className="px-4 py-3 text-left font-semibold relative sort-dropdown-container">
-                  <div className="flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'grade' ? null : 'grade'); }}>
-                    <span>Grade</span>
-                    <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'grade' ? 'rotate-180' : ''}`} />
-                  </div>
-                  {activeDropdown === 'grade' && (
-                    <div className="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-2xl z-50 text-gray-800 font-normal py-2 px-3">
-                      <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Grade</div>
-                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={sortConfig.column === 'grade' && sortConfig.direction === 'desc'}
-                          onChange={() => handleSortCheck('grade', 'desc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
-                        />
-                        <span className="text-sm">Highest to Lowest</span>
-                      </label>
-                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={sortConfig.column === 'grade' && sortConfig.direction === 'asc'}
-                          onChange={() => handleSortCheck('grade', 'asc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
-                        />
-                        <span className="text-sm">Lowest to Highest</span>
-                      </label>
-                    </div>
-                  )}
-                </th>
-
-                <th className="px-4 py-3 text-left font-semibold relative sort-dropdown-container">
-                  <div className="flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'financial' ? null : 'financial'); }}>
-                    <span>Financial</span>
-                    <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'financial' ? 'rotate-180' : ''}`} />
-                  </div>
-                  {activeDropdown === 'financial' && (
-                    <div className="absolute right-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-2xl z-50 text-gray-800 font-normal py-2 px-3">
-                      <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Financial</div>
-                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={sortConfig.column === 'financial' && sortConfig.direction === 'desc'}
-                          onChange={() => handleSortCheck('financial', 'desc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
-                        />
-                        <span className="text-sm">Highest to Lowest</span>
-                      </label>
-                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={sortConfig.column === 'financial' && sortConfig.direction === 'asc'}
-                          onChange={() => handleSortCheck('financial', 'asc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
-                        />
-                        <span className="text-sm">Lowest to Highest</span>
-                      </label>
-                    </div>
-                  )}
-                </th>
-
-                <th className="px-4 py-3 text-left font-semibold relative sort-dropdown-container">
-                  <div className="flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'points' ? null : 'points'); }}>
-                    <span>Points</span>
-                    <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'points' ? 'rotate-180' : ''}`} />
-                  </div>
-                  {activeDropdown === 'points' && (
-                    <div className="absolute right-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-2xl z-50 text-gray-800 font-normal py-2 px-3">
-                      <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Points</div>
-                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={sortConfig.column === 'points' && sortConfig.direction === 'desc'}
-                          onChange={() => handleSortCheck('points', 'desc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
-                        />
-                        <span className="text-sm">Highest to Lowest</span>
-                      </label>
-                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={sortConfig.column === 'points' && sortConfig.direction === 'asc'}
-                          onChange={() => handleSortCheck('points', 'asc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
-                        />
-                        <span className="text-sm">Lowest to Highest</span>
-                      </label>
-                    </div>
-                  )}
-                </th>
-
-                <th className="px-4 py-3 text-left font-semibold relative sort-dropdown-container">
-                  <div className="flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'schoolCourse' ? null : 'schoolCourse'); }}>
-                    <span>School & Course</span>
-                    <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'schoolCourse' ? 'rotate-180' : ''}`} />
-                  </div>
-                  {activeDropdown === 'schoolCourse' && (
-                    <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-2xl z-50 text-gray-800 font-normal py-2 px-3">
-                      <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort School & Course</div>
-                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={sortConfig.column === 'schoolCourse' && sortConfig.direction === 'asc'}
-                          onChange={() => handleSortCheck('schoolCourse', 'asc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
-                        />
-                        <span className="text-sm">A - Z</span>
-                      </label>
-                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={sortConfig.column === 'schoolCourse' && sortConfig.direction === 'desc'}
-                          onChange={() => handleSortCheck('schoolCourse', 'desc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
-                        />
-                        <span className="text-sm">Z - A</span>
-                      </label>
-                    </div>
-                  )}
-                </th>
-
-                <th className="px-4 py-3 text-left font-semibold relative sort-dropdown-container">
-                  <div className="flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveDropdown(activeDropdown === 'contactAddress' ? null : 'contactAddress'); }}>
-                    <span>Contact & Address</span>
-                    <FaChevronDown className={`text-white/70 text-[10px] transition-transform ${activeDropdown === 'contactAddress' ? 'rotate-180' : ''}`} />
-                  </div>
-                  {activeDropdown === 'contactAddress' && (
-                    <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-2xl z-50 text-gray-800 font-normal py-2 px-3">
-                      <div className="text-xs font-semibold text-gray-500 mb-2 px-1">Sort Contact & Address</div>
-                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={sortConfig.column === 'contactAddress' && sortConfig.direction === 'asc'}
-                          onChange={() => handleSortCheck('contactAddress', 'asc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
-                        />
-                        <span className="text-sm">A - Z</span>
-                      </label>
-                      <label className="flex items-center gap-2 py-1 px-1 hover:bg-gray-50 rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={sortConfig.column === 'contactAddress' && sortConfig.direction === 'desc'}
-                          onChange={() => handleSortCheck('contactAddress', 'desc')}
-                          className="rounded text-[#800020] focus:ring-[#800020] cursor-pointer"
-                        />
-                        <span className="text-sm">Z - A</span>
-                      </label>
-                    </div>
-                  )}
-                </th>
-
+                <th className="px-4 py-3 text-left font-semibold">Name</th>
+                <th className="px-4 py-3 text-left font-semibold">Grade</th>
+                <th className="px-4 py-3 text-left font-semibold">Financial</th>
+                <th className="px-4 py-3 text-left font-semibold">Points</th>
+                <th className="px-4 py-3 text-left font-semibold">School &amp; Course</th>
+                <th className="px-4 py-3 text-left font-semibold">Contact &amp; Address</th>
                 <th className="px-4 py-3 text-left font-semibold">Action</th>
               </tr>
             </thead>
@@ -4630,41 +4472,56 @@ export default function ScholarshipDashboard({
   };
 
   const exportToExcel = (type = 'report') => {
-    const { applicants, accepted, declined } = data;
+    const { applicants, accepted, rejected, cancelled, declined } = data;
 
     if (type === 'track') {
-      const filterListToExport = (list) => list.filter((a) => {
-        const search = searchTrack.toLowerCase();
-        const matchesSearch =
-          a.name.toLowerCase().includes(search) ||
-          (a.school && a.school.toLowerCase().includes(search)) ||
-          (getApplicantAddressDisplay(a).toLowerCase().includes(search)) ||
-          (a.course && a.course.toLowerCase().includes(search)) ||
-          (a.mobileNumber && a.mobileNumber.toLowerCase().includes(search));
+      const filterListToExport = (list) => (list || []).filter((a) => {
+        if (!a) return false;
+        const search = (searchTrack || '').toLowerCase().trim();
+        const matchesSearch = !search || (
+          String(a.name || '').toLowerCase().includes(search) ||
+          String(a.school || '').toLowerCase().includes(search) ||
+          getApplicantAddressDisplay(a).toLowerCase().includes(search) ||
+          String(a.course || '').toLowerCase().includes(search) ||
+          String(a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || '').toLowerCase().includes(search)
+        );
         const matchesScholarship = matchesScholarshipSelection(a, trackScholarshipFilter);
+        const matchesCourse = courseTrackFilter === 'all' || a.course === courseTrackFilter;
+        const matchesAdvanced = applicantMatchesAdvancedScholarshipFilters(a, trackAdvancedSearch, data.scholarshipPosts);
 
-        return matchesSearch && matchesScholarship;
+        return matchesSearch && matchesScholarship && matchesCourse && matchesAdvanced;
       });
 
-      const fileName = `${reportFilePrefix}_Tracking_Full_${new Date().toISOString().split('T')[0]}`;
+      const fileName = `${reportFilePrefix}_Tracking_Export_${new Date().toISOString().split('T')[0]}`;
       const wb = XLSX.utils.book_new();
 
-      const formatTracking = (list) => list.map(app => ({
-        'Student Name': app.name,
-        'Grade': app.grade,
-        'Financial Status': getFinancialStatusLabel(app.income || app.family?.grossIncome),
-        'School': app.school,
-        'Contact No.': app.mobileNumber || app.phone || (app.studentContact && app.studentContact.phone) || 'N/A',
-        'Address': getApplicantAddressDisplay(app),
-        'Course': app.course
-      }));
+      const formatTracking = (list) => list.map(app => {
+        const sch = getScholarshipForApplicant(app);
+        const points = calculateDeservednessScore(app, sch);
+        return {
+          'Student Name': app.name || `${app.firstName || ''} ${app.lastName || ''}`.trim() || 'N/A',
+          'Status': app.status || 'Pending',
+          'Grade': app.grade ?? 'N/A',
+          'Financial Status': getFinancialStatusLabel(app.income || app.financial_income_of_parents || app.parentFinance || app.family?.grossIncome),
+          'Points': points ?? 'N/A',
+          'School': app.school || 'N/A',
+          'Course': app.course || 'N/A',
+          'Contact No.': app.mobileNumber || app.phone || (app.studentContact && app.studentContact.phone) || 'N/A',
+          'Address': getApplicantAddressDisplay(app)
+        };
+      });
 
       const activeScholarshipName = trackScholarshipFilter === 'all'
         ? 'All scholarship types'
         : (scholarshipFilterOptions.find(o => o.value === trackScholarshipFilter)?.label || scholarshipLabel);
 
       const addHeaderToSheet = (list, sheetName) => {
-        const ws = XLSX.utils.aoa_to_sheet([[sidebarTitle, activeScholarshipName], [`Report: ${sheetName}`], [`Generated: ${new Date().toLocaleString()}`], []]);
+        const ws = XLSX.utils.aoa_to_sheet([
+          [sidebarTitle, activeScholarshipName],
+          [`Report: ${sheetName}`],
+          [`Generated: ${new Date().toLocaleString()}`],
+          []
+        ]);
         const formattedData = formatTracking(list);
         XLSX.utils.sheet_add_json(ws, formattedData, { origin: 'A5' });
 
@@ -4674,9 +4531,33 @@ export default function ScholarshipDashboard({
         XLSX.utils.book_append_sheet(wb, ws, sheetName);
       };
 
-      addHeaderToSheet(filterListToExport(applicants), 'Pending Review');
-      addHeaderToSheet(filterListToExport(accepted), 'Accepted Scholars');
-      addHeaderToSheet(filterListToExport(declined), 'Declined - Cancelled');
+      const combinedAll = [
+        ...(applicants || []),
+        ...(accepted || []),
+        ...(rejected || []),
+        ...(cancelled || [])
+      ];
+
+      const uniqueCombinedMap = new Map();
+      combinedAll.forEach(app => {
+        const key = getApplicantIdentityKey(app) || app.applicant_no || app.id || app.name;
+        if (!uniqueCombinedMap.has(key)) {
+          uniqueCombinedMap.set(key, app);
+        }
+      });
+      const uniqueAll = Array.from(uniqueCombinedMap.values());
+
+      const filteredAll = filterListToExport(uniqueAll);
+      const filteredPending = filterListToExport(applicants || []);
+      const filteredAccepted = filterListToExport(accepted || []);
+      const filteredRejected = filterListToExport(rejected || []);
+      const filteredCancelled = filterListToExport(cancelled || []);
+
+      addHeaderToSheet(filteredAll, 'All Applicants');
+      addHeaderToSheet(filteredPending, 'Pending Review');
+      addHeaderToSheet(filteredAccepted, 'Accepted Scholars');
+      addHeaderToSheet(filteredRejected, 'Rejected');
+      addHeaderToSheet(filteredCancelled, 'Cancelled');
 
       XLSX.writeFile(wb, `${fileName}.xlsx`);
       return;
