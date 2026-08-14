@@ -18,6 +18,15 @@ except ImportError:
     pytesseract = None
 
 try:
+    from services.tamper_ai_detector import run_full_security_audit
+except ImportError:
+    try:
+        from tamper_ai_detector import run_full_security_audit
+    except ImportError:
+        def run_full_security_audit(image_bytes, doc_type="Document", success=False, message="", meta=None):
+            return {'security_flagged': False, 'audit': {}, 'recommendation': message}
+
+try:
     from project_config import get_performance_config
 except ImportError:
     def get_performance_config():
@@ -2756,14 +2765,11 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
                 if not parsed_fields.get('name'): parsed_fields['name'] = v
 
         success, msg, meta = verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs)
-        return success, msg, raw_text, meta
     elif 'INDIGENCY' in doc_type_upper or 'RESIDENCY' in doc_type_upper:
         is_res = 'RESIDENCY' in doc_type_upper
         success, msg, meta = verify_indigency_fields(raw_text, first_name, middle_name, last_name, expected_address=kwargs.get('expected_address'), is_residency_doc=is_res, **kwargs)
-        return success, msg, raw_text, meta
     elif 'ID' in doc_type_upper or 'IDENTIFICATION' in doc_type_upper or 'SCHOOLID' in doc_type_upper:
         success, msg, meta = verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs)
-        return success, msg, raw_text, meta
     else:
         # Default: COR / Registration (Multi-Pass 3x-4x Super-Res + ROI Header/Footer Scan)
         cor_multi_text, cor_multi_azure_kvp = extract_cor_document_text_multi_pass(enhanced_doc_bytes or image_bytes)
@@ -2787,7 +2793,20 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
                 if not parsed_fields.get('units'): parsed_fields['units'] = v
 
         success, msg, meta = verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs)
-        return success, msg, raw_text, meta
+
+    # Master Security Audit (EXIF software check, ELA error level splicing analysis, TrueDoc recapture moire scan, Hive AI detector, and Gemini recommendation generator)
+    try:
+        sec = run_full_security_audit(image_bytes, doc_type=doc_type_upper or "Document", success=success, message=msg, meta=meta)
+        if isinstance(meta, dict):
+            meta['security_audit'] = sec.get('audit', {})
+            meta['ai_recommendation'] = sec.get('recommendation', '')
+            meta['security_flagged'] = sec.get('security_flagged', False)
+            if sec.get('security_flagged'):
+                meta['tamper_alert'] = True
+    except Exception as sec_err:
+        print(f"[OCR SECURITY AUDIT] Note: {sec_err}", flush=True)
+
+    return success, msg, raw_text, meta
 
 def preprocess_grades_lines(raw_text):
     """

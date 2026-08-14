@@ -131,6 +131,9 @@ async def api_verify_document(req: DocumentVerificationRequest):
             "message": str(message),
             "detected_text": detected_text,
             "meta": meta,
+            "ai_recommendation": meta.get("ai_recommendation", ""),
+            "security_audit": meta.get("security_audit", {}),
+            "security_flagged": meta.get("security_flagged", False),
             "process_time": time.time() - start_time
         }
     except Exception as e:
