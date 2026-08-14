@@ -3610,15 +3610,9 @@ def ocr_scan():
             return jsonify({'success': False, 'message': 'No image data provided for OCR scan.', 'text': ''}), 400
 
         from services.ocr_utils import extract_text_with_google_cloud_vision, resolve_verification_image_bytes, detect_document_tampering
-        from services.tamper_ai_detector import run_full_security_audit
 
-        # Run Pre-scan Digital Tamper & Whiteout Overlay Check
+        # Run Ultra-Fast Digital Tamper & Editor Canvas Border Check (<10ms)
         is_edited, tamper_msg, _ = detect_document_tampering(image_bytes)
-
-        # Run Forensic Security Audit
-        doc_type_hint = request.form.get('target_doc') or request.form.get('doc_type') or 'Document'
-        sec_audit = run_full_security_audit(image_bytes, doc_type=doc_type_hint, success=not is_edited, message=tamper_msg if is_edited else "Document scan processed")
-        security_flagged = is_edited or sec_audit.get('security_flagged', False)
 
         extracted_text, debug_info = extract_text_with_google_cloud_vision(image_bytes, return_debug=True)
         return jsonify({
@@ -3628,9 +3622,7 @@ def ocr_scan():
             'debug': debug_info,
             'tamper_alert': bool(is_edited),
             'tamper_message': str(tamper_msg) if is_edited else "",
-            'security_flagged': bool(security_flagged),
-            'security_audit': sec_audit.get('audit', {}),
-            'ai_recommendation': sec_audit.get('recommendation', '')
+            'security_flagged': bool(is_edited)
         }), 200
     except Exception as e:
         print(f"[OCR SCAN API EXCEPTION] {e}", flush=True)

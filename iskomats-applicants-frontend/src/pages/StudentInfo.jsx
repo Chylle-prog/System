@@ -501,6 +501,8 @@ const compressImageForOcr = async (blobOrDataUrl, maxDim = 1280, quality = 0.75)
   }
 };
 
+let lastOcrScanTamperResult = { hasAlert: false, message: "" };
+
 const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
   if (!imageInput) return "";
   if (signal?.aborted) return "";
@@ -576,9 +578,9 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
         let isFormData = false;
 
         if (resolvedBlob) {
-          const formData = new FormData();
-          formData.append('file', resolvedBlob, 'scan.jpg');
-          requestBody = formData;
+          const fd = new FormData();
+          fd.append('file', resolvedBlob, 'document_scan.jpg');
+          requestBody = fd;
           isFormData = true;
         } else if (base64Image) {
           headers['Content-Type'] = 'application/json';
@@ -597,6 +599,12 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
         const resp = await fetch(`${cleanOrigin}/api/student/verification/ocr-scan`, fetchOptions);
         if (resp.ok) {
           const data = await resp.json();
+          if (data && (data.tamper_alert || data.security_flagged)) {
+            lastOcrScanTamperResult = {
+              hasAlert: true,
+              message: data.tamper_message || "Digital edit / canvas border artifact detected on document."
+            };
+          }
           const text = String(data.text || "").trim();
           if (text) {
             if (cacheKey) visionOcrCache.set(cacheKey, text);
@@ -4195,16 +4203,25 @@ const StudentInfo = () => {
       img.crossOrigin = "anonymous";
       img.onload = () => {
         try {
-          const canvas = document.createElement("canvas");
-          const w = img.width;
-          const h = img.height;
+          const maxDim = 800;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
           if (!w || !h) {
             resolve({ edited: false, reason: "Authentic document" });
             return;
           }
           canvas.width = w;
           canvas.height = h;
-          const ctx = canvas.getContext("2d");
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
           ctx.drawImage(img, 0, 0, w, h);
 
           const imgData = ctx.getImageData(0, 0, w, h);
@@ -4734,6 +4751,24 @@ const StudentInfo = () => {
 
         if (scanToken.aborted || activeOcrControllersRef.current[docType]?.aborted) return 'aborted';
 
+        if (lastOcrScanTamperResult.hasAlert) {
+          const tamperReason = lastOcrScanTamperResult.message;
+          const scoreDetails = {
+            "Document Authenticity": false,
+            "Digital Tamper Check": false,
+            "First Name": false,
+            "Last Name": false,
+            "Video Proof": true
+          };
+          const finalMessage = `Tampering Alert: ${tamperReason}`;
+          const resultsList = [{ doc: docType, verified: false, message: finalMessage, score_details: scoreDetails }];
+          if (!silent) {
+            setVerified('failed');
+            setStatus(`Verification failed: ${finalMessage}`);
+          }
+          return { isSuccess: false, scoreDetails, finalMessage, resultsList, detectedText: "[DIGITAL TAMPERING DETECTED]" };
+        }
+
         frontVidCheck = fVidRes;
         backVidCheck = bVidRes;
         detectedText = isNationalId ? `[NATIONAL ID FRONT TEXT]\n${frontText}\n\n[NATIONAL ID BACK TEXT (NO VERIFICATION REQUIRED)]\n${backText}` : `[FRONT ID TEXT]\n${frontText}\n\n[BACK ID TEXT]\n${backText}`;
@@ -4825,6 +4860,24 @@ const StudentInfo = () => {
         ]);
 
         if (scanToken.aborted || activeOcrControllersRef.current[docType]?.aborted) return 'aborted';
+
+        if (lastOcrScanTamperResult.hasAlert) {
+          const tamperReason = lastOcrScanTamperResult.message;
+          const scoreDetails = {
+            "Document Authenticity": false,
+            "Digital Tamper Check": false,
+            "First Name": false,
+            "Last Name": false,
+            "Video Proof": true
+          };
+          const finalMessage = `Tampering Alert: ${tamperReason}`;
+          const resultsList = [{ doc: docType, verified: false, message: finalMessage, score_details: scoreDetails }];
+          if (!silent) {
+            setVerified('failed');
+            setStatus(`Verification failed: ${finalMessage}`);
+          }
+          return { isSuccess: false, scoreDetails, finalMessage, resultsList, detectedText: "[DIGITAL TAMPERING DETECTED]" };
+        }
 
         detectedText = detectedTextRes;
         videoCheck = videoCheckRes;
