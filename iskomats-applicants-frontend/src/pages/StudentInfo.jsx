@@ -4232,17 +4232,16 @@ const StudentInfo = () => {
           const checkMarginPx = (x, y) => {
             const idx = (y * w + x) * 4;
             const r = data[idx], g = data[idx + 1], b = data[idx + 2];
-            // Saturated magenta/violet/pink editor UI border pixels:
-            // High red & blue relative to green (e.g. #52172D, #821745, #E6007E)
-            if (r > g * 1.35 && b > g * 1.15 && (r + b) >= 65 && r >= 35 && b >= 25 && g <= 120) {
+            // Strict vivid magenta / editor crop handle (high red + blue, low green)
+            if (r >= 120 && b >= 80 && g <= 80 && (r - g) >= 55 && (b - g) >= 35) {
               magentaBorderPx++;
             }
           };
 
-          const topH = Math.floor(h * 0.08);
-          const leftW = Math.floor(w * 0.08);
-          const rightX = Math.floor(w * 0.92);
-          const botY = Math.floor(h * 0.92);
+          const topH = Math.floor(h * 0.06);
+          const leftW = Math.floor(w * 0.06);
+          const rightX = Math.floor(w * 0.94);
+          const botY = Math.floor(h * 0.94);
 
           for (let y = 0; y < topH; y += 2) {
             for (let x = 0; x < w; x += 2) checkMarginPx(x, y);
@@ -4255,7 +4254,7 @@ const StudentInfo = () => {
             for (let x = rightX; x < w; x += 2) checkMarginPx(x, y);
           }
 
-          if (magentaBorderPx >= 50) {
+          if (magentaBorderPx >= 45) {
             resolve({
               edited: true,
               reason: `Editing canvas border detected (${magentaBorderPx} saturated editor UI border pixels found at margins). Please upload an original unedited document.`,

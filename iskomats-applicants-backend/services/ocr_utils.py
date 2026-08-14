@@ -2653,17 +2653,17 @@ def detect_document_tampering(image_bytes):
 
         # ── Check 1: Editor Software Canvas / UI Border Artifacts ─────────────
         # Saturated magenta/pink/cyan UI borders left behind from screenshotting editor canvas
-        m_top = hsv[:int(h * 0.08), :]
-        m_left = hsv[:, :int(w * 0.08)]
-        m_right = hsv[:, int(w * 0.92):]
-        m_bot = hsv[int(h * 0.92):, :]
+        m_top = hsv[:int(h * 0.06), :]
+        m_left = hsv[:, :int(w * 0.06)]
+        m_right = hsv[:, int(w * 0.94):]
+        m_bot = hsv[int(h * 0.94):, :]
 
-        # Magenta/Violet/Pink Editor handles: Hue 130-175, Sat >= 50, Val >= 30
+        # Strict Vivid Magenta/Editor Crop Handle: Hue 140-170, Sat >= 110, Val >= 70
         mag_px = int(
-            np.sum((m_top[:,:,0] >= 130) & (m_top[:,:,0] <= 175) & (m_top[:,:,1] >= 50) & (m_top[:,:,2] >= 30)) +
-            np.sum((m_left[:,:,0] >= 130) & (m_left[:,:,0] <= 175) & (m_left[:,:,1] >= 50) & (m_left[:,:,2] >= 30)) +
-            np.sum((m_right[:,:,0] >= 130) & (m_right[:,:,0] <= 175) & (m_right[:,:,1] >= 50) & (m_right[:,:,2] >= 30)) +
-            np.sum((m_bot[:,:,0] >= 130) & (m_bot[:,:,0] <= 175) & (m_bot[:,:,1] >= 50) & (m_bot[:,:,2] >= 30))
+            np.sum((m_top[:,:,0] >= 140) & (m_top[:,:,0] <= 170) & (m_top[:,:,1] >= 110) & (m_top[:,:,2] >= 70)) +
+            np.sum((m_left[:,:,0] >= 140) & (m_left[:,:,0] <= 170) & (m_left[:,:,1] >= 110) & (m_left[:,:,2] >= 70)) +
+            np.sum((m_right[:,:,0] >= 140) & (m_right[:,:,0] <= 170) & (m_right[:,:,1] >= 110) & (m_right[:,:,2] >= 70)) +
+            np.sum((m_bot[:,:,0] >= 140) & (m_bot[:,:,0] <= 170) & (m_bot[:,:,1] >= 110) & (m_bot[:,:,2] >= 70))
         )
         if mag_px >= 300:
             return True, f"Editing canvas border artifact detected ({mag_px} editor UI border pixels found at margins). Please upload an authentic, unedited document.", mag_px
