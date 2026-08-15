@@ -8130,8 +8130,11 @@ const StudentInfo = () => {
                 type="button"
                 onClick={async () => {
                   const newVal = !debugFlags.skip_alternate_check;
+                  localStorage.setItem('debug_skip_alternate_check', newVal ? 'true' : 'false');
+                  sessionStorage.setItem('debug_skip_alternate_check', newVal ? 'true' : 'false');
                   setDebugFlags(prev => ({ ...prev, skip_alternate_check: newVal }));
                   await debugAPI.setFlag('skip_alternate_check', newVal);
+                  window.location.reload();
                 }}
                 style={{
                   background: '#3b82f6',
@@ -8158,8 +8161,14 @@ const StudentInfo = () => {
                 type="button"
                 onClick={async () => {
                   const newVal = !debugFlags.skip_tamper_check;
+                  localStorage.setItem('debug_skip_tamper_check', newVal ? 'true' : 'false');
+                  sessionStorage.setItem('debug_skip_tamper_check', newVal ? 'true' : 'false');
+                  window.debug_skip_tamper_check = newVal;
+                  visionOcrCache.clear();
+                  lastOcrScanTamperResult = { hasAlert: false, message: "" };
                   setDebugFlags(prev => ({ ...prev, skip_tamper_check: newVal }));
                   await debugAPI.setFlag('skip_tamper_check', newVal);
+                  window.location.reload();
                 }}
                 style={{
                   background: '#3b82f6',
