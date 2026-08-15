@@ -205,7 +205,7 @@ const Login = () => {
       setLoadingMessage({ title: 'Creating Account', message: 'Setting up your account...' });
       
       // Register user with backend directly
-      await authAPI.register({
+      const regResponse = await authAPI.register({
         email,
         password
       });
@@ -213,6 +213,11 @@ const Login = () => {
       // Store email for next step (email verification)
       localStorage.setItem('registrationEmail', email);
       localStorage.setItem('registrationPassword', password);
+      if (regResponse?.verification_code) {
+        localStorage.setItem('registrationFallbackCode', regResponse.verification_code);
+      } else {
+        localStorage.removeItem('registrationFallbackCode');
+      }
       
       setShowLoadingOverlay(false);
       // Redirect to email verification

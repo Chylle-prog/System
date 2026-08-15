@@ -1670,16 +1670,19 @@ def student_register():
                     )
                     conn.commit()
                     
+                    email_sent = False
                     try:
                         send_verification_email(email, verification_code)
+                        email_sent = True
                     except Exception as e:
-                        print(f"[EMAIL ERROR] Failed to resend verification email during re-registration: {e}")
-                        return jsonify({'message': f'Failed to send verification email: {str(e)}'}), 500
+                        print(f"[EMAIL ERROR] Failed to resend verification email during re-registration: {e}", flush=True)
+                        print(f"[FALLBACK CODE] Verification code for {email}: {verification_code}", flush=True)
                         
                     return jsonify({
-                        'message': 'Account already exists but was not verified. A new verification code has been sent.',
+                        'message': 'Account already exists but was not verified. ' + ('A new verification code has been sent.' if email_sent else f'Email delivery is temporarily unavailable. Your verification code is: {verification_code}'),
                         'is_applicant': True,
                         'requires_verification': True,
+                        'verification_code': verification_code if not email_sent else None,
                         'email': email
                     }), 201
 
@@ -1693,26 +1696,29 @@ def student_register():
                 INSERT INTO pending_registrations (email_address, password_hash, verification_code)
                 VALUES (%s, %s, %s)
                 ON CONFLICT (email_address) DO UPDATE SET
-                    password_hash = EXCLUDED.password_hash,
-                    verification_code = EXCLUDED.verification_code,
-                    created_at = NOW()
+                password_hash = EXCLUDED.password_hash,
+                verification_code = EXCLUDED.verification_code,
+                created_at = NOW()
                 """,
                 (email, password_hash, verification_code),
             )
             conn.commit()
 
         # 4. Send verification email (outside lock usually fine, but definitely after commit)
+        email_sent = False
         try:
             send_verification_email(email, verification_code)
+            email_sent = True
         except Exception as e:
             print(f"[EMAIL ERROR] Failed to send verification email during registration: {e}", flush=True)
-            # Rollback or at least inform the user
-            return jsonify({'message': f'Registration failed because the verification email could not be sent: {str(e)}'}), 500
+            print(f"[FALLBACK CODE] Verification code for {email}: {verification_code}", flush=True)
 
         return jsonify({
-            'message': 'Registration initiated. Please check your email for the verification code.',
+            'message': 'Registration initiated. Please check your email for the verification code.' if email_sent else f'Registration initiated. Email delivery service is temporarily unavailable. Your verification code is: {verification_code}',
             'is_applicant': True,
-            'requires_verification': True
+            'requires_verification': True,
+            'verification_code': verification_code if not email_sent else None,
+            'email': email
         }), 201
     except Exception as exc:
         return jsonify({'message': f'Error: {str(exc)}'}), 500

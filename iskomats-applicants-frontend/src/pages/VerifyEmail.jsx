@@ -51,6 +51,11 @@ const VerifyEmail = () => {
       setEmail(registrationEmail);
     }
 
+    const fallbackCode = localStorage.getItem('registrationFallbackCode');
+    if (fallbackCode) {
+      setFormData(prev => ({ ...prev, verificationCode: fallbackCode }));
+    }
+
     // Safety: If the user is already authenticated and has a complete profile,
     // redirect them to the portal.
     const authToken = localStorage.getItem('authToken');
