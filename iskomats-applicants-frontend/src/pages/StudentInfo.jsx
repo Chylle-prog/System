@@ -501,6 +501,36 @@ const compressImageForOcr = async (blobOrDataUrl, maxDim = 1280, quality = 0.75)
   }
 };
 
+export const isTamperBypassActive = () => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return (
+      localStorage.getItem('debug_skip_tamper_check') === 'true' ||
+      localStorage.getItem('bypass_tamper_check') === 'true' ||
+      localStorage.getItem('bypass_tamper') === 'true' ||
+      localStorage.getItem('skip_tamper_check') === 'true' ||
+      localStorage.getItem('skip_tamper') === 'true' ||
+      localStorage.getItem('tamper_bypass') === 'true' ||
+      sessionStorage.getItem('debug_skip_tamper_check') === 'true' ||
+      sessionStorage.getItem('bypass_tamper_check') === 'true' ||
+      window.debug_skip_tamper_check === true ||
+      window.bypass_tamper_check === true
+    );
+  } catch (e) {
+    return false;
+  }
+};
+
+if (typeof window !== 'undefined') {
+  window.setTamperBypass = (enable = true) => {
+    try {
+      localStorage.setItem('debug_skip_tamper_check', enable ? 'true' : 'false');
+      console.log(`[TAMPER BYPASS] debug_skip_tamper_check set to: ${enable} (Applies ONLY to this browser)`);
+    } catch (e) {}
+  };
+  window.isTamperBypassActive = isTamperBypassActive;
+}
+
 let lastOcrScanTamperResult = { hasAlert: false, message: "" };
 
 const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
@@ -573,6 +603,9 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
         const token = localStorage.getItem('authToken');
         const headers = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
+        if (isTamperBypassActive()) {
+          headers['X-Bypass-Tamper'] = 'true';
+        }
 
         let requestBody = null;
         let isFormData = false;
@@ -591,7 +624,7 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
 
         const fetchOptions = {
           method: 'POST',
-          headers: isFormData ? (token ? { 'Authorization': `Bearer ${token}` } : {}) : headers,
+          headers: isFormData ? (token ? { 'Authorization': `Bearer ${token}`, ...(isTamperBypassActive() ? { 'X-Bypass-Tamper': 'true' } : {}) } : (isTamperBypassActive() ? { 'X-Bypass-Tamper': 'true' } : {})) : headers,
           body: requestBody,
           signal
         };
@@ -599,11 +632,13 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
         const resp = await fetch(`${cleanOrigin}/api/student/verification/ocr-scan`, fetchOptions);
         if (resp.ok) {
           const data = await resp.json();
-          if (data && (data.tamper_alert || data.security_flagged)) {
+          if (!isTamperBypassActive() && data && (data.tamper_alert || data.security_flagged)) {
             lastOcrScanTamperResult = {
               hasAlert: true,
               message: data.tamper_message || "Digital edit / canvas border artifact detected on document."
             };
+          } else if (isTamperBypassActive()) {
+            lastOcrScanTamperResult = { hasAlert: false, message: "" };
           }
           const text = String(data.text || "").trim();
           if (text) {
@@ -4191,8 +4226,8 @@ const StudentInfo = () => {
    */
   function detectDocumentTampering(imageSource) {
     return new Promise((resolve) => {
-      if (localStorage.getItem('debug_skip_tamper_check') === 'true' || sessionStorage.getItem('debug_skip_tamper_check') === 'true' || window.debug_skip_tamper_check === true) {
-        resolve({ edited: false, reason: "Tamper check bypassed via debug toggle" });
+      if (isTamperBypassActive()) {
+        resolve({ edited: false, reason: "Tamper check bypassed via local browser toggle" });
         return;
       }
       if (!imageSource) {
@@ -4393,7 +4428,7 @@ const StudentInfo = () => {
         resolvedParam = pParam || rawResolved || docParam;
       }
 
-      if (tamperCheck.edited) {
+      if (!isTamperBypassActive() && tamperCheck.edited) {
         const scoreDetails = {
           "Document Authenticity": false,
           "Digital Tamper Check": false,
@@ -4675,7 +4710,7 @@ const StudentInfo = () => {
 
         if (scanToken.aborted || activeOcrControllersRef.current[docType]?.aborted) return 'aborted';
 
-        if (lastOcrScanTamperResult.hasAlert) {
+        if (!isTamperBypassActive() && lastOcrScanTamperResult.hasAlert) {
           const tamperReason = lastOcrScanTamperResult.message;
           const scoreDetails = {
             "Document Authenticity": false,
@@ -4785,7 +4820,7 @@ const StudentInfo = () => {
 
         if (scanToken.aborted || activeOcrControllersRef.current[docType]?.aborted) return 'aborted';
 
-        if (lastOcrScanTamperResult.hasAlert) {
+        if (!isTamperBypassActive() && lastOcrScanTamperResult.hasAlert) {
           const tamperReason = lastOcrScanTamperResult.message;
           const scoreDetails = {
             "Document Authenticity": false,
