@@ -1448,7 +1448,7 @@ function studentNameMatchesText(text, first, middle, last) {
 }
 
 export function name_matches_text(text, first, last, middle = '') {
-  return studentNameMatchesText(text, first, middle, last);
+  return name_matches_merit_cert(text, first, last, middle);
 }
 
 // Known alternate spellings for barangay names that may appear on national IDs
@@ -2365,6 +2365,66 @@ function yearLevelMatchesText(text, expectedYearLevel) {
   }
 
   return true;
+}
+
+export function name_matches_merit_cert(detectedText, firstName, lastName, middleName = '') {
+  if (!detectedText || !detectedText.trim()) {
+    return { success: false, reason: "No text extracted from certificate" };
+  }
+  const normDoc = normalizeForOcr(detectedText);
+  const docTokens = normDoc.split(/\s+/).filter(Boolean);
+
+  const cleanFirst = normalizeForOcr(firstName || '').trim();
+  const cleanLast = normalizeForOcr(lastName || '').trim();
+  const cleanMiddle = normalizeForOcr(middleName || '').trim();
+
+  // If user has not provided first or last name, default pass
+  if (!cleanFirst && !cleanLast) {
+    return { success: true, reason: "Name check bypassed" };
+  }
+
+  // 1. Direct Full Name Sequence check (e.g. "faith ann fletcher", "faith ann ortega fletcher", "fletcher faith ann")
+  if (cleanFirst && cleanLast) {
+    const directSeq1 = `${cleanFirst} ${cleanLast}`;
+    const directSeq2 = cleanMiddle ? `${cleanFirst} ${cleanMiddle} ${cleanLast}` : '';
+    const directSeq3 = `${cleanLast} ${cleanFirst}`;
+    if (normDoc.includes(directSeq1) || (directSeq2 && normDoc.includes(directSeq2)) || normDoc.includes(directSeq3)) {
+      return { success: true, reason: "Exact name sequence matched" };
+    }
+  }
+
+  // 2. Token-level matching for First Name and Last Name words
+  const firstWords = cleanFirst.split(/\s+/).filter(w => w.length >= 2);
+  const lastWords = cleanLast.split(/\s+/).filter(w => w.length >= 2);
+
+  const wordMatches = (word) => {
+    if (!word) return true;
+    const confW = normalizeNameConfusions(word);
+    if (new RegExp('\\b' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(normDoc)) {
+      return true;
+    }
+    return docTokens.some(tok => {
+      if (tok === word) return true;
+      if (isSimilarWord(word, tok)) return true;
+      if (confW.length >= 3 && normalizeNameConfusions(tok) === confW) return true;
+      return false;
+    });
+  };
+
+  // Both First Name (all significant words, or direct phrase) and Last Name must match
+  const firstOk = firstWords.length > 0 ? (normDoc.includes(cleanFirst) || firstWords.every(w => wordMatches(w))) : true;
+  const lastOk = lastWords.length > 0 ? lastWords.every(w => wordMatches(w)) : true;
+
+  if (firstOk && lastOk) {
+    return { success: true, reason: "First and Last names found on certificate" };
+  }
+
+  return {
+    success: false,
+    reason: !firstOk && !lastOk
+      ? `Applicant name (${firstName} ${lastName}) not found on certificate.`
+      : (!firstOk ? `First name (${firstName}) not found on certificate.` : `Last name (${lastName}) not found on certificate.`)
+  };
 }
 
 export function merit_matches_text(detectedText, meritTitle) {
@@ -5733,9 +5793,9 @@ const StudentInfo = () => {
         const ocrText = await performGoogleVisionOcrScan(certSource);
         combinedDetectedText += `\n[MERIT #${i + 1}: ${item.title}]\n${ocrText || 'No text extracted.'}\n`;
 
-        // Check 1: Name verification
-        const nameCheck = name_matches_text(ocrText, firstName, lastName, middleName);
-        const namePassed = Boolean(nameCheck && (nameCheck.success || (nameCheck.details && nameCheck.details.first_ok && nameCheck.details.last_ok)));
+        // Check 1: Name verification (First Name and Last Name matching)
+        const nameCheck = name_matches_merit_cert(ocrText, firstName, lastName, middleName);
+        const namePassed = Boolean(nameCheck && nameCheck.success);
 
         // Check 2: Merit Keyword verification
         const meritCheck = merit_matches_text(ocrText, item.title);
@@ -5744,11 +5804,11 @@ const StudentInfo = () => {
         const certPassed = namePassed && meritPassed;
         item.verified = certPassed ? 'success' : 'failed';
         item.status = certPassed ? 'Certificate verified successfully!' : (
-          !namePassed ? `Applicant name (${firstName} ${lastName}) not found on certificate.` : meritCheck.reason
+          !namePassed ? (nameCheck?.reason || `Applicant name (${firstName} ${lastName}) not found on certificate.`) : meritCheck.reason
         );
         item.scoreDetails = {
           "Applicant Name": namePassed,
-          "Award / Merit Keyword": meritPassed
+          "Merit Keyword": meritPassed
         };
 
         aggregatedResults.push({
@@ -5782,11 +5842,13 @@ const StudentInfo = () => {
           status: allPassed ? 'VERIFIED (SUCCESS)' : 'FAILED (MISMATCH)',
           message: finalStatus,
           detectedText: combinedDetectedText,
-          scoreDetails: aggregatedResults.length > 0 ? aggregatedResults[0].score_details : {},
+          scoreDetails: {
+            "Applicant Name": aggregatedResults.every(r => r.score_details?.["Applicant Name"]),
+            "Merit Keyword": aggregatedResults.every(r => r.score_details?.["Merit Keyword"])
+          },
           requirements: {
             "Applicant Name": `${firstName} ${lastName}`,
-            "Merit Keyword": activeMeritsWithPhotos.map(m => m.title).join(', '),
-            "Status": finalStatus
+            "Merit Keyword": activeMeritsWithPhotos.map(m => m.title).join(', ')
           },
           timestamp: new Date().toLocaleTimeString()
         }
