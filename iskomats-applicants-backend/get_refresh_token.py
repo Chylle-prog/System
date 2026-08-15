@@ -7,6 +7,8 @@ import socketserver
 from urllib.parse import urlparse, parse_qs
 import os
 import sys
+from dotenv import load_dotenv
+load_dotenv()
 
 try:
     sys.stdout.reconfigure(encoding='utf-8')

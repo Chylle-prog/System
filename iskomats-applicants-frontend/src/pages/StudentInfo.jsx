@@ -2363,6 +2363,109 @@ function yearLevelMatchesText(text, expectedYearLevel) {
   return true;
 }
 
+export function merit_matches_text(detectedText, meritTitle) {
+  if (!meritTitle || !meritTitle.trim()) return { isMatch: true, matchedKeywords: [], score: 100 };
+  if (!detectedText || !detectedText.trim()) return { isMatch: false, matchedKeywords: [], reason: "No text extracted from certificate" };
+
+  const normDoc = normalizeForOcr(detectedText);
+  const normTitle = normalizeForOcr(meritTitle);
+
+  // 1. Direct Substring Match
+  if (normDoc.includes(normTitle)) {
+    return { isMatch: true, matchedKeywords: [normTitle], score: 100 };
+  }
+
+  // 2. Tokenize and filter out generic noise words
+  const stopWords = new Set([
+    'the', 'a', 'an', 'and', 'or', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'by',
+    'grade', 'year', 'level', 'semester', 'sem', 'sy', 'school', 'awards', 'award',
+    'certificate', 'recognition', 'appreciation', 'merit', 'recipient', 'given', 'this'
+  ]);
+
+  const rawTokens = normTitle
+    .replace(/[^a-z0-9\s]/gi, ' ')
+    .split(/\s+/)
+    .filter(t => t.length > 2 && !stopWords.has(t));
+
+  const tokens = rawTokens.length > 0 ? rawTokens : normTitle.split(/\s+/).filter(t => t.length > 2);
+
+  // 3. Philippine Honors & Awards Taxonomy & Synonyms
+  const taxonomyMap = {
+    'valedictorian': ['valedictorian', 'valedictory', 'highest honor', 'class valedictorian'],
+    'salutatorian': ['salutatorian', 'salutatory', 'high honor'],
+    'honor': ['honor', 'honors', 'honorable', 'karangalan'],
+    'highest': ['highest', 'pinakamataas', 'highest honor', 'summa'],
+    'deans': ['dean', 'deans', 'dean s', 'lister', 'honor roll', 'academic excellence', 'presidents list'],
+    'dean': ['dean', 'deans', 'dean s', 'lister', 'honor roll', 'academic excellence'],
+    'lister': ['lister', 'list', 'honor roll'],
+    'cum': ['cum laude', 'magna cum laude', 'summa cum laude', 'laude'],
+    'laude': ['laude', 'cum laude', 'magna', 'summa'],
+    'magna': ['magna', 'magna cum laude'],
+    'summa': ['summa', 'summa cum laude'],
+    'champion': ['champion', '1st place', 'first place', 'gold', 'winner', 'kampeon'],
+    'first': ['1st', 'first', 'champion', 'gold', 'winner'],
+    'second': ['2nd', 'second', 'silver', 'runner up'],
+    'third': ['3rd', 'third', 'bronze'],
+    'leadership': ['leadership', 'service', 'leader', 'pamumuno', 'officer'],
+    'excellence': ['excellence', 'academic excellence', 'katangi tangi', 'outstanding'],
+    'outstanding': ['outstanding', 'excellence', 'exemplary', 'natatangi'],
+    'athlete': ['athlete', 'sports', 'athletic', 'palakasan'],
+    'math': ['math', 'mathematics', 'olympiad', 'quiz bee'],
+    'science': ['science', 'olympiad', 'quiz bee'],
+    'robotics': ['robotics', 'robot', 'technology', 'stem']
+  };
+
+  const matchedTokens = [];
+  let tokenMatches = 0;
+
+  for (const token of tokens) {
+    let tokenFound = false;
+
+    if (normDoc.includes(token)) {
+      tokenFound = true;
+      matchedTokens.push(token);
+    } else {
+      const synonyms = taxonomyMap[token] || [];
+      for (const syn of synonyms) {
+        if (normDoc.includes(syn)) {
+          tokenFound = true;
+          matchedTokens.push(`${token} (${syn})`);
+          break;
+        }
+      }
+    }
+
+    if (!tokenFound && token.length >= 5) {
+      const docWords = normDoc.split(/\s+/);
+      for (const dw of docWords) {
+        if (dw.length >= 4 && (dw.startsWith(token.slice(0, 4)) || token.startsWith(dw.slice(0, 4)))) {
+          tokenFound = true;
+          matchedTokens.push(`${token} (~${dw})`);
+          break;
+        }
+      }
+    }
+
+    if (tokenFound) {
+      tokenMatches++;
+    }
+  }
+
+  const hasCertificateAnchors = /certificate|pagkilala|katibayan|recognition|award|achievement|commendation|merit|honors|diploma/i.test(normDoc);
+  const matchRatio = tokens.length > 0 ? (tokenMatches / tokens.length) : 0;
+  const isMatch = (tokens.length === 1 && tokenMatches === 1) ||
+                  (tokens.length > 1 && matchRatio >= 0.5) ||
+                  (hasCertificateAnchors && tokenMatches >= 1) ||
+                  (hasCertificateAnchors && tokens.length === 0);
+
+  return {
+    isMatch,
+    matchedKeywords: matchedTokens,
+    score: Math.round(matchRatio * 100),
+    reason: isMatch ? "Merit keywords matched certificate" : `Could not find merit keywords (${tokens.join(', ')}) in certificate.`
+  };
+}
+
 
 
 const StudentInfo = () => {
@@ -2417,6 +2520,12 @@ const StudentInfo = () => {
   const [coeResults, setCoeResults] = useState([]);
   const [gradesResults, setGradesResults] = useState([]);
   const [idResults, setIdResults] = useState([]);
+  const [meritResults, setMeritResults] = useState([]);
+  const [meritScanVerified, setMeritScanVerified] = useState(null);
+  const [meritScanStatus, setMeritScanStatus] = useState('');
+  const [meritList, setMeritList] = useState([
+    { id: 1, title: '', photo: null, verified: null, status: '', scoreDetails: null }
+  ]);
 
   // Global debug flags — fetched from DB so they sync across all deployments
   const [debugFlags, setDebugFlags] = useState({
@@ -5592,6 +5701,131 @@ const StudentInfo = () => {
     }
   }
 
+  async function handleMeritScan() {
+    const activeMeritsWithPhotos = meritList.filter(m => m.title && m.title.trim() && m.photo);
+    if (activeMeritsWithPhotos.length === 0) {
+      showPromptMessage('Please enter a merit/award title and upload the supporting certificate image.');
+      return;
+    }
+
+    const firstName = formData.firstName || userProfile?.first_name || '';
+    const lastName = formData.lastName || userProfile?.last_name || '';
+
+    setMeritScanVerified('verifying');
+    setMeritScanStatus('Scanning merit certificate(s)...');
+    setScanProgress(15);
+
+    const scanProgressTimer = setInterval(() => {
+      setScanProgress(p => p < 85 ? p + 8 : p);
+    }, 150);
+
+    try {
+      const updatedList = [...meritList];
+      const aggregatedResults = [];
+      let allPassed = true;
+      let failureReason = '';
+      let combinedDetectedText = '';
+
+      for (let i = 0; i < updatedList.length; i++) {
+        const item = updatedList[i];
+        if (!item.title || !item.title.trim() || !item.photo) {
+          continue;
+        }
+
+        const certSource = getVerificationDocumentSource(item.photo);
+        if (!certSource) continue;
+
+        // Run tamper check
+        if (!isTamperBypassActive()) {
+          const tamperCheck = await detectDocumentTampering(certSource);
+          if (tamperCheck.edited) {
+            allPassed = false;
+            failureReason = `Merit #${i + 1} (${item.title}): Tampering Alert: ${tamperCheck.reason}`;
+            item.verified = 'failed';
+            item.status = failureReason;
+            item.scoreDetails = {
+              "Applicant Name": false,
+              "Award / Merit Keyword": false,
+              "Tamper Check": false
+            };
+            break;
+          }
+        }
+
+        // Run Google Vision OCR scan
+        const ocrText = await performGoogleVisionOcrScan(certSource);
+        combinedDetectedText += `\n[MERIT #${i + 1}: ${item.title}]\n${ocrText || 'No text extracted.'}\n`;
+
+        // Check 1: Name verification
+        const nameCheck = name_matches_text(ocrText, firstName, lastName);
+        const namePassed = Boolean(nameCheck.details.first_ok && nameCheck.details.last_ok);
+
+        // Check 2: Merit Keyword verification
+        const meritCheck = merit_matches_text(ocrText, item.title);
+        const meritPassed = Boolean(meritCheck.isMatch);
+
+        const certPassed = namePassed && meritPassed;
+        item.verified = certPassed ? 'success' : 'failed';
+        item.status = certPassed ? 'Certificate verified successfully!' : (
+          !namePassed ? `Applicant name (${firstName} ${lastName}) not found on certificate.` : meritCheck.reason
+        );
+        item.scoreDetails = {
+          "Applicant Name": namePassed,
+          "Award / Merit Keyword": meritPassed
+        };
+
+        aggregatedResults.push({
+          doc: `Merit #${i + 1}`,
+          verified: certPassed,
+          message: item.status,
+          score_details: item.scoreDetails
+        });
+
+        if (!certPassed) {
+          allPassed = false;
+          if (!failureReason) failureReason = `Merit #${i + 1} (${item.title}): ${item.status}`;
+        }
+      }
+
+      clearInterval(scanProgressTimer);
+      setScanProgress(100);
+      setMeritList(updatedList);
+      setMeritResults(aggregatedResults);
+
+      const finalStatus = allPassed
+        ? (activeMeritsWithPhotos.length > 1 ? 'All merit certificates verified successfully!' : 'Merit certificate verified successfully!')
+        : (failureReason || 'Merit certificate verification failed.');
+
+      setMeritScanVerified(allPassed ? 'success' : 'failed');
+      setMeritScanStatus(finalStatus);
+
+      setOcrDebugLogs(prev => ({
+        ...prev,
+        Merit: {
+          status: allPassed ? 'VERIFIED (SUCCESS)' : 'FAILED (MISMATCH)',
+          message: finalStatus,
+          detectedText: combinedDetectedText,
+          scoreDetails: aggregatedResults.length > 0 ? aggregatedResults[0].score_details : {},
+          requirements: {
+            "Applicant Name": `${firstName} ${lastName}`,
+            "Merit Keyword": activeMeritsWithPhotos.map(m => m.title).join(', '),
+            "Status": finalStatus
+          },
+          timestamp: new Date().toLocaleTimeString()
+        }
+      }));
+
+      showPromptMessage(allPassed ? 'Merit certificate(s) verified successfully!' : finalStatus);
+    } catch (err) {
+      clearInterval(scanProgressTimer);
+      setScanProgress(0);
+      setMeritScanVerified('failed');
+      const errMessage = `Technical Issue: ${err.message}`;
+      setMeritScanStatus(errMessage);
+      showPromptMessage(errMessage);
+    }
+  }
+
   async function saveCurrentStepProgress(stepNumber = currentStep) {
     const payload = new FormData();
     const jsonData = {};
@@ -5683,6 +5917,13 @@ const StudentInfo = () => {
       appendSmartFile('id_back', backFile);
       appendSmartFile('enrollment_certificate_doc', coeFile);
       appendSmartFile('grades_doc', gradesFile);
+
+      // Save 1NF merit proof certificates
+      const activeMeritsWithPhotos = meritList.filter(m => m.title && m.title.trim() && m.photo);
+      activeMeritsWithPhotos.forEach((m, idx) => {
+        appendSmartFile(`merit_proof_${idx + 1}`, m.photo);
+        jsonData[`merit_title_${idx + 1}`] = m.title.trim();
+      });
     }
 
     if (stepNumber === 4) {
@@ -6084,6 +6325,21 @@ const StudentInfo = () => {
           setHasOtherAssistance('No');
         }
 
+        // Populate 1NF merit proofs from profile
+        if (profile.merit_proofs && Array.isArray(profile.merit_proofs) && profile.merit_proofs.length > 0) {
+          const mapped = profile.merit_proofs.map((mp, i) => ({
+            id: mp.merit_id || i + 1,
+            title: mp.merit_title || '',
+            photo: mp.merit_document || null,
+            verified: 'success',
+            status: 'Verified Certificate',
+            scoreDetails: null
+          }));
+          setMeritList(mapped);
+          setMeritScanVerified('success');
+          setMeritScanStatus('All merit certificates verified successfully!');
+        }
+
         // Fetch scholarship requirements
         let reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
         const scholarshipNameParam = searchParams.get('scholarship');
@@ -6230,6 +6486,18 @@ const StudentInfo = () => {
           if (vs.coeResults && vs.coeResults.length > 0) setCoeResults(vs.coeResults);
           if (vs.gradesResults && vs.gradesResults.length > 0) setGradesResults(vs.gradesResults);
           if (vs.idResults && vs.idResults.length > 0) setIdResults(vs.idResults);
+          if (savedDraft.meritList && Array.isArray(savedDraft.meritList) && savedDraft.meritList.length > 0) {
+            setMeritList(savedDraft.meritList);
+          }
+          if (vs.meritScanVerified !== undefined && vs.meritScanVerified !== null) {
+            setMeritScanVerified(vs.meritScanVerified);
+          }
+          if (vs.meritScanStatus) {
+            setMeritScanStatus(sanitizeStatusStr(vs.meritScanStatus));
+          }
+          if (vs.meritResults && vs.meritResults.length > 0) {
+            setMeritResults(vs.meritResults);
+          }
           if (vs.ocrDebugLogs && Object.keys(vs.ocrDebugLogs).length > 0) {
             const cleanedLogs = { ...vs.ocrDebugLogs };
             Object.keys(cleanedLogs).forEach(k => {
@@ -7115,6 +7383,23 @@ const StudentInfo = () => {
 
       ['schoolIdFront_video', 'schoolIdBack_video'].forEach((videoField) => {
         appendSmartVideo(videoField);
+      });
+
+      // Append 1NF merit proof certificates
+      const activeMeritsWithPhotos = meritList.filter(m => m.title && m.title.trim() && m.photo);
+      activeMeritsWithPhotos.forEach((m, idx) => {
+        const photoVal = m.photo;
+        if (typeof photoVal === 'string' && photoVal.startsWith('http')) {
+          submissionData.append(`merit_proof_${idx + 1}`, photoVal);
+        } else if (isFileLike(photoVal)) {
+          submissionData.append(`merit_proof_${idx + 1}`, photoVal);
+        } else if (typeof photoVal === 'string' && photoVal.startsWith('data:')) {
+          const blob = dataUrlToBlob(photoVal);
+          if (blob) {
+            submissionData.append(`merit_proof_${idx + 1}`, blob, `merit_proof_${idx + 1}.jpg`);
+          }
+        }
+        submissionData.append(`merit_title_${idx + 1}`, m.title.trim());
       });
 
       const result = await applicationAPI.submit(numericReqNo, submissionData, skipVerification);
@@ -8842,25 +9127,319 @@ const StudentInfo = () => {
                   </div>
                 </div>
 
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Merits and Awards Received <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal' }}>(Optional)</span></label>
-                    <textarea
-                      name="meritsAwardsReceived"
-                      value={formData.meritsAwardsReceived}
-                      onChange={handleInputChange}
-                      placeholder="List your academic awards, leadership roles, or special recognitions here..."
-                      style={{
-                        width: '100%',
-                        minHeight: '80px',
-                        padding: '0.8rem',
-                        borderRadius: '12px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '0.9rem',
-                        fontFamily: 'inherit',
-                        resize: 'vertical'
-                      }}
-                    />
+                {/* Dynamic Multi-Merit Section (Up to 3 Merits with Conditional Document Upload) */}
+                <div className="form-group" style={{ marginBottom: '1.8rem', width: '100%' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '0.95rem', fontWeight: '800', color: '#1e293b', margin: 0 }}>
+                      Merits and Awards Received <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal' }}>(Optional)</span>
+                    </label>
+                    <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: '700', background: '#ecfdf5', padding: '2px 8px', borderRadius: '10px', border: '1px solid #a7f3d0' }}>
+                      Leave empty if none
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 12px 0', lineHeight: '1.4' }}>
+                    Leave empty if none. If you have academic honors, leadership awards, or competition recognitions, enter them below and attach supporting certificates.
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {meritList.map((merit, index) => {
+                      const hasTitle = Boolean(merit.title && merit.title.trim());
+                      const hasPhoto = Boolean(merit.photo);
+
+                      return (
+                        <div
+                          key={merit.id || index}
+                          style={{
+                            background: '#ffffff',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '16px',
+                            padding: '1rem',
+                            position: 'relative',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                              Merit / Award #{index + 1}
+                            </span>
+                            {index > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMeritList(prev => {
+                                    const next = prev.filter((_, i) => i !== index);
+                                    const joined = next.map(m => m.title).filter(Boolean).join(', ');
+                                    setFormData(fd => ({ ...fd, meritsAwardsReceived: joined }));
+                                    return next;
+                                  });
+                                  setMeritScanVerified(null);
+                                  setMeritScanStatus('');
+                                }}
+                                style={{
+                                  background: '#fee2e2',
+                                  color: '#dc2626',
+                                  border: 'none',
+                                  borderRadius: '50%',
+                                  width: '24px',
+                                  height: '24px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer',
+                                  fontSize: '0.75rem',
+                                  fontWeight: '800',
+                                  transition: 'all 0.2s ease'
+                                }}
+                                title="Remove this merit"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+
+                          <input
+                            type="text"
+                            placeholder={index === 0 ? "e.g. Valedictorian, Dean's Lister, 1st Place Science Quiz Bee..." : `e.g. Award / Recognition #${index + 1}...`}
+                            value={merit.title}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setMeritList(prev => {
+                                const next = [...prev];
+                                next[index] = { ...next[index], title: val };
+                                const joined = next.map(m => m.title).filter(Boolean).join(', ');
+                                setFormData(fd => ({ ...fd, meritsAwardsReceived: joined }));
+                                return next;
+                              });
+                              if (meritScanVerified) {
+                                setMeritScanVerified(null);
+                                setMeritScanStatus('');
+                              }
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '0.75rem 1rem',
+                              borderRadius: '12px',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '0.88rem',
+                              fontFamily: 'inherit',
+                              marginBottom: hasTitle ? '10px' : '0'
+                            }}
+                          />
+
+                          {/* CONDITIONAL CERTIFICATE DOCUMENT SUBMISSION: Only show if user inputted something */}
+                          {hasTitle && (
+                            <div style={{ marginTop: '8px', padding: '10px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#334155' }}>
+                                  Certificate / Proof of Award ({merit.title})
+                                </label>
+                                {hasPhoto && (
+                                  <span style={{ fontSize: '0.68rem', color: '#059669', fontWeight: '700', background: '#ecfdf5', padding: '2px 8px', borderRadius: '8px' }}>
+                                    <i className="fas fa-check-circle" style={{ marginRight: '4px' }}></i> Ready
+                                  </span>
+                                )}
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: hasPhoto ? '10px' : '0' }}>
+                                <input
+                                  id={`merit_photo_${index}`}
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={async (e) => {
+                                    const file = e.target.files[0];
+                                    if (file) {
+                                      const reader = new FileReader();
+                                      reader.onload = (evt) => {
+                                        const dataUrl = evt.target.result;
+                                        setMeritList(prev => {
+                                          const next = [...prev];
+                                          next[index] = { ...next[index], photo: dataUrl, verified: null, status: '' };
+                                          return next;
+                                        });
+                                        setMeritScanVerified(null);
+                                        setMeritScanStatus('');
+                                      };
+                                      reader.readAsDataURL(file);
+                                    }
+                                  }}
+                                  style={{ display: 'none' }}
+                                />
+                                <label
+                                  htmlFor={`merit_photo_${index}`}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '8px',
+                                    padding: '0.65rem 1.2rem',
+                                    borderRadius: '10px',
+                                    border: '1px solid #cbd5e1',
+                                    background: '#ffffff',
+                                    color: '#0f172a',
+                                    cursor: 'pointer',
+                                    fontSize: '0.78rem',
+                                    fontWeight: '700',
+                                    boxShadow: '0 2px 6px rgba(0,0,0,0.04)'
+                                  }}
+                                >
+                                  <i className="fas fa-file-upload" style={{ color: 'var(--primary)' }}></i>
+                                  {hasPhoto ? 'Change Certificate Image' : 'Upload Certificate Photo'}
+                                </label>
+
+                                {hasPhoto && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setMeritList(prev => {
+                                        const next = [...prev];
+                                        next[index] = { ...next[index], photo: null, verified: null, status: '' };
+                                        return next;
+                                      });
+                                      setMeritScanVerified(null);
+                                      setMeritScanStatus('');
+                                    }}
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      color: '#ef4444',
+                                      fontSize: '0.75rem',
+                                      cursor: 'pointer',
+                                      fontWeight: '600'
+                                    }}
+                                  >
+                                    Remove Image
+                                  </button>
+                                )}
+                              </div>
+
+                              {hasPhoto && (
+                                <div
+                                  className="image-container"
+                                  style={{
+                                    height: '180px',
+                                    borderRadius: '10px',
+                                    overflow: 'hidden',
+                                    marginTop: '8px',
+                                    border: '1px solid #cbd5e1',
+                                    cursor: 'pointer',
+                                    position: 'relative'
+                                  }}
+                                  onClick={() => setLightboxSrc(merit.photo)}
+                                >
+                                  <img src={merit.photo} alt={`Merit ${index + 1} Certificate`} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#1e293b' }} />
+                                  <div style={{ position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '4px 8px', borderRadius: '8px', fontSize: '0.65rem' }}>
+                                    <i className="fas fa-expand-alt" style={{ marginRight: '4px' }}></i> Tap to enlarge
+                                  </div>
+                                  {meritScanVerified === 'verifying' && <div className="scanning-laser"></div>}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* "Add Another Merit" Button: Shown after last document input if count < 3 and current merit has text */}
+                    {meritList.length < 3 && meritList[meritList.length - 1].title && meritList[meritList.length - 1].title.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMeritList(prev => [
+                            ...prev,
+                            { id: Date.now(), title: '', photo: null, verified: null, status: '', scoreDetails: null }
+                          ]);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px',
+                          padding: '0.75rem 1rem',
+                          borderRadius: '12px',
+                          border: '1px dashed var(--primary)',
+                          background: 'var(--accent-soft)',
+                          color: 'var(--primary)',
+                          fontSize: '0.82rem',
+                          fontWeight: '800',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          marginTop: '4px'
+                        }}
+                      >
+                        <i className="fas fa-plus-circle"></i> Add Another Merit (Up to 3)
+                      </button>
+                    )}
+
+                    {/* MERIT SCAN BUTTON & STATUS: Placed after the last merit document input if any document is uploaded */}
+                    {meritList.some(m => m.title && m.title.trim() && m.photo) && (
+                      <div style={{ marginTop: '10px' }}>
+                        <button
+                          type="button"
+                          onClick={meritScanVerified === 'verifying' ? () => cancelOcrScan('Merit') : handleMeritScan}
+                          disabled={isSavingStep || meritScanVerified === 'verifying'}
+                          style={{
+                            width: '100%',
+                            padding: '0.85rem',
+                            borderRadius: '14px',
+                            background: meritScanVerified === 'verifying' ? '#ef4444' : (meritScanVerified === 'success' ? '#10b981' : 'var(--primary)'),
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '10px',
+                            fontSize: '0.9rem',
+                            fontWeight: '800',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            boxShadow: meritScanVerified === 'verifying' ? '0 8px 20px rgba(239, 68, 68, 0.35)' : (meritScanVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)'),
+                            textTransform: 'uppercase'
+                          }}
+                        >
+                          <i className={`fas ${meritScanVerified === 'verifying' ? 'fa-spinner fa-spin' : (meritScanVerified === 'success' ? 'fa-check' : 'fa-award')}`}></i>
+                          {meritScanVerified === 'verifying' ? 'Scanning Merit Certificate(s)...' : (meritScanVerified === 'success' ? 'Merit Verified' : 'Scan Merit Certificate(s)')}
+                        </button>
+
+                        {meritScanVerified === 'verifying' && (
+                          <div style={{ marginTop: '0.5rem' }}>
+                            <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '10px', position: 'relative', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                              <div style={{ position: 'absolute', height: '100%', background: 'linear-gradient(90deg, var(--primary), #ff4d4d)', width: `${scanProgress}%`, transition: 'width 0.2s ease', borderRadius: '10px' }}></div>
+                            </div>
+                            <div style={{ marginTop: '0.6rem', padding: '0.6rem 0.8rem', background: '#eff6ff', borderRadius: '10px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '8px', color: '#1d4ed8', fontSize: '0.78rem', fontWeight: '700' }}>
+                              <i className="fas fa-spinner fa-spin"></i>
+                              <span>{meritScanStatus || 'Evaluating certificate text and applicant name...'}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {meritScanStatus && meritScanVerified !== 'verifying' && (
+                          <div className={`validation-status-card ${meritScanVerified === 'success' ? 'success' : (meritScanVerified === 'failed' ? 'failed' : 'processing')}`} style={{ marginTop: '0.8rem' }}>
+                            <div className={`status-icon ${meritScanVerified === 'success' ? 'success' : (meritScanVerified === 'failed' ? 'failed' : 'processing')}`}>
+                              <i className={`fas ${meritScanVerified === 'success' ? 'fa-check' : (meritScanVerified === 'failed' ? 'fa-circle-xmark' : 'fa-info-circle')}`}></i>
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <p style={{ fontSize: '0.8rem', fontWeight: '700', margin: 0 }}>Merit Verification Result</p>
+                                {meritResults.length > 0 && (
+                                  <div style={{
+                                    fontSize: '0.75rem',
+                                    fontWeight: '800',
+                                    padding: '3px 8px',
+                                    borderRadius: '8px',
+                                    background: calculateVerificationPercentage(meritResults) === 100 ? '#dcfce7' : '#fee2e2',
+                                    color: calculateVerificationPercentage(meritResults) === 100 ? '#15803d' : '#b91c1c'
+                                  }}>
+                                    {calculateVerificationPercentage(meritResults)}% Match
+                                  </div>
+                                )}
+                              </div>
+                              <p style={{ fontSize: '0.78rem', fontWeight: '500', opacity: 0.9, margin: 0, lineHeight: '1.4' }}>{meritScanStatus}</p>
+                              {renderInlineRequirementsChecklist('Merit')}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 

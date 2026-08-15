@@ -47,6 +47,11 @@ from services.ocr_utils import (
 )
 from services.notification_service import create_notification, fetch_google_access_token, send_verification_email, send_email_message
 from services.google_auth_service import verify_google_token
+from services.merit_proof_service import (
+    ensure_merit_proofs_table,
+    fetch_merit_proofs_for_applicant,
+    save_merit_proofs
+)
 from concurrent.futures import ThreadPoolExecutor
 
 def try_int(val):
@@ -108,10 +113,10 @@ def ensure_applicant_verification_columns():
         
         if 'is_verified' not in existing:
             print(f"[MIGRATION] Adding is_verified to {applicant_email_table}")
-            cur.execute(f"ALTER TABLE {applicant_email_table} ADD COLUMN is_verified BOOLEAN DEFAULT FALSE")
-            # For existing users, assume they are verified since they were promoted
-            cur.execute(f"UPDATE {applicant_email_table} SET is_verified = TRUE")
-            
+            cur.execute(f"""
+                ALTER TABLE {applicant_email_table}
+                ADD COLUMN is_verified BOOLEAN DEFAULT FALSE
+            """)
         conn.commit()
         cur.close()
         conn.close()
@@ -121,6 +126,7 @@ def ensure_applicant_verification_columns():
 # Run migration
 try:
     ensure_applicant_verification_columns()
+    ensure_merit_proofs_table()
 except Exception:
     pass
 
@@ -668,9 +674,19 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
             'id_img_back': 'id_verification',
             'profile_picture': 'profile_pictures',
             'id_pic': 'face_verification',
+            'merit_proof': 'merit_documents',
+            'merit_doc_1': 'merit_documents',
+            'merit_doc_2': 'merit_documents',
+            'merit_doc_3': 'merit_documents',
+            'merit_proof_1': 'merit_documents',
+            'merit_proof_2': 'merit_documents',
+            'merit_proof_3': 'merit_documents',
         }
 
-        folder = folder_map.get(field_name, 'others')
+        if field_name and ('merit' in field_name.lower()):
+            folder = 'merit_documents'
+        else:
+            folder = folder_map.get(field_name, 'others')
 
         bucket_name = get_storage_bucket()
         supabase = get_supabase_client()
@@ -2594,6 +2610,9 @@ def get_profile():
             if applicant.get('google_id'):
                 applicant['email_verified'] = True
 
+            # 6. Fetch 1NF merit_proofs for this applicant
+            applicant['merit_proofs'] = fetch_merit_proofs_for_applicant(cur, request.user_no)
+
             return jsonify(applicant)
     except Exception as exc:
         print(f"[PROFILE ERROR] {exc}", flush=True)
@@ -2709,7 +2728,8 @@ def get_applicant_document_raw(field_name):
         'face_photo', 'face_video', 'mayorIndigency_video', 'mayorGrades_video', 'mayorCOE_video',
         'schoolIdFront_video', 'schoolIdBack_video', 'id_front', 'id_back'
     ]
-    if field_name not in allowed_fields:
+    is_merit = field_name.startswith('merit_proof') or field_name.startswith('merit_doc')
+    if field_name not in allowed_fields and not is_merit:
         return "Invalid field", 400
     
     field_mapping = {
@@ -2728,11 +2748,21 @@ def get_applicant_document_raw(field_name):
     try:
         with get_db() as conn:
             cur = conn.cursor()
-            row = fetch_applicant_document_values(cur, request.user_no, [db_field])
-            if not row or not row.get(db_field):
-                if db_field == 'profile_picture':
-                    row = fetch_applicant_document_values(cur, request.user_no, ['id_pic'])
-                    db_field = 'id_pic'
+            if is_merit:
+                idx_match = re.search(r'\d+', field_name)
+                target_idx = int(idx_match.group(0)) - 1 if idx_match else 0
+                cur.execute("SELECT merit_document FROM merit_proofs WHERE applicant_no = %s ORDER BY merit_id ASC", (request.user_no,))
+                m_rows = cur.fetchall()
+                if m_rows and 0 <= target_idx < len(m_rows):
+                    value = m_rows[target_idx]['merit_document'] if isinstance(m_rows[target_idx], dict) else m_rows[target_idx][0]
+                else:
+                    return "Not found", 404
+            else:
+                row = fetch_applicant_document_values(cur, request.user_no, [db_field])
+                if not row or not row.get(db_field):
+                    if db_field == 'profile_picture':
+                        row = fetch_applicant_document_values(cur, request.user_no, ['id_pic'])
+                        db_field = 'id_pic'
                     if not row or not row.get(db_field):
                         row = fetch_applicant_document_values(cur, request.user_no, ['face_photo'])
                         db_field = 'face_photo'
@@ -3052,6 +3082,54 @@ def update_profile():
                 cur.execute(sql, tuple(params))
             if document_updates:
                 persist_applicant_document_values(cur, request.user_no, document_updates)
+
+            # ── MERIT PROOFS PERSISTENCE (1NF merit_proofs table) ──
+            merit_entries_to_save = None
+            if 'meritList' in data and isinstance(data['meritList'], list):
+                merit_entries_to_save = []
+                for idx, m in enumerate(data['meritList']):
+                    m_title = m.get('title', '').strip() if isinstance(m, dict) else ''
+                    m_photo = m.get('photo') if isinstance(m, dict) else None
+                    if not m_photo and f'merit_photo_{idx}' in files_data:
+                        m_photo = files_data[f'merit_photo_{idx}'].read()
+                    
+                    if m_photo:
+                        if isinstance(m_photo, str) and (m_photo.startswith('http://') or m_photo.startswith('https://')):
+                            merit_entries_to_save.append({'title': m_title, 'document': m_photo})
+                        else:
+                            blob = decode_base64(m_photo) if isinstance(m_photo, str) else m_photo
+                            if blob:
+                                url = upload_image_to_storage(blob, request.user_no, f'merit_doc_{idx+1}', is_update=True)
+                                if url:
+                                    merit_entries_to_save.append({'title': m_title, 'document': url})
+            else:
+                has_any_merit_input = any(f'merit_proof_{i}' in files_data or f'merit_proof_{i}' in data or f'merit_proof_{i}' in request.form for i in range(1, 4))
+                if has_any_merit_input:
+                    merit_entries_to_save = []
+                    for idx in range(1, 4):
+                        field_key = f'merit_proof_{idx}'
+                        title_key = f'merit_title_{idx}'
+                        m_title = (data.get(title_key) or request.form.get(title_key) or '').strip()
+                        raw_val = None
+                        if field_key in files_data:
+                            raw_val = files_data[field_key].read()
+                        elif field_key in data:
+                            raw_val = data[field_key]
+                        elif field_key in request.form:
+                            raw_val = request.form[field_key]
+
+                        if raw_val:
+                            if isinstance(raw_val, str) and (raw_val.startswith('http://') or raw_val.startswith('https://')):
+                                merit_entries_to_save.append({'title': m_title, 'document': raw_val})
+                            else:
+                                blob = decode_base64(raw_val) if isinstance(raw_val, str) else raw_val
+                                if blob:
+                                    url = upload_image_to_storage(blob, request.user_no, f'merit_doc_{idx}', is_update=True)
+                                    if url:
+                                        merit_entries_to_save.append({'title': m_title, 'document': url})
+
+            if merit_entries_to_save is not None:
+                save_merit_proofs(cur, request.user_no, merit_entries_to_save)
 
             # Preventive Duplicate Check:
             # We fetch the potentially updated applicant and check if they've become a duplicate.
@@ -3517,6 +3595,54 @@ def submit_application():
                 cur.execute(sql, tuple(params))
             if document_updates:
                 persist_applicant_document_values(cur, current_user_id, document_updates)
+
+            # ── MERIT PROOFS PERSISTENCE ON SUBMISSION (1NF merit_proofs table) ──
+            merit_entries_to_save = None
+            if 'meritList' in request_payload and isinstance(request_payload['meritList'], list):
+                merit_entries_to_save = []
+                for idx, m in enumerate(request_payload['meritList']):
+                    m_title = m.get('title', '').strip() if isinstance(m, dict) else ''
+                    m_photo = m.get('photo') if isinstance(m, dict) else None
+                    if not m_photo and f'merit_photo_{idx}' in files_data:
+                        m_photo = files_data[f'merit_photo_{idx}'].read()
+                    
+                    if m_photo:
+                        if isinstance(m_photo, str) and (m_photo.startswith('http://') or m_photo.startswith('https://')):
+                            merit_entries_to_save.append({'title': m_title, 'document': m_photo})
+                        else:
+                            blob = decode_base64(m_photo) if isinstance(m_photo, str) else m_photo
+                            if blob:
+                                url = upload_image_to_storage(blob, current_user_id, f'merit_doc_{idx+1}', is_update=False)
+                                if url:
+                                    merit_entries_to_save.append({'title': m_title, 'document': url})
+            else:
+                has_any_merit_input = any(f'merit_proof_{i}' in files_data or f'merit_proof_{i}' in request_payload or f'merit_proof_{i}' in form_data for i in range(1, 4))
+                if has_any_merit_input:
+                    merit_entries_to_save = []
+                    for idx in range(1, 4):
+                        field_key = f'merit_proof_{idx}'
+                        title_key = f'merit_title_{idx}'
+                        m_title = (request_payload.get(title_key) or form_data.get(title_key) or '').strip()
+                        raw_val = None
+                        if field_key in files_data:
+                            raw_val = files_data[field_key].read()
+                        elif field_key in request_payload:
+                            raw_val = request_payload[field_key]
+                        elif field_key in form_data:
+                            raw_val = form_data[field_key]
+
+                        if raw_val:
+                            if isinstance(raw_val, str) and (raw_val.startswith('http://') or raw_val.startswith('https://')):
+                                merit_entries_to_save.append({'title': m_title, 'document': raw_val})
+                            else:
+                                blob = decode_base64(raw_val) if isinstance(raw_val, str) else raw_val
+                                if blob:
+                                    url = upload_image_to_storage(blob, current_user_id, f'merit_doc_{idx}', is_update=False)
+                                    if url:
+                                        merit_entries_to_save.append({'title': m_title, 'document': url})
+
+            if merit_entries_to_save is not None:
+                save_merit_proofs(cur, current_user_id, merit_entries_to_save)
 
             # ── CREATE/UPDATE STATUS ──────────────────────────────────────────────
             cur.execute(
