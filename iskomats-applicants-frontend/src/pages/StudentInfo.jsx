@@ -1447,6 +1447,10 @@ function studentNameMatchesText(text, first, middle, last) {
   };
 }
 
+export function name_matches_text(text, first, last, middle = '') {
+  return studentNameMatchesText(text, first, middle, last);
+}
+
 // Known alternate spellings for barangay names that may appear on national IDs
 const BARANGAY_ALIASES = {
   'inosluban': ['inosloban'],
@@ -5682,6 +5686,7 @@ const StudentInfo = () => {
 
     const firstName = formData.firstName || userProfile?.first_name || '';
     const lastName = formData.lastName || userProfile?.last_name || '';
+    const middleName = formData.middleName || userProfile?.middle_name || '';
 
     setMeritScanVerified('verifying');
     setMeritScanStatus('Scanning merit certificate(s)...');
@@ -5729,12 +5734,12 @@ const StudentInfo = () => {
         combinedDetectedText += `\n[MERIT #${i + 1}: ${item.title}]\n${ocrText || 'No text extracted.'}\n`;
 
         // Check 1: Name verification
-        const nameCheck = name_matches_text(ocrText, firstName, lastName);
-        const namePassed = Boolean(nameCheck.details.first_ok && nameCheck.details.last_ok);
+        const nameCheck = name_matches_text(ocrText, firstName, lastName, middleName);
+        const namePassed = Boolean(nameCheck && (nameCheck.success || (nameCheck.details && nameCheck.details.first_ok && nameCheck.details.last_ok)));
 
         // Check 2: Merit Keyword verification
         const meritCheck = merit_matches_text(ocrText, item.title);
-        const meritPassed = Boolean(meritCheck.isMatch);
+        const meritPassed = Boolean(meritCheck && meritCheck.isMatch);
 
         const certPassed = namePassed && meritPassed;
         item.verified = certPassed ? 'success' : 'failed';
