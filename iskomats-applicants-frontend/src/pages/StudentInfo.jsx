@@ -4496,23 +4496,17 @@ const StudentInfo = () => {
 
       // Resolve/decrypt proxy URLs to local blob URLs for robust local OCR scanning
       let resolvedParam = docParam;
-      let tamperCheck = { edited: false, reason: "Authentic document" };
 
       if (docType === 'SchoolID') {
         const [resolvedFront, resolvedBack] = await Promise.all([
           docParam?.front ? applicantAPI.resolveDocument('id_img_front', docParam.front) : Promise.resolve(null),
           docParam?.back ? applicantAPI.resolveDocument('id_img_back', docParam.back) : Promise.resolve(null)
         ]);
-        if (!silent) setStatus("Analyzing ID authenticity & enhancing images...");
-        const [frontTamper, backTamper, enhancedFront, enhancedBack] = await Promise.all([
-          resolvedFront ? detectDocumentTampering(resolvedFront).catch(() => ({ edited: false })) : Promise.resolve({ edited: false }),
-          resolvedBack ? detectDocumentTampering(resolvedBack).catch(() => ({ edited: false })) : Promise.resolve({ edited: false }),
+        if (!silent) setStatus("Enhancing ID images for OCR...");
+        const [enhancedFront, enhancedBack] = await Promise.all([
           resolvedFront ? preprocessImageForOcr(resolvedFront).catch(() => null) : Promise.resolve(null),
           resolvedBack ? preprocessImageForOcr(resolvedBack).catch(() => null) : Promise.resolve(null)
         ]);
-        if (frontTamper?.edited || backTamper?.edited) {
-          tamperCheck = frontTamper?.edited ? frontTamper : backTamper;
-        }
         resolvedParam = {
           front: enhancedFront || resolvedFront || docParam?.front,
           back: enhancedBack || resolvedBack || docParam?.back
@@ -4525,33 +4519,11 @@ const StudentInfo = () => {
         };
         const isLocalUrl = typeof docParam === 'string' && (docParam.startsWith('blob:') || docParam.startsWith('data:'));
         const rawResolved = isLocalUrl ? docParam : await applicantAPI.resolveDocument(fieldMap[docType] || 'document', docParam);
-        const rawSourceForTamper = rawResolved || docParam;
 
-        if (!silent) setStatus("Analyzing document authenticity & scanning pixels...");
+        if (!silent) setStatus("Enhancing document pixels for OCR...");
 
-        const [tCheck, pParam] = await Promise.all([
-          rawSourceForTamper ? detectDocumentTampering(rawSourceForTamper).catch(() => ({ edited: false, reason: "Authentic document" })) : Promise.resolve({ edited: false, reason: "Authentic document" }),
-          (rawResolved && docType === 'Indigency') ? preprocessImageForOcr(rawResolved).catch(() => null) : Promise.resolve(null)
-        ]);
-        tamperCheck = tCheck || { edited: false, reason: "Authentic document" };
+        const pParam = (rawResolved && docType === 'Indigency') ? await preprocessImageForOcr(rawResolved).catch(() => null) : null;
         resolvedParam = pParam || rawResolved || docParam;
-      }
-
-      if (!isTamperBypassActive() && tamperCheck.edited) {
-        const scoreDetails = {
-          "Document Authenticity": false,
-          "Digital Tamper Check": false,
-          "First Name": false,
-          "Last Name": false,
-          "Video Proof": true
-        };
-        const finalMessage = `Tampering Alert: ${tamperCheck.reason}`;
-        const resultsList = [{ doc: docType, verified: false, message: finalMessage, score_details: scoreDetails }];
-        if (!silent) {
-          setVerified('failed');
-          setStatus(`Verification failed: ${finalMessage}`);
-        }
-        return { isSuccess: false, scoreDetails, finalMessage, resultsList, detectedText: "[DIGITAL TAMPERING DETECTED]" };
       }
 
       const createInvertedImageBlob = (src) => {
