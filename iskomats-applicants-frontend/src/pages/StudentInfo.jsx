@@ -8134,7 +8134,6 @@ const StudentInfo = () => {
                   sessionStorage.setItem('debug_skip_alternate_check', newVal ? 'true' : 'false');
                   setDebugFlags(prev => ({ ...prev, skip_alternate_check: newVal }));
                   await debugAPI.setFlag('skip_alternate_check', newVal);
-                  window.location.reload();
                 }}
                 style={{
                   background: '#3b82f6',
@@ -8168,7 +8167,10 @@ const StudentInfo = () => {
                   lastOcrScanTamperResult = { hasAlert: false, message: "" };
                   setDebugFlags(prev => ({ ...prev, skip_tamper_check: newVal }));
                   await debugAPI.setFlag('skip_tamper_check', newVal);
-                  window.location.reload();
+                  if (status && typeof status === 'string' && status.includes('Tampering Alert')) {
+                    setStatus('Tamper bypass updated. Ready to verify.');
+                    setVerified('pending');
+                  }
                 }}
                 style={{
                   background: '#3b82f6',
