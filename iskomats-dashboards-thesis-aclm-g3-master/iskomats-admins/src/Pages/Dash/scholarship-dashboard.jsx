@@ -3160,11 +3160,28 @@ export default function ScholarshipDashboard({
       });
     }
 
-    return Object.values(grouped).map((conversation) => ({
-      ...conversation,
-      messages: sortMessages(conversation.messages),
-      lastMessage: sortMessages(conversation.messages).at(-1) || conversation.lastMessage,
-    }));
+    return Object.values(grouped).map((conversation) => {
+      const sortedMsgs = sortMessages(conversation.messages);
+      const lastMsg = sortedMsgs.at(-1) || conversation.lastMessage;
+      return {
+        ...conversation,
+        messages: sortedMsgs,
+        lastMessage: lastMsg,
+        hasActualMessages: sortedMsgs.length > 0
+      };
+    }).sort((a, b) => {
+      const timeA = a.hasActualMessages ? new Date(a.lastMessage?.timestamp || 0).getTime() : 0;
+      const timeB = b.hasActualMessages ? new Date(b.lastMessage?.timestamp || 0).getTime() : 0;
+      if (timeB !== timeA) {
+        return timeB - timeA;
+      }
+      if (b.unreadCount !== a.unreadCount) {
+        return b.unreadCount - a.unreadCount;
+      }
+      const idA = Number(a.applicant_no || 0);
+      const idB = Number(b.applicant_no || 0);
+      return idB - idA;
+    });
   };
 
   const markAsRead = (messageId) => {
@@ -3390,7 +3407,23 @@ export default function ScholarshipDashboard({
       filtered = filtered.filter(c => c.isAdminRoom || c.room?.startsWith('provider_room_'));
     }
 
-    return filtered;
+    return [...filtered].sort((a, b) => {
+      const timeA = a.hasActualMessages || (a.messages && a.messages.length > 0)
+        ? new Date(a.lastMessage?.timestamp || 0).getTime()
+        : 0;
+      const timeB = b.hasActualMessages || (b.messages && b.messages.length > 0)
+        ? new Date(b.lastMessage?.timestamp || 0).getTime()
+        : 0;
+      if (timeB !== timeA) {
+        return timeB - timeA;
+      }
+      if (b.unreadCount !== a.unreadCount) {
+        return b.unreadCount - a.unreadCount;
+      }
+      const idA = Number(a.applicant_no || 0);
+      const idB = Number(b.applicant_no || 0);
+      return idB - idA;
+    });
   }, [conversations, inboxSearch, inboxFilter, inboxMode]);
 
   const selectedConversation = viewMessage
