@@ -2912,14 +2912,12 @@ def update_profile():
     try:
         with get_db() as conn:
             cur = conn.cursor()
-            updates = []
-            params = []
+            updates_dict = {}
             document_updates = {}
             has_profile_picture_column = applicant_has_column(cur, 'profile_picture')
 
             def add_update(column_name, value):
-                updates.append(f'{column_name} = %s')
-                params.append(value)
+                updates_dict[column_name] = value
 
             def parse_parent_status(value):
                 if isinstance(value, bool):
@@ -3098,12 +3096,14 @@ def update_profile():
                         print(f"[UPDATE PROFILE] CRITICAL STORAGE ERROR for {db_col}: {storage_err}", flush=True)
                         raise ValueError(f"Storage System Error: {str(storage_err)}")
 
-            if not updates and not document_updates:
+            if not updates_dict and not document_updates:
                 return jsonify({'message': 'No changes provided'}), 200
 
-            if updates:
+            if updates_dict:
+                cols = list(updates_dict.keys())
+                params = [updates_dict[c] for c in cols]
                 params.append(request.user_no)
-                sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
+                sql = f"UPDATE applicants SET {', '.join(f'{col} = %s' for col in cols)} WHERE applicant_no = %s"
                 cur.execute(sql, tuple(params))
             if document_updates:
                 persist_applicant_document_values(cur, request.user_no, document_updates)
