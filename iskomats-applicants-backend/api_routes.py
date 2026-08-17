@@ -3790,11 +3790,36 @@ def get_applicants(current_user_id, pro_no, role, program):
             offset = int(filters.get('offset', 0))
             query += ' ORDER BY a.applicant_no ASC LIMIT %s OFFSET %s'
             params.extend([limit, offset])
-            
-            # Note: filters.get('status') ignored because table schema does not properly match it yet
-            
+
             cursor.execute(query, params)
             applicants = cursor.fetchall()
+
+            # Fetch 1NF merit_proofs for all returned applicants in batch
+            merit_proofs_by_app = {}
+            if applicants:
+                try:
+                    app_ids = [
+                        (row['id'] if isinstance(row, dict) and 'id' in row else (row['applicant_no'] if isinstance(row, dict) else row[0]))
+                        for row in applicants
+                    ]
+                    app_ids = [aid for aid in app_ids if aid is not None]
+                    if app_ids:
+                        cursor.execute("""
+                            SELECT merit_id, applicant_no, merit_document, merit_title, created_at
+                            FROM merit_proofs
+                            WHERE applicant_no = ANY(%s)
+                            ORDER BY merit_id ASC
+                        """, (app_ids,))
+                        mp_rows = cursor.fetchall()
+                        for mp in mp_rows:
+                            mp_dict = normalize_json_object(dict(mp))
+                            a_no = mp_dict.get('applicant_no')
+                            if a_no not in merit_proofs_by_app:
+                                merit_proofs_by_app[a_no] = []
+                            merit_proofs_by_app[a_no].append(mp_dict)
+                except Exception as mp_err:
+                    print(f"[APPLICANTS API] Warning querying merit_proofs in batch: {mp_err}", flush=True)
+
             cursor.close()
             print(f"[APPLICANTS API] Query returned {len(applicants)} rows for program='{program}'", flush=True)
         
@@ -3873,6 +3898,24 @@ def get_applicants(current_user_id, pro_no, role, program):
 
                 # Fill in ID# with school_id_no
                 a['idNumber'] = a.get('school_id_no') or a.get('schoolId')
+
+                # Merit proofs from merit_proofs table (1NF)
+                a_merit_proofs = merit_proofs_by_app.get(app_no, [])
+                a['merit_proofs'] = a_merit_proofs
+                merit_files = []
+                for idx, mp in enumerate(a_merit_proofs):
+                    doc_val = mp.get('merit_document')
+                    m_title = mp.get('merit_title') or f"Merit #{idx+1}"
+                    if doc_val:
+                        merit_files.append({
+                            'src': doc_val,
+                            'type': 'image/jpeg',
+                            'name': m_title,
+                            'title': m_title,
+                            'id': mp.get('merit_id')
+                        })
+                a['meritFiles'] = merit_files
+
                 result.append(a)
             except Exception as row_error:
                 app_identifier = None

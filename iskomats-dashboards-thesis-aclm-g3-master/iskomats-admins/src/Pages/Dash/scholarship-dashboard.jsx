@@ -35,7 +35,9 @@ import {
   FaPlusCircle,
   FaRobot,
   FaSpinner,
-  FaPlay
+  FaPlay,
+  FaAward,
+  FaSearchPlus
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { adminAPI, scholarshipAPI, announcementService, messagingAPI, warmBackendConnection } from '../../services/api';
@@ -5460,6 +5462,17 @@ export default function ScholarshipDashboard({
       idFiles.splice(insertIdx, 0, { src: backVid, type: 'video/mp4', name: 'ID Back Video' });
     }
 
+    // Extract and normalize merit document files from 1NF merit_proofs table or a.meritFiles
+    const meritFiles = (a.meritFiles && a.meritFiles.length > 0)
+      ? a.meritFiles
+      : (a.merit_proofs || []).map((mp, idx) => ({
+          src: mp.merit_document,
+          type: 'image/jpeg',
+          name: mp.merit_title || `Merit Document #${idx + 1}`,
+          title: mp.merit_title || `Merit Document #${idx + 1}`,
+          id: mp.merit_id
+        })).filter(f => Boolean(f.src));
+
     // Preload media URLs when applicant object is available (prioritizing images over videos)
     if (a) {
       const imageMediaUrls = [
@@ -5469,6 +5482,7 @@ export default function ScholarshipDashboard({
         ...(a.indigencyFiles || []).filter(f => f.type && f.type.startsWith('image')).map(f => f.src),
         ...(a.gradesFiles || []).filter(f => f.type && f.type.startsWith('image')).map(f => f.src),
         ...idFiles.filter(f => f.type && f.type.startsWith('image')).map(f => f.src),
+        ...meritFiles.filter(f => f.type && f.type.startsWith('image')).map(f => f.src),
       ].filter(Boolean);
 
       const videoMediaUrls = [
@@ -5693,6 +5707,49 @@ export default function ScholarshipDashboard({
               <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Merits/Awards</p>
               <p className="font-bold text-gray-800 whitespace-pre-wrap text-xs sm:text-sm">{a.meritsAwardsReceived || 'N/A'}</p>
 
+              {/* MERIT PROOF CERTIFICATE IMAGES DISPLAYED RIGHT BELOW MERITS/AWARDS */}
+              {meritFiles && meritFiles.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-200/80">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-[10px] sm:text-xs font-black text-[#800020] uppercase tracking-wider flex items-center gap-1.5">
+                      <FaAward className="text-[#800020] text-xs sm:text-sm" /> Attached Merit Document{meritFiles.length > 1 ? 's' : ''} ({meritFiles.length})
+                    </p>
+                    <span className="text-[9px] sm:text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
+                      Click image to enlarge
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {meritFiles.map((file, mIdx) => (
+                      <div
+                        key={mIdx}
+                        className="group relative border-2 border-gray-200 hover:border-[#800020] rounded-xl overflow-hidden bg-white shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col"
+                        onClick={() => setImageModalSrc({ src: file.src, type: file.type || 'image/jpeg' })}
+                      >
+                        <div className="relative h-28 sm:h-32 bg-gray-900 flex items-center justify-center overflow-hidden">
+                          <DecryptedMedia
+                            src={file.src}
+                            type={file.type || 'image/jpeg'}
+                            className="w-full h-full object-contain group-hover:scale-105 transition-transform pointer-events-none"
+                            alt={file.title || `Merit Document #${mIdx + 1}`}
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1 pointer-events-none">
+                            <FaSearchPlus /> View Certificate
+                          </div>
+                        </div>
+                        <div className="p-2 bg-gray-50 border-t border-gray-100 flex flex-col gap-0.5">
+                          <p className="text-[10px] sm:text-xs font-bold text-gray-800 truncate" title={file.title || `Merit Proof #${mIdx + 1}`}>
+                            {file.title || `Merit Proof #${mIdx + 1}`}
+                          </p>
+                          <span className="text-[9px] text-emerald-700 font-semibold flex items-center gap-1">
+                            <FaCheckCircle className="text-[8px]" /> Proof of Award
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="mt-3 p-3 rounded-xl bg-gradient-to-r from-amber-50/80 to-orange-50/40 border border-amber-200/80 shadow-xs">
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div className="flex items-center gap-1.5">
@@ -5857,6 +5914,16 @@ export default function ScholarshipDashboard({
                 {renderMediaGrid(idFiles)}
               </div>
             </div>
+            {meritFiles && meritFiles.length > 0 && (
+              <div className="space-y-2 sm:col-span-2">
+                <p className="text-[10px] font-black text-gray-500 uppercase flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#800020]"></span> Merit / Award Certificates ({meritFiles.length})
+                </p>
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                  {renderMediaGrid(meritFiles)}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
