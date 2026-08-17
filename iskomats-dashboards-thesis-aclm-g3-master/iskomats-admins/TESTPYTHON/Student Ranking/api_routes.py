@@ -3646,22 +3646,23 @@ def get_applicants(current_user_id, pro_no, role, program):
                        ELSE 'Pending'
                    END as status,
                    esc.scholarship_name as "scholarshipName",
-                   COALESCE(s.status_updated, CURRENT_DATE) as "createdAt",
-                    COALESCE(s.status_updated, CURRENT_DATE) as "dateApplied",
-                    ({applicant_document_expr(cursor, 'indigency_doc', 'a', 'ad')} IS NOT NULL) as "has_indigency_doc",
-                    ({applicant_document_expr(cursor, 'enrollment_certificate_doc', 'a', 'ad')} IS NOT NULL) as "has_enrollment_certificate_doc",
-                    ({applicant_document_expr(cursor, 'grades_doc', 'a', 'ad')} IS NOT NULL) as "has_grades_doc",
-                    ({applicant_document_expr(cursor, 'schoolID_photo', 'a', 'ad')} IS NOT NULL) as "has_schoolID_photo",
-                    ({applicant_document_expr(cursor, 'id_img_front', 'a', 'ad')} IS NOT NULL) as "has_id_img_front",
-                    ({applicant_document_expr(cursor, 'id_img_back', 'a', 'ad')} IS NOT NULL) as "has_id_img_back",
-                    ({applicant_document_expr(cursor, 'id_pic', 'a', 'ad')} IS NOT NULL) as "has_id_pic",
-                    {profile_picture_expr} as "has_profile_picture",
-                    ({applicant_document_expr(cursor, 'signature_image_data', 'a', 'ad')} IS NOT NULL) as "has_signature",
-                    {applicant_document_expr(cursor, 'indigency_vid_url', 'a', 'ad')} as indigency_vid_url,
-                    {applicant_document_expr(cursor, 'enrollment_certificate_vid_url', 'a', 'ad')} as enrollment_certificate_vid_url,
-                    {applicant_document_expr(cursor, 'grades_vid_url', 'a', 'ad')} as grades_vid_url,
-                    {applicant_document_expr(cursor, 'schoolid_front_vid_url', 'a', 'ad')} as schoolid_front_vid_url,
-                    {applicant_document_expr(cursor, 'schoolid_back_vid_url', 'a', 'ad')} as schoolid_back_vid_url
+                   COALESCE(s.created_at, s.status_updated, CURRENT_TIMESTAMP) as "createdAt",
+                   COALESCE(s.created_at, s.status_updated, CURRENT_TIMESTAMP) as "dateApplied",
+                   s.created_at as "status_created_at",
+                   ({applicant_document_expr(cursor, 'indigency_doc', 'a', 'ad')} IS NOT NULL) as "has_indigency_doc",
+                   ({applicant_document_expr(cursor, 'enrollment_certificate_doc', 'a', 'ad')} IS NOT NULL) as "has_enrollment_certificate_doc",
+                   ({applicant_document_expr(cursor, 'grades_doc', 'a', 'ad')} IS NOT NULL) as "has_grades_doc",
+                   ({applicant_document_expr(cursor, 'schoolID_photo', 'a', 'ad')} IS NOT NULL) as "has_schoolID_photo",
+                   ({applicant_document_expr(cursor, 'id_img_front', 'a', 'ad')} IS NOT NULL) as "has_id_img_front",
+                   ({applicant_document_expr(cursor, 'id_img_back', 'a', 'ad')} IS NOT NULL) as "has_id_img_back",
+                   ({applicant_document_expr(cursor, 'id_pic', 'a', 'ad')} IS NOT NULL) as "has_id_pic",
+                   {profile_picture_expr} as "has_profile_picture",
+                   ({applicant_document_expr(cursor, 'signature_image_data', 'a', 'ad')} IS NOT NULL) as "has_signature",
+                   {applicant_document_expr(cursor, 'indigency_vid_url', 'a', 'ad')} as indigency_vid_url,
+                   {applicant_document_expr(cursor, 'enrollment_certificate_vid_url', 'a', 'ad')} as enrollment_certificate_vid_url,
+                   {applicant_document_expr(cursor, 'grades_vid_url', 'a', 'ad')} as grades_vid_url,
+                   {applicant_document_expr(cursor, 'schoolid_front_vid_url', 'a', 'ad')} as schoolid_front_vid_url,
+                   {applicant_document_expr(cursor, 'schoolid_back_vid_url', 'a', 'ad')} as schoolid_back_vid_url
             FROM applicants a
             INNER JOIN applicant_status s ON a.applicant_no = s.applicant_no
             INNER JOIN scholarships esc ON s.scholarship_no = esc.req_no
@@ -3692,7 +3693,7 @@ def get_applicants(current_user_id, pro_no, role, program):
         # Add Pagination for SuperAdmin performance
         limit = int(filters.get('limit', 500))
         offset = int(filters.get('offset', 0))
-        query += ' ORDER BY a.applicant_no ASC LIMIT %s OFFSET %s'
+        query += ' ORDER BY COALESCE(s.created_at, s.status_updated) DESC, a.applicant_no DESC LIMIT %s OFFSET %s'
         params.extend([limit, offset])
         
         # Note: filters.get('status') ignored because table schema does not properly match it yet

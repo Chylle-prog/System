@@ -1037,7 +1037,16 @@ export default function ScholarshipDashboard({
   };
 
   const sortApplicants = (list) => {
-    if (!sortConfig.column || !sortConfig.direction) return list;
+    if (!sortConfig.column || !sortConfig.direction) {
+      return [...list].sort((a, b) => {
+        const dateA = new Date(a.createdAt || a.dateApplied || a.status_created_at || a.created_at || 0).getTime();
+        const dateB = new Date(b.createdAt || b.dateApplied || b.status_created_at || b.created_at || 0).getTime();
+        if (dateB !== dateA) return dateB - dateA;
+        const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
+        const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
+        return idB - idA;
+      });
+    }
 
     return [...list].sort((a, b) => {
       let valA, valB;
@@ -1077,6 +1086,11 @@ export default function ScholarshipDashboard({
           valA = String(a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || '').trim().toLowerCase();
           valB = String(b.mobileNumber || b.phone || (b.studentContact && b.studentContact.phone) || '').trim().toLowerCase();
         }
+      } else if (sortConfig.column === 'createdAt' || sortConfig.column === 'date' || sortConfig.column === 'dateApplied') {
+        valA = new Date(a.createdAt || a.dateApplied || a.status_created_at || a.created_at || 0).getTime();
+        valB = new Date(b.createdAt || b.dateApplied || b.status_created_at || b.created_at || 0).getTime();
+        if (isNaN(valA)) valA = 0;
+        if (isNaN(valB)) valB = 0;
       }
 
       if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -1143,15 +1157,24 @@ export default function ScholarshipDashboard({
       });
 
       const uniqueApplicants = Array.from(applicantMap.values());
+      // Sort applicants on load by createdAt (created_at from applicant_status) descending (latest first)
+      const sortedByCreatedAt = uniqueApplicants.sort((a, b) => {
+        const dateA = new Date(a.createdAt || a.dateApplied || a.status_created_at || a.created_at || 0).getTime();
+        const dateB = new Date(b.createdAt || b.dateApplied || b.status_created_at || b.created_at || 0).getTime();
+        if (dateB !== dateA) return dateB - dateA;
+        const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
+        const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
+        return idB - idA;
+      });
       const historicalData = calculateHistoricalData(allApplicantsRaw);
 
       setData(prev => ({
         ...prev,
-        applicants: uniqueApplicants.filter(a => a.status === 'Pending'),
-        accepted: uniqueApplicants.filter(a => a.status === 'Accepted'),
-        rejected: uniqueApplicants.filter(a => a.status === 'Rejected'),
-        declined: uniqueApplicants.filter(a => a.status === 'Declined' || a.status === 'Rejected'),
-        cancelled: uniqueApplicants.filter(a => a.status === 'Cancelled'),
+        applicants: sortedByCreatedAt.filter(a => a.status === 'Pending'),
+        accepted: sortedByCreatedAt.filter(a => a.status === 'Accepted'),
+        rejected: sortedByCreatedAt.filter(a => a.status === 'Rejected'),
+        declined: sortedByCreatedAt.filter(a => a.status === 'Declined' || a.status === 'Rejected'),
+        cancelled: sortedByCreatedAt.filter(a => a.status === 'Cancelled'),
         historicalData
       }));
     } catch (error) {
@@ -4144,9 +4167,13 @@ export default function ScholarshipDashboard({
           if (scoreB !== scoreA) return scoreB - scoreA;
         }
 
+        const dateA = new Date(a.createdAt || a.dateApplied || a.status_created_at || a.created_at || 0).getTime();
+        const dateB = new Date(b.createdAt || b.dateApplied || b.status_created_at || b.created_at || 0).getTime();
+        if (dateB !== dateA) return dateB - dateA;
+
         const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
         const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
-        return idA - idB;
+        return idB - idA;
       });
     };
 

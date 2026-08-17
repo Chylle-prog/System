@@ -3740,8 +3740,9 @@ def get_applicants(current_user_id, pro_no, role, program):
                            ELSE 'Pending'
                        END as status,
                        esc.scholarship_name as "scholarshipName",
-                       COALESCE(s.status_updated, CURRENT_DATE) as "createdAt",
-                        COALESCE(s.status_updated, CURRENT_DATE) as "dateApplied",
+                        COALESCE(s.created_at, s.status_updated, CURRENT_TIMESTAMP) as "createdAt",
+                        COALESCE(s.created_at, s.status_updated, CURRENT_TIMESTAMP) as "dateApplied",
+                        s.created_at as "status_created_at",
                         ({applicant_document_expr(cursor, 'indigency_doc', 'a', 'ad')} IS NOT NULL) as "has_indigency_doc",
                         ({applicant_document_expr(cursor, 'enrollment_certificate_doc', 'a', 'ad')} IS NOT NULL) as "has_enrollment_certificate_doc",
                         ({applicant_document_expr(cursor, 'grades_doc', 'a', 'ad')} IS NOT NULL) as "has_grades_doc",
@@ -3788,7 +3789,7 @@ def get_applicants(current_user_id, pro_no, role, program):
             # Add Pagination for SuperAdmin performance
             limit = int(filters.get('limit', 500))
             offset = int(filters.get('offset', 0))
-            query += ' ORDER BY a.applicant_no ASC LIMIT %s OFFSET %s'
+            query += ' ORDER BY COALESCE(s.created_at, s.status_updated) DESC, a.applicant_no DESC LIMIT %s OFFSET %s'
             params.extend([limit, offset])
 
             cursor.execute(query, params)
