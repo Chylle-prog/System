@@ -2733,11 +2733,18 @@ const StudentInfo = () => {
   };
 
   const validateVideoLiveness = async (videoSrc, fieldName = null, signal = null) => {
-    if (!videoSrc || signal?.aborted) {
+    if (signal?.aborted) {
+      return { valid: false, reason: "Scan cancelled." };
+    }
+
+    // 1. Instant local memory blob from active user session
+    const localBlob = (fieldName && localVideoBlobsRef.current?.[fieldName]) ? localVideoBlobsRef.current[fieldName] : null;
+    let target = localBlob || videoSrc;
+
+    if (!target) {
       return { valid: false, reason: "No video uploaded or recorded." };
     }
 
-    let target = videoSrc;
     if (Array.isArray(target)) target = target[0];
     if (target && typeof target === 'object' && !(target instanceof Blob) && !(target instanceof File)) {
       target = target.url || target.src || target.front || target.back || null;
@@ -2775,9 +2782,6 @@ const StudentInfo = () => {
             const token = localStorage.getItem('authToken');
             const apiOrigin = API_ORIGIN;
 
-            // All remote video URLs (including direct Supabase CDN URLs) must be fetched
-            // and decrypted — videos are AES-GCM encrypted before upload to Supabase.
-            // Do NOT set srcUrl = trimmed directly, as the encrypted binary will fail to play.
             {
               let fetchUrl = trimmed;
               const headers = {};
@@ -2785,16 +2789,13 @@ const StudentInfo = () => {
               const isSupabaseDirect = trimmed.includes('supabase.co');
 
               if (isSupabaseDirect) {
-                // Supabase CDN: fetch directly, no auth header, no proxy
                 fetchUrl = trimmed;
               } else if (trimmed.includes('/document/raw/')) {
-                // Already a Render proxy URL — add token if missing
                 if (!trimmed.includes('token=')) {
                   fetchUrl = `${trimmed}${trimmed.includes('?') ? '&' : '?'}token=${token}`;
                 }
                 if (token) headers['Authorization'] = `Bearer ${token}`;
               } else if (fieldName) {
-                // Fall back to Render proxy only if we have no better URL
                 fetchUrl = `${apiOrigin}/api/student/applicant/document/raw/${fieldName}?token=${token}`;
                 if (token) headers['Authorization'] = `Bearer ${token}`;
               } else {
@@ -2805,14 +2806,14 @@ const StudentInfo = () => {
               const cbSep = fetchUrl.includes('?') ? '&' : '?';
 
               let resp = null;
-              for (let attempt = 0; attempt < 2; attempt++) {
+              for (let attempt = 0; attempt < 3; attempt++) {
                 if (signal?.aborted) return { valid: false, reason: "Scan cancelled." };
                 try {
-                  const cleanFetchUrl = `${fetchUrl}${cbSep}_cb=${Date.now()}`;
+                  const cleanFetchUrl = isSupabaseDirect ? fetchUrl : `${fetchUrl}${cbSep}_cb=${Date.now()}`;
                   resp = await fetch(cleanFetchUrl, { headers, signal });
                   if (resp.ok) break;
                 } catch (retryErr) {
-                  if (attempt < 1) await new Promise(r => setTimeout(r, 400));
+                  if (attempt < 2) await new Promise(r => setTimeout(r, 500));
                 }
               }
 
@@ -2826,8 +2827,18 @@ const StudentInfo = () => {
 
                   let decryptedBlob = blob;
                   if (!isMkvWebm && !isMp4) {
-                    const { decryptDocument } = await import('../services/CryptoService');
-                    decryptedBlob = await decryptDocument(blob, 'video/mp4');
+                    try {
+                      const { decryptDocument } = await import('../services/CryptoService');
+                      decryptedBlob = await decryptDocument(blob, 'video/mp4');
+                    } catch (decErr) {
+                      console.warn('[VIDEO DECRYPTION NOTE]', decErr);
+                      decryptedBlob = blob;
+                    }
+                  }
+
+                  // Cache decrypted blob in memory for current session
+                  if (fieldName) {
+                    localVideoBlobsRef.current[fieldName] = decryptedBlob;
                   }
 
                   createdBlobUrl = URL.createObjectURL(decryptedBlob);
@@ -2853,7 +2864,6 @@ const StudentInfo = () => {
       }
 
       // --- SEEK-BASED HIGH-SPEED VIDEO FRAME EXTRACTOR ---
-      // Quota & Speed Optimization: 2 strategic frames at 900px resolution
       const sampleRatios = [0.25, 0.65];
       const maxDim = 900;
 
@@ -2861,7 +2871,8 @@ const StudentInfo = () => {
         const video = document.createElement('video');
         video.muted = true;
         video.playsInline = true;
-        video.preload = 'metadata';
+        video.crossOrigin = 'anonymous';
+        video.preload = 'auto';
 
         let cleanedUp = false;
         const cleanupVideo = () => {
@@ -2890,9 +2901,10 @@ const StudentInfo = () => {
         }
 
         const timeout = setTimeout(() => {
+          console.warn('[VIDEO OCR] Frame extraction safety timeout reached.');
           cleanupVideo();
           resolveFrames([]);
-        }, 12000);
+        }, 15000);
 
         video.onerror = (e) => {
           console.warn('[VIDEO OCR] video loading error:', e);
@@ -2901,17 +2913,16 @@ const StudentInfo = () => {
           resolveFrames([]);
         };
 
-        video.onloadedmetadata = async () => {
-          try {
-            const duration = video.duration || 5;
-            const vw = video.videoWidth;
-            const vh = video.videoHeight;
+        let startedProcessing = false;
+        const processFrames = async () => {
+          if (startedProcessing) return;
+          startedProcessing = true;
 
-            if (!vw || !vh) {
-              cleanupVideo();
-              clearTimeout(timeout);
-              return resolveFrames([]);
-            }
+          try {
+            const rawDuration = video.duration;
+            const duration = (isFinite(rawDuration) && !isNaN(rawDuration) && rawDuration > 0.3) ? rawDuration : 3.0;
+            const vw = video.videoWidth || 640;
+            const vh = video.videoHeight || 480;
 
             let targetW = vw;
             let targetH = vh;
@@ -2925,51 +2936,63 @@ const StudentInfo = () => {
               }
             }
 
-            const timestamps = sampleRatios.map(r => Math.max(0.1, Math.min(duration - 0.1, duration * r)));
+            const timestamps = sampleRatios.map(r => {
+              const t = duration * r;
+              return (isFinite(t) && !isNaN(t)) ? Math.max(0.1, Math.min(duration - 0.1, t)) : 0.5;
+            });
             const resultCanvases = [];
-            video.playbackRate = 4.0;
 
             for (let i = 0; i < timestamps.length; i++) {
-              if (signal?.aborted) {
-                cleanupVideo();
-                clearTimeout(timeout);
-                break;
-              }
+              if (signal?.aborted) break;
               const seekTime = timestamps[i];
 
               await new Promise((seekResolve) => {
-                const onSeeked = () => {
-                  video.removeEventListener('seeked', onSeeked);
+                let seekDone = false;
+                const captureAndFinish = () => {
+                  if (seekDone) return;
+                  seekDone = true;
+                  try {
+                    // Canvas 1: Full seeked frame
+                    const canvas = document.createElement('canvas');
+                    canvas.width = targetW;
+                    canvas.height = targetH;
+                    const ctx = canvas.getContext('2d');
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.imageSmoothingQuality = 'medium';
+                    ctx.drawImage(video, 0, 0, targetW, targetH);
 
-                  // Canvas 1: Full seeked frame
-                  const canvas = document.createElement('canvas');
-                  canvas.width = targetW;
-                  canvas.height = targetH;
-                  const ctx = canvas.getContext('2d');
-                  ctx.imageSmoothingEnabled = true;
-                  ctx.imageSmoothingQuality = 'medium';
-                  ctx.drawImage(video, 0, 0, targetW, targetH);
+                    // Canvas 2: Header crop (Top 65%)
+                    const headerH = Math.floor(vh * 0.65);
+                    const headerCanvas = document.createElement('canvas');
+                    headerCanvas.width = targetW;
+                    headerCanvas.height = targetH;
+                    const hCtx = headerCanvas.getContext('2d');
+                    hCtx.imageSmoothingEnabled = true;
+                    hCtx.imageSmoothingQuality = 'medium';
+                    if ('filter' in hCtx) hCtx.filter = 'contrast(125%) brightness(98%)';
+                    hCtx.drawImage(video, 0, 0, vw, headerH, 0, 0, targetW, targetH);
 
-                  // Canvas 2: Header crop (Top 65%)
-                  const headerH = Math.floor(vh * 0.65);
-                  const headerCanvas = document.createElement('canvas');
-                  headerCanvas.width = targetW;
-                  headerCanvas.height = targetH;
-                  const hCtx = headerCanvas.getContext('2d');
-                  hCtx.imageSmoothingEnabled = true;
-                  hCtx.imageSmoothingQuality = 'medium';
-                  if ('filter' in hCtx) hCtx.filter = 'contrast(125%) brightness(98%)';
-                  hCtx.drawImage(video, 0, 0, vw, headerH, 0, 0, targetW, targetH);
-
-                  resultCanvases.push({ time: seekTime, canvas, headerCanvas });
+                    resultCanvases.push({ time: seekTime, canvas, headerCanvas });
+                  } catch (drawErr) {
+                    console.warn('[VIDEO OCR] Frame draw error:', drawErr);
+                  }
                   seekResolve();
                 };
 
+                const seekTimeout = setTimeout(captureAndFinish, 1400);
+
+                const onSeeked = () => {
+                  video.removeEventListener('seeked', onSeeked);
+                  clearTimeout(seekTimeout);
+                  captureAndFinish();
+                };
+
                 video.addEventListener('seeked', onSeeked, { once: true });
-                if ('fastSeek' in video) {
-                  try { video.fastSeek(seekTime); } catch (e) { video.currentTime = seekTime; }
-                } else {
-                  video.currentTime = seekTime;
+                try {
+                  video.currentTime = Number.isFinite(seekTime) ? seekTime : 0.5;
+                } catch (e) {
+                  clearTimeout(seekTimeout);
+                  captureAndFinish();
                 }
               });
             }
@@ -2983,6 +3006,11 @@ const StudentInfo = () => {
             clearTimeout(timeout);
             resolveFrames([]);
           }
+        };
+
+        video.onloadeddata = processFrames;
+        video.onloadedmetadata = () => {
+          if (video.readyState >= 2) processFrames();
         };
 
         video.src = srcUrl;
