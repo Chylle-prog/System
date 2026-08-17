@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+﻿import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import SignaturePad from '../components/SignaturePad';
 import VideoRecorder from '../components/VideoRecorder';
@@ -59,7 +59,7 @@ const fetchImageAsDataUrl = async (url, { retries = 3, retryDelayMs = 5000 } = {
     try {
       const response = await fetch(url, { cache: 'no-store' });
       if (response.status === 503 || response.status === 502) {
-        // Server sleeping (Render free tier cold start) — wait and retry
+        // Server sleeping (Render free tier cold start) ΓÇö wait and retry
         lastErr = new Error(`Server waking up (${response.status}). Retrying...`);
         if (attempt < retries) {
           await new Promise(r => setTimeout(r, retryDelayMs));
@@ -78,7 +78,7 @@ const fetchImageAsDataUrl = async (url, { retries = 3, retryDelayMs = 5000 } = {
         reader.readAsDataURL(blob);
       });
     } catch (err) {
-      // Network error (CORS preflight fail due to 503, or backend unreachable) — retry
+      // Network error (CORS preflight fail due to 503, or backend unreachable) ΓÇö retry
       lastErr = err;
       if (attempt < retries && (err.name === 'TypeError' || err.message.includes('fetch'))) {
         await new Promise(r => setTimeout(r, retryDelayMs));
@@ -166,7 +166,7 @@ const getVerificationDocumentSource = (localValue, ...persistedValues) => {
 const getVerificationVideoSource = (...sources) => {
   const candidates = sources.filter(Boolean);
 
-  // Priority 1: Newly recorded/selected Blob or File objects (safest — fresh in-memory)
+  // Priority 1: Newly recorded/selected Blob or File objects (safest ΓÇö fresh in-memory)
   const blobObject = candidates.find(v => typeof v === 'object' && (v instanceof Blob || v instanceof File));
   if (blobObject) return blobObject;
 
@@ -176,7 +176,7 @@ const getVerificationVideoSource = (...sources) => {
   if (supabaseUrl) return supabaseUrl;
 
   // Priority 3: Fresh blob: URLs from handleVideoUpload localUrl (only if no Supabase URL found)
-  // Note: blob: URLs from loadSavedVideos may be stale — avoid using them for verification
+  // Note: blob: URLs from loadSavedVideos may be stale ΓÇö avoid using them for verification
   const localUrl = candidates.find(v => typeof v === 'string' && (v.startsWith('blob:') || v.startsWith('data:')));
   if (localUrl) return localUrl;
 
@@ -703,17 +703,26 @@ function extractOcrKeyValues(rawText) {
 
   const labelMap = {
     name: [
-      /(?:student\s*name|name\s*of\s*student|pangalan)\s*[:\-]\s*([^\r\n]+)/i,
-      /(?<!printed\s+|above[\-\s]+|^printed\s+)\bname\s*[:\-]\s*([^\r\n]+)/i
+      /student\s*name\s*[:\-1l\|\]\}\)]\s*(.+)/i,
+      /name\s*of\s*student\s*[:\-1l\|\]\}\)]\s*(.+)/i,
+      /pangalan\s*[:\-1l\|\]\}\)]\s*(.+)/i,
+      /^name\s*[:\-]\s*(.+)/i,
+      /name\s*[:\-1l\|\]\}\)]\s*(.+)/i
     ],
     studentId: [
-      /(?:student\s*(?:no|number|id|num)|st(?:u|o|a|e)d(?:e|a|o)nt\s*(?:no|number|id)|id\s*(?:no|number)|sr\s*code|reg\s*no)\s*[:\-]\s*([^\r\n]+)/i
+      /student\s*(?:no|number|id|num)?\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
+      /st(?:u|o|a|e)d(?:e|a|o)nt\s*(?:no|number|id)\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
+      /s[u|o|a]et\s*(?:0|o|no)?\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
+      /ld\s*[1l|]?\s*(.+)/i,
+      /id\s*(?:no|number)\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
+      /sr\s*code\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
+      /reg\s*no\s*[:\-1l\|\]\}\)]?\s*(.+)/i
     ],
-    yearLevel: [/(?:year\s*level|yr\s*level|grade\s*level)\s*[:\-]\s*([^\r\n]+)/i],
-    course: [/(?:course|program|degree|strand)\s*[:\-]\s*([^\r\n]+)/i],
-    schoolYearSem: [/(?:school\s*year\s*(?:sem)?|academic\s*year|a\.?y\.?|s\.?y\.?)\s*[:\-]\s*([^\r\n]+)/i],
-    semester: [/(?:semester|sem|term)\s*[:\-]\s*([^\r\n]+)/i],
-    barangay: [/(?:barangay|brgy|resident\s*of\s*(?:brgy|barangay)?)\s*[:\-]\s*([^\r\n]+)/i]
+    yearLevel: [/year\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i, /yr\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i, /year\s*[:\-1l\|\]\}\)]\s*(.+)/i, /grade\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i],
+    course: [/course\s*[:\-1l\|\]\}\)]\s*(.+)/i, /program\s*[:\-1l\|\]\}\)]\s*(.+)/i, /degree\s*[:\-1l\|\]\}\)]\s*(.+)/i, /strand\s*[:\-1l\|\]\}\)]\s*(.+)/i],
+    schoolYearSem: [/school\s*year\s*(?:sem)?\s*[:\-1l\|\]\}\)]\s*(.+)/i, /academic\s*year\s*[:\-1l\|\]\}\)]\s*(.+)/i, /a\.?y\.?\s*[:\-1l\|\]\}\)]\s*(.+)/i, /s\.?y\.?\s*[:\-1l\|\]\}\)]\s*(.+)/i],
+    semester: [/semester\s*[:\-]\s*(.+)/i, /sem\s*[:\-]\s*(.+)/i, /term\s*[:\-]\s*(.+)/i],
+    barangay: [/barangay\s*[:\-]\s*(.+)/i, /brgy\s*[:\-]\s*(.+)/i, /resident\s*of\s*(?:brgy|barangay)?\s*[:\-]?\s*(.+)/i]
   };
 
   for (const line of splitLines) {
@@ -726,7 +735,7 @@ function extractOcrKeyValues(rawText) {
           val = val.replace(/\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref|Total\s*Units|Total)[\s\S]*/i, '').trim();
           if (val.length > 0) {
             // Reject false matches that contain digits or academic year / semester header keywords
-            if (key === 'name' && (/\d/.test(val) || /AY\s*\d|School\s*Year|Semester|1st|2nd|3rd|Official|Certificate|Registration|Born|October|Single|Married|Resident/i.test(val))) {
+            if (key === 'name' && (/\d/.test(val) || /AY\s*\d|School\s*Year|Semester|1st|2nd|3rd|Official|Certificate|Registration/i.test(val))) {
               continue;
             }
             fields[key] = val;
@@ -736,31 +745,6 @@ function extractOcrKeyValues(rawText) {
       }
     }
   }
-
-  // Indigency / Residency Certificate Candidate Name Anchor
-  // e.g. "This is to certify that NEIL IVAN L. ATIENZA, 20 years old, born on OCTOBER 22, 2005, SINGLE..."
-  // e.g. "This is to certify that MIKAELA YSABEL L. LANTAFE 23 years of age..."
-  if (!fields.name) {
-    const certAnchorPatterns = [
-      /(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|pinatutunayan\s+na\s+si|katibayan\s+na\s+si)\s+([A-Za-z\s,\.\-]{3,60}?)(?=,\s*\d+\s*years|\s+\d+\s*years|,\s*born\s+on|\s+born\s+on|,\s*single|,\s*married|\s+of\s+legal|\s+filipino|\s+citizen|\s+is\s+a\s+resident|\s+resident)/i,
-      /(?:certify|certifies|pinatutunayan)\s+(?:that|na\s+si)?\s+([A-Za-z\s,\.\-]{3,60}?)(?=,\s*\d+\s*years|\s+\d+\s*years|,\s*born\s+on|\s+born\s+on|,\s*single|,\s*married|\s+of\s+legal|\s+filipino|\s+citizen|\s+is\s+a\s+resident|\s+resident)/i
-    ];
-    for (const pat of certAnchorPatterns) {
-      const m = rawText.match(pat);
-      if (m && m[1]) {
-        let cand = m[1].trim()
-          .replace(/^(?:this\s+is\s+to\s+|sto\s+)?(?:certify|certifies|patunay|katibayan|pinatutunayan)\s*(?:that|na\s+si)?\s*/i, '')
-          .replace(/^[^a-zA-Z]+/, '')
-          .replace(/,\s*$/, '')
-          .trim();
-        if (cand.length >= 3 && !/certify|certificate|barangay|office|republic|philippines|punong|born|october|single|clearance/i.test(cand)) {
-          fields.name = cand;
-          break;
-        }
-      }
-    }
-  }
-
   // Fallbacks for column-separated OCR text layouts & National ID / PhilSys multi-line formats
   if (!fields.name) {
     const philsysFirstMatch = rawText.match(/(?:mga\s*pangalan\s*[\/\-]\s*given\s*names?|given\s*names?|mga\s*pangalan|first\s*name)\s*[:\-\/]*\s*([A-Za-z\s]{2,50})/i);
@@ -775,11 +759,11 @@ function extractOcrKeyValues(rawText) {
   }
 
   if (!fields.name) {
-    // Restrict fnMatch to single-line spaces (no \n) and filter out noise/header/address/status/date keywords
+    // Restrict fnMatch to single-line spaces (no \n) and filter out noise/header/address keywords
     const fnMatch = rawText.match(/\b([A-Za-z]{2,20}\s*,\s*[A-Za-z ]{3,40})\b/);
     if (fnMatch && fnMatch[1]) {
       const cand = fnMatch[1].trim();
-      const isNoise = /OFFICIAL|CERTIFICATE|REGISTRATION|COLLEGE|UNIVERSITY|ENGINEERING|INFORMATION|BACHELOR|CERTIFY|AGE|RESIDENT|BARANGAY|PHILIPPINES|BATANGAS|CITY|PROVINCE|HIGHWAY|STREET|ROAD|ADDRESS|TEL|TELEFAX|WWW|PAGE|BORN|OCTOBER|JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|NOVEMBER|DECEMBER|SINGLE|MARRIED|YEARS|OLD|CLEARANCE|VALID/i.test(cand);
+      const isNoise = /OFFICIAL|CERTIFICATE|REGISTRATION|COLLEGE|UNIVERSITY|ENGINEERING|INFORMATION|BACHELOR|CERTIFY|AGE|RESIDENT|BARANGAY|PHILIPPINES|BATANGAS|CITY|PROVINCE|HIGHWAY|STREET|ROAD|ADDRESS|TEL|TELEFAX|WWW|PAGE/i.test(cand);
       if (!isNoise) {
         fields.name = cand;
       }
@@ -787,9 +771,11 @@ function extractOcrKeyValues(rawText) {
   }
   if (!fields.studentId) {
     // Match common DLSL/PH student ID formats: 20xxxxxxxx (10 digits) or 15xxxxxxxx etc.
+    // Avoid matching with a spurious leading digit from OCR artifacts (e.g. "1 2021305751" -> "12021305751")
     const idMatch = rawText.match(/\b(20\d{8}|15\d{8}|19\d{8}|18\d{8}|\d{9,10})\b/);
     if (idMatch) {
       let candidate = idMatch[1];
+      // If 11 digits and starts with 1 followed by a known prefix (20, 15, 19), strip the leading 1
       if (candidate.length === 11 && /^1(?:20|15|19|18)/.test(candidate)) {
         candidate = candidate.slice(1);
       }
@@ -920,57 +906,56 @@ function formatExtractedRequirementsSummary(rawText) {
   }
   academicYrSem = academicYrSem || "Not detected";
 
-  // 6. Enrolled Subjects & Units Extraction (only for COR/COE and Grades documents)
-  const isCertificateOnly = /indigency|indigent|residency|residence|katibayan|punong\s*barangay|barangay\s*pagolingin|barangay\s*inosluban/i.test(rawText) && !/certificate\s*of\s*registration|transcript\s*of\s*records|grading\s*system/i.test(rawText);
+  // 6. Enrolled Subjects & Units Extraction
   const subjectRows = [];
   const lines = String(rawText).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
   // Blacklist: lines that look like subject codes but actually come from Indigency/Residency certificate text
-  const certLineBlacklist = /^(?:issued?|isssued?|certif|barangay|brgy|punong|office|republic|province|city|municipality|purok|zone|sitio|signature|specimen|concern|request|fulfillment|requirement|april|january|february|march|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday|hon\.?|atty\.?|dr\.?|this|clearance|valid|invalid|control|applicant)/i;
+  const certLineBlacklist = /^(?:issued?|isssued?|certif|barangay|brgy|punong|office|republic|province|city|municipality|purok|zone|sitio|signature|specimen|concern|request|fulfillment|requirement|april|january|february|march|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday|hon\.?|atty\.?|dr\.?)/i;
 
-  if (!isCertificateOnly) {
-    // Strategy A: Row-based subject matcher
-    for (const line of lines) {
-      if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(line)) break;
-      if (certLineBlacklist.test(line.trim())) continue;
+  // Strategy A: Row-based subject matcher
+  for (const line of lines) {
+    if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(line)) break;
+    // Skip lines that are obviously certificate boilerplate, not subject codes
+    if (certLineBlacklist.test(line.trim())) continue;
 
-      const subMatch = line.match(/^([A-Za-z0-9]{3,12})\s+(.+?)\s+([1-6])\s+(?:IT[1-4]B|MB|JRF|[A-Z]{2,4}\d{0,3})/i) ||
-                       line.match(/^([A-Za-z0-9]{3,12})\s+(.+?)\s+([1-6])\b/i);
-      if (subMatch) {
-        const code = subMatch[1].trim();
-        const desc = subMatch[2].trim().slice(0, 32);
-        const units = subMatch[3].trim();
-        if (!/total|official|certificate|registration|enrolled|run\s*date|user|student|assessed|fees|clearance|valid/i.test(code) && !certLineBlacklist.test(code)) {
-          subjectRows.push({ code, desc, units });
-        }
-      }
-    }
-
-    // Strategy B: Column-separated fallback (DLSL column block format)
-    if (subjectRows.length === 0) {
-      const knownCodes = [];
-      const knownDescs = [];
-      
-      for (const l of lines) {
-        if (/assessed\s*fees|schedule\s*of/i.test(l)) break;
-        if (/^(?:ITCaproj2|Itelect4|Itsopri|Liferiz|IT\w+|CS\w+|IS\w+|CPE\w+|ENG\w+|MATH\w+|PHYS\w+)/i.test(l)) {
-          knownCodes.push(l);
-        } else if (/^(?:Capstone\s*Project|IT\s*Elective|IT\s*Social|The\s*Life\s*and\s*Works|General\s*Psychology|Calculus|Physics|Chemistry)/i.test(l)) {
-          knownDescs.push(l);
-        }
-      }
-
-      if (knownCodes.length > 0) {
-        for (let i = 0; i < knownCodes.length; i++) {
-          const code = knownCodes[i];
-          const desc = knownDescs[i] || "Enrolled Subject";
-          subjectRows.push({ code, desc, units: "3" });
-        }
+    const subMatch = line.match(/^([A-Za-z0-9]{3,12})\s+(.+?)\s+([1-6])\s+(?:IT[1-4]B|MB|JRF|[A-Z]{2,4}\d{0,3})/i) ||
+                     line.match(/^([A-Za-z0-9]{3,12})\s+(.+?)\s+([1-6])\b/i);
+    if (subMatch) {
+      const code = subMatch[1].trim();
+      const desc = subMatch[2].trim().slice(0, 32);
+      const units = subMatch[3].trim();
+      if (!/total|official|certificate|registration|enrolled|run\s*date|user|student|assessed|fees/i.test(code) && !certLineBlacklist.test(code)) {
+        subjectRows.push({ code, desc, units });
       }
     }
   }
 
-  const totalUnits = isCertificateOnly ? "N/A" : (extractTotalUnitsFromText(rawText) || (subjectRows.length > 0 ? subjectRows.length * 3 : "Not detected"));
+  // Strategy B: Column-separated fallback (DLSL column block format)
+  if (subjectRows.length === 0) {
+    const knownCodes = [];
+    const knownDescs = [];
+    
+    // Find subject code blocks (e.g. ITCaproj2, Itelect4, Itsopri, Liferiz)
+    for (const l of lines) {
+      if (/assessed\s*fees|schedule\s*of/i.test(l)) break;
+      if (/^(?:ITCaproj2|Itelect4|Itsopri|Liferiz|IT\w+|CS\w+|IS\w+|CPE\w+|ENG\w+|MATH\w+|PHYS\w+)/i.test(l)) {
+        knownCodes.push(l);
+      } else if (/^(?:Capstone\s*Project|IT\s*Elective|IT\s*Social|The\s*Life\s*and\s*Works|General\s*Psychology|Calculus|Physics|Chemistry)/i.test(l)) {
+        knownDescs.push(l);
+      }
+    }
+
+    if (knownCodes.length > 0) {
+      for (let i = 0; i < knownCodes.length; i++) {
+        const code = knownCodes[i];
+        const desc = knownDescs[i] || "Enrolled Subject";
+        subjectRows.push({ code, desc, units: "3" });
+      }
+    }
+  }
+
+  const totalUnits = extractTotalUnitsFromText(rawText) || (subjectRows.length > 0 ? subjectRows.length * 3 : "Not detected");
 
   // Extract Financial Summary
   const totalAssessmentMatch = rawText.match(/(?:total\s*assessment|total\s*assasament|total\s*amount)\s*[:\-]?\s*([0-9\.\,]+)/i);
@@ -1053,7 +1038,7 @@ function formatExtractedRequirementsSummary(rawText) {
           middleName = potentialMiddle.replace('.', '');
           firstName = words.slice(0, words.length - 2).join(' ');
         } else {
-          // No middle initial — all words except last are the first name
+          // No middle initial ΓÇö all words except last are the first name
           firstName = words.slice(0, words.length - 1).join(' ');
           middleName = "N/A";
         }
@@ -1092,17 +1077,17 @@ function formatExtractedRequirementsSummary(rawText) {
   const divider = "============================================================";
   const subDivider = "----------------+------------------------------+-------";
 
-  let out = `${divider}\n📜 EXTRACTED STUDENT INFORMATION\n${divider}\n`;
-  out += `• First Name    : ${firstName}\n`;
-  out += `• Middle Name   : ${middleName}\n`;
-  out += `• Last Name     : ${lastName}\n`;
-  out += `• Student No    : ${studentNo}\n`;
-  out += `• Course        : ${course}\n`;
-  out += `• Year Level    : ${yearLevel}\n`;
-  out += `• Academic Yr   : ${academicYrSem}\n\n`;
+  let out = `${divider}\n≡ƒô£ EXTRACTED STUDENT INFORMATION\n${divider}\n`;
+  out += `ΓÇó First Name    : ${firstName}\n`;
+  out += `ΓÇó Middle Name   : ${middleName}\n`;
+  out += `ΓÇó Last Name     : ${lastName}\n`;
+  out += `ΓÇó Student No    : ${studentNo}\n`;
+  out += `ΓÇó Course        : ${course}\n`;
+  out += `ΓÇó Year Level    : ${yearLevel}\n`;
+  out += `ΓÇó Academic Yr   : ${academicYrSem}\n\n`;
 
   if (subjectRows.length > 0) {
-    out += `${divider}\n📚 ENROLLED SUBJECTS & UNITS\n${divider}\n`;
+    out += `${divider}\n≡ƒôÜ ENROLLED SUBJECTS & UNITS\n${divider}\n`;
     out += `   SUBJECT CODE | DESCRIPTION                  | UNITS\n${subDivider}\n`;
     for (const sub of subjectRows) {
       const padCode = sub.code.padEnd(14, ' ');
@@ -1111,16 +1096,16 @@ function formatExtractedRequirementsSummary(rawText) {
     }
     out += `${subDivider}\n   TOTAL UNITS  : ${totalUnits}\n\n`;
   } else {
-    out += `${divider}\n📚 ENROLLED SUBJECTS & UNITS\n${divider}\n`;
-    out += `• Total Units   : ${totalUnits}\n\n`;
+    out += `${divider}\n≡ƒôÜ ENROLLED SUBJECTS & UNITS\n${divider}\n`;
+    out += `ΓÇó Total Units   : ${totalUnits}\n\n`;
   }
 
   if (totalAssessment || downpayment) {
-    out += `${divider}\n💰 FINANCIAL SUMMARY\n${divider}\n`;
-    if (totalAssessment) out += `• Total Assessment : ${totalAssessment}\n`;
-    if (downpayment) out += `• Downpayment      : ${downpayment}\n`;
-    if (discount) out += `• Discount         : ${discount}\n`;
-    out += `• Status           : ENROLLED - ${schoolName}\n${divider}\n`;
+    out += `${divider}\n≡ƒÆ░ FINANCIAL SUMMARY\n${divider}\n`;
+    if (totalAssessment) out += `ΓÇó Total Assessment : ${totalAssessment}\n`;
+    if (downpayment) out += `ΓÇó Downpayment      : ${downpayment}\n`;
+    if (discount) out += `ΓÇó Discount         : ${discount}\n`;
+    out += `ΓÇó Status           : ENROLLED - ${schoolName}\n${divider}\n`;
   }
 
   return out;
@@ -1167,7 +1152,7 @@ function isSimilarWord(expected, actual) {
   const actNorm = actual.toLowerCase().trim();
   if (expNorm === actNorm) return true;
 
-  // Strict OCR glyph confusion match (visual OCR substitutions only — requires exact string length match)
+  // Strict OCR glyph confusion match (visual OCR substitutions only ΓÇö requires exact string length match)
   if (expNorm.length === actNorm.length) {
     const expConf = normalizeNameConfusions(expNorm);
     const actConf = normalizeNameConfusions(actNorm);
@@ -1182,8 +1167,8 @@ function studentNameMatchesText(text, first, middle, last) {
   if (!normText) return { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
 
   const kv = extractOcrKeyValues(text);
-  const isInvalidKvName = !kv.name || /born|october|january|february|march|april|may|june|july|august|september|november|december|single|married|resident|certify|clearance|valid/i.test(kv.name);
-  const targetText = !isInvalidKvName ? normalizeForOcr(kv.name) : "";
+  // Prefer the parsed name field from document (e.g. "Name: ..."); fall back to full text
+  const targetText = kv.name ? normalizeForOcr(kv.name) : normText;
 
   const normFirst = normalizeForOcr(first || '');
   const normLast = normalizeForOcr(last || '');
@@ -1462,10 +1447,6 @@ function studentNameMatchesText(text, first, middle, last) {
   };
 }
 
-export function name_matches_text(text, first, last, middle = '') {
-  return name_matches_merit_cert(text, first, last, middle);
-}
-
 // Known alternate spellings for barangay names that may appear on national IDs
 const BARANGAY_ALIASES = {
   'inosluban': ['inosloban'],
@@ -1585,27 +1566,27 @@ function studentIdNoMatchesText(targetId, text, strict = false) {
     // Exact match
     if (kvDigits === tDigits || kvMapped === tDigits) return true;
     // Allow ONLY off-by-one leading/trailing OCR artifact digit (e.g. "12021305751" -> "2021305751")
-    // Do NOT allow general substring match — "12021305751".includes("2021305751") would be a false pass
+    // Do NOT allow general substring match ΓÇö "12021305751".includes("2021305751") would be a false pass
     if (tDigits.length >= 6) {
       if (kvDigits.length === tDigits.length + 1 && (kvDigits.endsWith(tDigits) || kvDigits.startsWith(tDigits))) return true;
       if (kvMapped.length === tDigits.length + 1 && (kvMapped.endsWith(tDigits) || kvMapped.startsWith(tDigits))) return true;
     }
   }
 
-  // 2. Token scan — EXACT match or off-by-one OCR artifact only (NO general substring)
+  // 2. Token scan ΓÇö EXACT match or off-by-one OCR artifact only (NO general substring)
   const ocrTokens = String(text).match(/\b[0-9a-zA-Z\-]{4,25}\b/g) || [];
   for (const seq of ocrTokens) {
     const seqDigits = digitsOnly(seq);
     const seqMapped = mapOcrToDigits(seq);
     if (seqDigits === tDigits || seqMapped === tDigits) return true;
-    // Only accept off-by-one leading/trailing artifact — NOT general substring
+    // Only accept off-by-one leading/trailing artifact ΓÇö NOT general substring
     if (tDigits.length >= 6) {
       if (seqDigits.length === tDigits.length + 1 && (seqDigits.endsWith(tDigits) || seqDigits.startsWith(tDigits))) return true;
       if (seqMapped.length === tDigits.length + 1 && (seqMapped.endsWith(tDigits) || seqMapped.startsWith(tDigits))) return true;
     }
   }
 
-  // 3. Full-text digit scan — require word-boundary match, not raw substring
+  // 3. Full-text digit scan ΓÇö require word-boundary match, not raw substring
   // Raw substring would accept "12021305751" when searching for "2021305751"
   const fullTextBoundaryMatch = new RegExp(`(?<![0-9])${tDigits}(?![0-9])`);
   if (fullTextBoundaryMatch.test(text)) return true;
@@ -1716,18 +1697,18 @@ function academic_year_matches_expected(text, expectedYear) {
 
   // 1. Normalize OCR text and year characters
   const recoverYears = (str) => {
-    return str.replace(/20\d[a-z0-9¢]/gi, (match) => {
+    return str.replace(/20\d[a-z0-9┬ó]/gi, (match) => {
       const lastChar = match[3];
       if (/[0-9]/.test(lastChar)) return match;
       const map = {
-        '¢': '4', 'o': '0', 'i': '1', 'l': '1', 'z': '2', 's': '5', 'g': '6', 'b': '8', 'q': '9'
+        '┬ó': '4', 'o': '0', 'i': '1', 'l': '1', 'z': '2', 's': '5', 'g': '6', 'b': '8', 'q': '9'
       };
       return '202' + (map[lastChar.toLowerCase()] || '4');
     });
   };
 
-  const normText = recoverYears(String(text).replace(/[\–\—·•]/g, '-').toLowerCase());
-  const normExpected = String(expectedYear).replace(/[\–\—·•]/g, '-').trim();
+  const normText = recoverYears(String(text).replace(/[\ΓÇô\ΓÇö┬╖ΓÇó]/g, '-').toLowerCase());
+  const normExpected = String(expectedYear).replace(/[\ΓÇô\ΓÇö┬╖ΓÇó]/g, '-').trim();
 
   // Extract expected start & end years (e.g. expected "2025-2026" -> expStart = 2025, expEnd = 2026)
   const expYears4Digit = normExpected.match(/\b20\d{2}\b/g) || [];
@@ -1978,7 +1959,7 @@ function extractGpaFromText(text, expectedGpa = null) {
   // Clean OCR artifacts
   const cleaned = String(text)
     .replace(/\|/g, ':')
-    .replace(/[—–]/g, '-')
+    .replace(/[ΓÇöΓÇô]/g, '-')
     .replace(/GBA/gi, 'GPA')
     .replace(/G\.P\.A/gi, 'GPA')
     .replace(/37s/gi, '3.75')
@@ -2382,66 +2363,6 @@ function yearLevelMatchesText(text, expectedYearLevel) {
   return true;
 }
 
-export function name_matches_merit_cert(detectedText, firstName, lastName, middleName = '') {
-  if (!detectedText || !detectedText.trim()) {
-    return { success: false, reason: "No text extracted from certificate" };
-  }
-  const normDoc = normalizeForOcr(detectedText);
-  const docTokens = normDoc.split(/\s+/).filter(Boolean);
-
-  const cleanFirst = normalizeForOcr(firstName || '').trim();
-  const cleanLast = normalizeForOcr(lastName || '').trim();
-  const cleanMiddle = normalizeForOcr(middleName || '').trim();
-
-  // If user has not provided first or last name, default pass
-  if (!cleanFirst && !cleanLast) {
-    return { success: true, reason: "Name check bypassed" };
-  }
-
-  // 1. Direct Full Name Sequence check (e.g. "faith ann fletcher", "faith ann ortega fletcher", "fletcher faith ann")
-  if (cleanFirst && cleanLast) {
-    const directSeq1 = `${cleanFirst} ${cleanLast}`;
-    const directSeq2 = cleanMiddle ? `${cleanFirst} ${cleanMiddle} ${cleanLast}` : '';
-    const directSeq3 = `${cleanLast} ${cleanFirst}`;
-    if (normDoc.includes(directSeq1) || (directSeq2 && normDoc.includes(directSeq2)) || normDoc.includes(directSeq3)) {
-      return { success: true, reason: "Exact name sequence matched" };
-    }
-  }
-
-  // 2. Token-level matching for First Name and Last Name words
-  const firstWords = cleanFirst.split(/\s+/).filter(w => w.length >= 2);
-  const lastWords = cleanLast.split(/\s+/).filter(w => w.length >= 2);
-
-  const wordMatches = (word) => {
-    if (!word) return true;
-    const confW = normalizeNameConfusions(word);
-    if (new RegExp('\\b' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(normDoc)) {
-      return true;
-    }
-    return docTokens.some(tok => {
-      if (tok === word) return true;
-      if (isSimilarWord(word, tok)) return true;
-      if (confW.length >= 3 && normalizeNameConfusions(tok) === confW) return true;
-      return false;
-    });
-  };
-
-  // Both First Name (all significant words, or direct phrase) and Last Name must match
-  const firstOk = firstWords.length > 0 ? (normDoc.includes(cleanFirst) || firstWords.every(w => wordMatches(w))) : true;
-  const lastOk = lastWords.length > 0 ? lastWords.every(w => wordMatches(w)) : true;
-
-  if (firstOk && lastOk) {
-    return { success: true, reason: "First and Last names found on certificate" };
-  }
-
-  return {
-    success: false,
-    reason: !firstOk && !lastOk
-      ? `Applicant name (${firstName} ${lastName}) not found on certificate.`
-      : (!firstOk ? `First name (${firstName}) not found on certificate.` : `Last name (${lastName}) not found on certificate.`)
-  };
-}
-
 export function merit_matches_text(detectedText, meritTitle) {
   if (!meritTitle || !meritTitle.trim()) return { isMatch: true, matchedKeywords: [], score: 100 };
   if (!detectedText || !detectedText.trim()) return { isMatch: false, matchedKeywords: [], reason: "No text extracted from certificate" };
@@ -2550,7 +2471,6 @@ export function merit_matches_text(detectedText, meritTitle) {
 const StudentInfo = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const localVideoBlobsRef = useRef({});
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [showSubmissionModal, setShowSubmissionModal] = useState(false);
@@ -2607,7 +2527,7 @@ const StudentInfo = () => {
     { id: 1, title: '', photo: null, verified: null, status: '', scoreDetails: null }
   ]);
 
-  // Global debug flags — fetched from DB so they sync across all deployments
+  // Global debug flags ΓÇö fetched from DB so they sync across all deployments
   const [debugFlags, setDebugFlags] = useState({
     skip_alternate_check: localStorage.getItem('debug_skip_alternate_check') === 'true',
     skip_tamper_check: localStorage.getItem('debug_skip_tamper_check') === 'true',
@@ -2635,7 +2555,7 @@ const StudentInfo = () => {
           if (val !== null && val !== undefined) {
             totalFields++;
             const sVal = String(val).toLowerCase();
-            if (val === true || val === 1 || val === 'true' || sVal === 'match✓' || sVal.startsWith('met') || sVal.startsWith('uploaded') || sVal.includes('verified')) {
+            if (val === true || val === 1 || val === 'true' || sVal === 'matchΓ£ô' || sVal.startsWith('met') || sVal.startsWith('uploaded') || sVal.includes('verified')) {
               passedFields++;
             }
           }
@@ -2666,9 +2586,9 @@ const StudentInfo = () => {
             if (val === 'N/A' || val === null || val === undefined || val === '') return null;
             const matchVal = log.scoreDetails ? log.scoreDetails[key] : null;
             let isMatch = false;
-            if (matchVal === true || matchVal === 'MATCH✓' || (typeof matchVal === 'string' && matchVal.toLowerCase().startsWith('met'))) {
+            if (matchVal === true || matchVal === 'MATCHΓ£ô' || (typeof matchVal === 'string' && matchVal.toLowerCase().startsWith('met'))) {
               isMatch = true;
-            } else if (matchVal === false || matchVal === 'MISMATCH✗' || (typeof matchVal === 'string' && matchVal.toLowerCase().startsWith('failed'))) {
+            } else if (matchVal === false || matchVal === 'MISMATCHΓ£ù' || (typeof matchVal === 'string' && matchVal.toLowerCase().startsWith('failed'))) {
               isMatch = false;
             } else if (val === 'Uploaded & Attached' || val === 'Uploaded & Validated') {
               isMatch = matchVal !== false;
@@ -2701,7 +2621,7 @@ const StudentInfo = () => {
                   color: 'white',
                   whiteSpace: 'nowrap'
                 }}>
-                  {isMatch ? 'MATCH✓' : 'MISMATCH✗'}
+                  {isMatch ? 'MATCHΓ£ô' : 'MISMATCHΓ£ù'}
                 </span>
               </div>
             );
@@ -2711,7 +2631,7 @@ const StudentInfo = () => {
         {log.detectedText && (
           <details style={{ marginTop: '6px' }}>
             <summary style={{ fontSize: '0.72rem', color: '#64748b', cursor: 'pointer', fontWeight: '600' }}>
-              📄 View Raw Text Extracted by OCR Engine
+              ≡ƒôä View Raw Text Extracted by OCR Engine
             </summary>
             <pre style={{
               marginTop: '4px',
@@ -2734,18 +2654,11 @@ const StudentInfo = () => {
   };
 
   const validateVideoLiveness = async (videoSrc, fieldName = null, signal = null) => {
-    if (signal?.aborted) {
-      return { valid: false, reason: "Scan cancelled." };
-    }
-
-    // 1. Instant local memory blob from active user session
-    const localBlob = (fieldName && localVideoBlobsRef.current?.[fieldName]) ? localVideoBlobsRef.current[fieldName] : null;
-    let target = localBlob || videoSrc;
-
-    if (!target) {
+    if (!videoSrc || signal?.aborted) {
       return { valid: false, reason: "No video uploaded or recorded." };
     }
 
+    let target = videoSrc;
     if (Array.isArray(target)) target = target[0];
     if (target && typeof target === 'object' && !(target instanceof Blob) && !(target instanceof File)) {
       target = target.url || target.src || target.front || target.back || null;
@@ -2783,6 +2696,9 @@ const StudentInfo = () => {
             const token = localStorage.getItem('authToken');
             const apiOrigin = API_ORIGIN;
 
+            // All remote video URLs (including direct Supabase CDN URLs) must be fetched
+            // and decrypted ΓÇö videos are AES-GCM encrypted before upload to Supabase.
+            // Do NOT set srcUrl = trimmed directly, as the encrypted binary will fail to play.
             {
               let fetchUrl = trimmed;
               const headers = {};
@@ -2790,13 +2706,16 @@ const StudentInfo = () => {
               const isSupabaseDirect = trimmed.includes('supabase.co');
 
               if (isSupabaseDirect) {
+                // Supabase CDN: fetch directly, no auth header, no proxy
                 fetchUrl = trimmed;
               } else if (trimmed.includes('/document/raw/')) {
+                // Already a Render proxy URL ΓÇö add token if missing
                 if (!trimmed.includes('token=')) {
                   fetchUrl = `${trimmed}${trimmed.includes('?') ? '&' : '?'}token=${token}`;
                 }
                 if (token) headers['Authorization'] = `Bearer ${token}`;
               } else if (fieldName) {
+                // Fall back to Render proxy only if we have no better URL
                 fetchUrl = `${apiOrigin}/api/student/applicant/document/raw/${fieldName}?token=${token}`;
                 if (token) headers['Authorization'] = `Bearer ${token}`;
               } else {
@@ -2807,14 +2726,14 @@ const StudentInfo = () => {
               const cbSep = fetchUrl.includes('?') ? '&' : '?';
 
               let resp = null;
-              for (let attempt = 0; attempt < 3; attempt++) {
+              for (let attempt = 0; attempt < 2; attempt++) {
                 if (signal?.aborted) return { valid: false, reason: "Scan cancelled." };
                 try {
-                  const cleanFetchUrl = isSupabaseDirect ? fetchUrl : `${fetchUrl}${cbSep}_cb=${Date.now()}`;
+                  const cleanFetchUrl = `${fetchUrl}${cbSep}_cb=${Date.now()}`;
                   resp = await fetch(cleanFetchUrl, { headers, signal });
                   if (resp.ok) break;
                 } catch (retryErr) {
-                  if (attempt < 2) await new Promise(r => setTimeout(r, 500));
+                  if (attempt < 1) await new Promise(r => setTimeout(r, 400));
                 }
               }
 
@@ -2828,18 +2747,8 @@ const StudentInfo = () => {
 
                   let decryptedBlob = blob;
                   if (!isMkvWebm && !isMp4) {
-                    try {
-                      const { decryptDocument } = await import('../services/CryptoService');
-                      decryptedBlob = await decryptDocument(blob, 'video/mp4');
-                    } catch (decErr) {
-                      console.warn('[VIDEO DECRYPTION NOTE]', decErr);
-                      decryptedBlob = blob;
-                    }
-                  }
-
-                  // Cache decrypted blob in memory for current session
-                  if (fieldName) {
-                    localVideoBlobsRef.current[fieldName] = decryptedBlob;
+                    const { decryptDocument } = await import('../services/CryptoService');
+                    decryptedBlob = await decryptDocument(blob, 'video/mp4');
                   }
 
                   createdBlobUrl = URL.createObjectURL(decryptedBlob);
@@ -2865,6 +2774,7 @@ const StudentInfo = () => {
       }
 
       // --- SEEK-BASED HIGH-SPEED VIDEO FRAME EXTRACTOR ---
+      // Quota & Speed Optimization: 2 strategic frames at 900px resolution
       const sampleRatios = [0.25, 0.65];
       const maxDim = 900;
 
@@ -2872,8 +2782,7 @@ const StudentInfo = () => {
         const video = document.createElement('video');
         video.muted = true;
         video.playsInline = true;
-        video.crossOrigin = 'anonymous';
-        video.preload = 'auto';
+        video.preload = 'metadata';
 
         let cleanedUp = false;
         const cleanupVideo = () => {
@@ -2902,10 +2811,9 @@ const StudentInfo = () => {
         }
 
         const timeout = setTimeout(() => {
-          console.warn('[VIDEO OCR] Frame extraction safety timeout reached.');
           cleanupVideo();
           resolveFrames([]);
-        }, 15000);
+        }, 12000);
 
         video.onerror = (e) => {
           console.warn('[VIDEO OCR] video loading error:', e);
@@ -2914,16 +2822,17 @@ const StudentInfo = () => {
           resolveFrames([]);
         };
 
-        let startedProcessing = false;
-        const processFrames = async () => {
-          if (startedProcessing) return;
-          startedProcessing = true;
-
+        video.onloadedmetadata = async () => {
           try {
-            const rawDuration = video.duration;
-            const duration = (isFinite(rawDuration) && !isNaN(rawDuration) && rawDuration > 0.3) ? rawDuration : 3.0;
-            const vw = video.videoWidth || 640;
-            const vh = video.videoHeight || 480;
+            const duration = video.duration || 5;
+            const vw = video.videoWidth;
+            const vh = video.videoHeight;
+
+            if (!vw || !vh) {
+              cleanupVideo();
+              clearTimeout(timeout);
+              return resolveFrames([]);
+            }
 
             let targetW = vw;
             let targetH = vh;
@@ -2937,63 +2846,51 @@ const StudentInfo = () => {
               }
             }
 
-            const timestamps = sampleRatios.map(r => {
-              const t = duration * r;
-              return (isFinite(t) && !isNaN(t)) ? Math.max(0.1, Math.min(duration - 0.1, t)) : 0.5;
-            });
+            const timestamps = sampleRatios.map(r => Math.max(0.1, Math.min(duration - 0.1, duration * r)));
             const resultCanvases = [];
+            video.playbackRate = 4.0;
 
             for (let i = 0; i < timestamps.length; i++) {
-              if (signal?.aborted) break;
+              if (signal?.aborted) {
+                cleanupVideo();
+                clearTimeout(timeout);
+                break;
+              }
               const seekTime = timestamps[i];
 
               await new Promise((seekResolve) => {
-                let seekDone = false;
-                const captureAndFinish = () => {
-                  if (seekDone) return;
-                  seekDone = true;
-                  try {
-                    // Canvas 1: Full seeked frame
-                    const canvas = document.createElement('canvas');
-                    canvas.width = targetW;
-                    canvas.height = targetH;
-                    const ctx = canvas.getContext('2d');
-                    ctx.imageSmoothingEnabled = true;
-                    ctx.imageSmoothingQuality = 'medium';
-                    ctx.drawImage(video, 0, 0, targetW, targetH);
+                const onSeeked = () => {
+                  video.removeEventListener('seeked', onSeeked);
 
-                    // Canvas 2: Header crop (Top 65%)
-                    const headerH = Math.floor(vh * 0.65);
-                    const headerCanvas = document.createElement('canvas');
-                    headerCanvas.width = targetW;
-                    headerCanvas.height = targetH;
-                    const hCtx = headerCanvas.getContext('2d');
-                    hCtx.imageSmoothingEnabled = true;
-                    hCtx.imageSmoothingQuality = 'medium';
-                    if ('filter' in hCtx) hCtx.filter = 'contrast(125%) brightness(98%)';
-                    hCtx.drawImage(video, 0, 0, vw, headerH, 0, 0, targetW, targetH);
+                  // Canvas 1: Full seeked frame
+                  const canvas = document.createElement('canvas');
+                  canvas.width = targetW;
+                  canvas.height = targetH;
+                  const ctx = canvas.getContext('2d');
+                  ctx.imageSmoothingEnabled = true;
+                  ctx.imageSmoothingQuality = 'medium';
+                  ctx.drawImage(video, 0, 0, targetW, targetH);
 
-                    resultCanvases.push({ time: seekTime, canvas, headerCanvas });
-                  } catch (drawErr) {
-                    console.warn('[VIDEO OCR] Frame draw error:', drawErr);
-                  }
+                  // Canvas 2: Header crop (Top 65%)
+                  const headerH = Math.floor(vh * 0.65);
+                  const headerCanvas = document.createElement('canvas');
+                  headerCanvas.width = targetW;
+                  headerCanvas.height = targetH;
+                  const hCtx = headerCanvas.getContext('2d');
+                  hCtx.imageSmoothingEnabled = true;
+                  hCtx.imageSmoothingQuality = 'medium';
+                  if ('filter' in hCtx) hCtx.filter = 'contrast(125%) brightness(98%)';
+                  hCtx.drawImage(video, 0, 0, vw, headerH, 0, 0, targetW, targetH);
+
+                  resultCanvases.push({ time: seekTime, canvas, headerCanvas });
                   seekResolve();
                 };
 
-                const seekTimeout = setTimeout(captureAndFinish, 1400);
-
-                const onSeeked = () => {
-                  video.removeEventListener('seeked', onSeeked);
-                  clearTimeout(seekTimeout);
-                  captureAndFinish();
-                };
-
                 video.addEventListener('seeked', onSeeked, { once: true });
-                try {
-                  video.currentTime = Number.isFinite(seekTime) ? seekTime : 0.5;
-                } catch (e) {
-                  clearTimeout(seekTimeout);
-                  captureAndFinish();
+                if ('fastSeek' in video) {
+                  try { video.fastSeek(seekTime); } catch (e) { video.currentTime = seekTime; }
+                } else {
+                  video.currentTime = seekTime;
                 }
               });
             }
@@ -3007,11 +2904,6 @@ const StudentInfo = () => {
             clearTimeout(timeout);
             resolveFrames([]);
           }
-        };
-
-        video.onloadeddata = processFrames;
-        video.onloadedmetadata = () => {
-          if (video.readyState >= 2) processFrames();
         };
 
         video.src = srcUrl;
@@ -3408,11 +3300,6 @@ const StudentInfo = () => {
     if (blob.size > MAX_SIZE) {
       alert(`The selected video file is too large (${(blob.size / (1024 * 1024)).toFixed(1)}MB). The maximum allowed size is 20MB. Please record a shorter or lower-resolution video.`);
       return;
-    }
-
-    // Save raw local blob for instant, zero-latency local OCR validation
-    if (localVideoBlobsRef?.current) {
-      localVideoBlobsRef.current[fieldName] = blob;
     }
 
     // Immediate local preview
@@ -4435,20 +4322,16 @@ const StudentInfo = () => {
       if (typeof imageSource === 'string' && imageSource.startsWith('http')) {
         const sep = imageSource.includes('?') ? '&' : '?';
         img.src = `${imageSource}${sep}_cb=${Date.now()}`;
-      } else if (typeof imageSource === 'string') {
-        img.src = imageSource;
       } else {
-        resolve(imageSource);
+        img.src = imageSource;
       }
     });
   }
 
   /**
    * Advanced Document Tampering & Digital Manipulation Detector
-   * MERIT DOCUMENTS ONLY — Not called for Indigency, COE, Grades, or School ID.
-   * Checks for:
-   * 1. Canva/Photoshop editor border guide artifacts (magenta crop marks)
-   * 2. Digital whiteout blocks and pasted text overlay patches
+   * Analyzes image pixels for artificial digital overlay blocks, solid whiteout patches,
+   * drawn cover-ups, and unnatural uniform color rectangles.
    */
   function detectDocumentTampering(imageSource) {
     return new Promise((resolve) => {
@@ -4480,8 +4363,6 @@ const StudentInfo = () => {
             resolve({ edited: false, reason: "Authentic document" });
             return;
           }
-
-          const canvas = document.createElement("canvas");
           canvas.width = w;
           canvas.height = h;
           const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -4490,7 +4371,7 @@ const StudentInfo = () => {
           const imgData = ctx.getImageData(0, 0, w, h);
           const data = imgData.data;
 
-          // ── Check 1: Saturated Editor UI Border Artifacts (Canva/Photoshop crop artifacts) ──
+          // ΓöÇΓöÇ Check 1: Saturated Editor UI Border Artifacts (Canva/Photoshop crop artifacts) ΓöÇΓöÇ
           let magentaBorderPx = 0;
           const checkMarginPx = (x, y) => {
             const idx = (y * w + x) * 4;
@@ -4520,83 +4401,8 @@ const StudentInfo = () => {
           if (magentaBorderPx >= 45) {
             resolve({
               edited: true,
-              reason: `Editing canvas border detected (${magentaBorderPx} saturated editor UI border pixels found at margins). Please upload an original unedited document.`,
+              reason: `Editing canvas border detected (${magentaBorderPx} saturated editor UI border pixels found at margins). Please upload an authentic, unedited document.`,
               patchCount: magentaBorderPx
-            });
-            return;
-          }
-
-          // ── Check 2: Calculate overall document paper brightness (median proxy) ──
-          const sampleGrays = [];
-          const stepX = Math.max(1, Math.floor(w / 40));
-          const stepY = Math.max(1, Math.floor(h / 40));
-          for (let y = Math.floor(h * 0.1); y < h * 0.9; y += stepY) {
-            for (let x = Math.floor(w * 0.1); x < w * 0.9; x += stepX) {
-              const idx = (y * w + x) * 4;
-              sampleGrays.push(0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
-            }
-          }
-          sampleGrays.sort((a, b) => a - b);
-          const paperMedian = sampleGrays.length > 0 ? sampleGrays[Math.floor(sampleGrays.length * 0.5)] : 220;
-
-          // ── Check 3: Scan text region grid for whiteout patches and digital overlays ──
-          const gridW = 28;
-          const gridH = 18;
-          const marginX = Math.floor(w * 0.08);
-          const marginY = Math.floor(h * 0.08);
-          const contentW = w - 2 * marginX;
-          const contentH = h - 2 * marginY;
-          const cols = Math.floor(contentW / gridW);
-          const rows = Math.floor(contentH / gridH);
-
-          let suspiciousPatches = 0;
-
-          for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-              const startX = marginX + c * gridW;
-              const startY = marginY + r * gridH;
-
-              let sumGray = 0;
-              let count = 0;
-              const pixels = [];
-
-              for (let y = startY; y < startY + gridH; y++) {
-                for (let x = startX; x < startX + gridW; x++) {
-                  const idx = (y * w + x) * 4;
-                  const g = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-                  pixels.push(g);
-                  // Exclude dark text pixels (< 175) to measure patch background brightness
-                  if (g >= 175) {
-                    sumGray += g;
-                    count++;
-                  }
-                }
-              }
-
-              if (count >= 15) {
-                const boxBgMean = sumGray / count;
-                let varSum = 0;
-                for (let p of pixels) {
-                  if (p >= 175) varSum += Math.pow(p - boxBgMean, 2);
-                }
-                const boxBgStd = Math.sqrt(varSum / count);
-
-                const contrast = boxBgMean - paperMedian;
-                // Whiteout block overlay:
-                // Box is bright white (>=236) on shaded paper (contrast >= 10.0)
-                // OR pure solid white fill (>=250) with low variance (< 3.0)
-                if ((boxBgMean >= 236 && contrast >= 10.0) || (boxBgMean >= 250 && boxBgStd < 3.0)) {
-                  suspiciousPatches++;
-                }
-              }
-            }
-          }
-
-          if (suspiciousPatches >= 2) {
-            resolve({
-              edited: true,
-              reason: `Digital edit / whiteout overlay detected on document (${suspiciousPatches} artificial overlay patch(es) found). Please upload an authentic, unedited document.`,
-              patchCount: suspiciousPatches
             });
             return;
           }
@@ -4690,17 +4496,23 @@ const StudentInfo = () => {
 
       // Resolve/decrypt proxy URLs to local blob URLs for robust local OCR scanning
       let resolvedParam = docParam;
+      let tamperCheck = { edited: false, reason: "Authentic document" };
 
       if (docType === 'SchoolID') {
         const [resolvedFront, resolvedBack] = await Promise.all([
           docParam?.front ? applicantAPI.resolveDocument('id_img_front', docParam.front) : Promise.resolve(null),
           docParam?.back ? applicantAPI.resolveDocument('id_img_back', docParam.back) : Promise.resolve(null)
         ]);
-        if (!silent) setStatus("Enhancing ID images for OCR...");
-        const [enhancedFront, enhancedBack] = await Promise.all([
+        if (!silent) setStatus("Analyzing ID authenticity & enhancing images...");
+        const [frontTamper, backTamper, enhancedFront, enhancedBack] = await Promise.all([
+          resolvedFront ? detectDocumentTampering(resolvedFront).catch(() => ({ edited: false })) : Promise.resolve({ edited: false }),
+          resolvedBack ? detectDocumentTampering(resolvedBack).catch(() => ({ edited: false })) : Promise.resolve({ edited: false }),
           resolvedFront ? preprocessImageForOcr(resolvedFront).catch(() => null) : Promise.resolve(null),
           resolvedBack ? preprocessImageForOcr(resolvedBack).catch(() => null) : Promise.resolve(null)
         ]);
+        if (frontTamper?.edited || backTamper?.edited) {
+          tamperCheck = frontTamper?.edited ? frontTamper : backTamper;
+        }
         resolvedParam = {
           front: enhancedFront || resolvedFront || docParam?.front,
           back: enhancedBack || resolvedBack || docParam?.back
@@ -4713,11 +4525,33 @@ const StudentInfo = () => {
         };
         const isLocalUrl = typeof docParam === 'string' && (docParam.startsWith('blob:') || docParam.startsWith('data:'));
         const rawResolved = isLocalUrl ? docParam : await applicantAPI.resolveDocument(fieldMap[docType] || 'document', docParam);
+        const rawSourceForTamper = rawResolved || docParam;
 
-        if (!silent) setStatus("Enhancing document pixels for OCR...");
+        if (!silent) setStatus("Analyzing document authenticity & scanning pixels...");
 
-        const pParam = (rawResolved && docType === 'Indigency') ? await preprocessImageForOcr(rawResolved).catch(() => null) : null;
+        const [tCheck, pParam] = await Promise.all([
+          rawSourceForTamper ? detectDocumentTampering(rawSourceForTamper).catch(() => ({ edited: false, reason: "Authentic document" })) : Promise.resolve({ edited: false, reason: "Authentic document" }),
+          (rawResolved && docType === 'Indigency') ? preprocessImageForOcr(rawResolved).catch(() => null) : Promise.resolve(null)
+        ]);
+        tamperCheck = tCheck || { edited: false, reason: "Authentic document" };
         resolvedParam = pParam || rawResolved || docParam;
+      }
+
+      if (!isTamperBypassActive() && tamperCheck.edited) {
+        const scoreDetails = {
+          "Document Authenticity": false,
+          "Digital Tamper Check": false,
+          "First Name": false,
+          "Last Name": false,
+          "Video Proof": true
+        };
+        const finalMessage = `Tampering Alert: ${tamperCheck.reason}`;
+        const resultsList = [{ doc: docType, verified: false, message: finalMessage, score_details: scoreDetails }];
+        if (!silent) {
+          setVerified('failed');
+          setStatus(`Verification failed: ${finalMessage}`);
+        }
+        return { isSuccess: false, scoreDetails, finalMessage, resultsList, detectedText: "[DIGITAL TAMPERING DETECTED]" };
       }
 
       const createInvertedImageBlob = (src) => {
@@ -5876,7 +5710,6 @@ const StudentInfo = () => {
 
     const firstName = formData.firstName || userProfile?.first_name || '';
     const lastName = formData.lastName || userProfile?.last_name || '';
-    const middleName = formData.middleName || userProfile?.middle_name || '';
 
     setMeritScanVerified('verifying');
     setMeritScanStatus('Scanning merit certificate(s)...');
@@ -5902,25 +5735,19 @@ const StudentInfo = () => {
         const certSource = getVerificationDocumentSource(item.photo);
         if (!certSource) continue;
 
-        // ── Security Check: Tamper & AI Detection ONLY on Merit Documents ──
+        // Run tamper check
         if (!isTamperBypassActive()) {
           const tamperCheck = await detectDocumentTampering(certSource);
           if (tamperCheck.edited) {
             allPassed = false;
-            failureReason = `Merit #${i + 1} (${item.title}): Tampering / AI Generation Alert: ${tamperCheck.reason}`;
+            failureReason = `Merit #${i + 1} (${item.title}): Tampering Alert: ${tamperCheck.reason}`;
             item.verified = 'failed';
             item.status = failureReason;
             item.scoreDetails = {
               "Applicant Name": false,
-              "Merit Keyword": false,
-              "Tamper & AI Check": false
+              "Award / Merit Keyword": false,
+              "Tamper Check": false
             };
-            aggregatedResults.push({
-              doc: `Merit #${i + 1}`,
-              verified: false,
-              message: item.status,
-              score_details: item.scoreDetails
-            });
             break;
           }
         }
@@ -5929,23 +5756,22 @@ const StudentInfo = () => {
         const ocrText = await performGoogleVisionOcrScan(certSource);
         combinedDetectedText += `\n[MERIT #${i + 1}: ${item.title}]\n${ocrText || 'No text extracted.'}\n`;
 
-        // Check 1: Name verification (First Name and Last Name matching)
-        const nameCheck = name_matches_merit_cert(ocrText, firstName, lastName, middleName);
-        const namePassed = Boolean(nameCheck && nameCheck.success);
+        // Check 1: Name verification
+        const nameCheck = name_matches_text(ocrText, firstName, lastName);
+        const namePassed = Boolean(nameCheck.details.first_ok && nameCheck.details.last_ok);
 
         // Check 2: Merit Keyword verification
         const meritCheck = merit_matches_text(ocrText, item.title);
-        const meritPassed = Boolean(meritCheck && meritCheck.isMatch);
+        const meritPassed = Boolean(meritCheck.isMatch);
 
         const certPassed = namePassed && meritPassed;
         item.verified = certPassed ? 'success' : 'failed';
         item.status = certPassed ? 'Certificate verified successfully!' : (
-          !namePassed ? (nameCheck?.reason || `Applicant name (${firstName} ${lastName}) not found on certificate.`) : meritCheck.reason
+          !namePassed ? `Applicant name (${firstName} ${lastName}) not found on certificate.` : meritCheck.reason
         );
         item.scoreDetails = {
           "Applicant Name": namePassed,
-          "Merit Keyword": meritPassed,
-          "Tamper & AI Check": true
+          "Award / Merit Keyword": meritPassed
         };
 
         aggregatedResults.push({
@@ -5979,14 +5805,11 @@ const StudentInfo = () => {
           status: allPassed ? 'VERIFIED (SUCCESS)' : 'FAILED (MISMATCH)',
           message: finalStatus,
           detectedText: combinedDetectedText,
-          scoreDetails: {
-            "Applicant Name": aggregatedResults.every(r => r.score_details?.["Applicant Name"]),
-            "Merit Keyword": aggregatedResults.every(r => r.score_details?.["Merit Keyword"]),
-            "Tamper & AI Check": aggregatedResults.every(r => r.score_details?.["Tamper & AI Check"])
-          },
+          scoreDetails: aggregatedResults.length > 0 ? aggregatedResults[0].score_details : {},
           requirements: {
             "Applicant Name": `${firstName} ${lastName}`,
-            "Merit Keyword": activeMeritsWithPhotos.map(m => m.title).join(', ')
+            "Merit Keyword": activeMeritsWithPhotos.map(m => m.title).join(', '),
+            "Status": finalStatus
           },
           timestamp: new Date().toLocaleTimeString()
         }
@@ -7509,7 +7332,7 @@ const StudentInfo = () => {
           throw new Error(`Profile picture upload failed: ${uploadErr.message}`);
         }
       } else if (idPicturePreview && (idPicturePreview.startsWith('http://') || idPicturePreview.startsWith('https://'))) {
-        // Pre-existing picture already stored as a URL — send it as-is
+        // Pre-existing picture already stored as a URL ΓÇö send it as-is
         submissionData.append('profile_picture', idPicturePreview);
       } else if (userProfile?.profile_picture && (userProfile.profile_picture.startsWith('http://') || userProfile.profile_picture.startsWith('https://'))) {
         // Reuse the existing profile picture URL from the user's profile
@@ -8236,7 +8059,7 @@ const StudentInfo = () => {
           font-weight: 800;
         }
 
-        /* Debug button — keep off form content on mobile */
+        /* Debug button ΓÇö keep off form content on mobile */
         @media (max-width: 768px) {
           .debug-fab {
             bottom: 80px !important;
@@ -8244,17 +8067,17 @@ const StudentInfo = () => {
         }
 
         /* ==========================================
-           RESPONSIVE BREAKPOINTS — StudentInfo
+           RESPONSIVE BREAKPOINTS ΓÇö StudentInfo
            ========================================== */
 
-        /* ── Large screens: widen the form container ── */
+        /* ΓöÇΓöÇ Large screens: widen the form container ΓöÇΓöÇ */
         @media (min-width: 1200px) {
           .form-container {
             max-width: 1000px;
           }
         }
 
-        /* ── Tablet & below (≤ 900px) ── */
+        /* ΓöÇΓöÇ Tablet & below (Γëñ 900px) ΓöÇΓöÇ */
         @media (max-width: 900px) {
           .form-container {
             padding: 1.5rem 4%;
@@ -8273,7 +8096,7 @@ const StudentInfo = () => {
           }
         }
 
-        /* ── Tablet portrait (≤ 768px) ── */
+        /* ΓöÇΓöÇ Tablet portrait (Γëñ 768px) ΓöÇΓöÇ */
         @media (max-width: 768px) {
           /* Navbar */
           .navbar {
@@ -8344,7 +8167,7 @@ const StudentInfo = () => {
             display: none;
           }
 
-          /* Form rows — always stack on mobile */
+          /* Form rows ΓÇö always stack on mobile */
           .form-row {
             grid-template-columns: 1fr !important;
             gap: 0.6rem;
@@ -8412,7 +8235,7 @@ const StudentInfo = () => {
           }
         }
 
-        /* ── Small phones (≤ 600px) ── */
+        /* ΓöÇΓöÇ Small phones (Γëñ 600px) ΓöÇΓöÇ */
         @media (max-width: 600px) {
           .navbar-menu {
             gap: 0.6rem;
@@ -8452,7 +8275,7 @@ const StudentInfo = () => {
           }
         }
 
-        /* ── Extra small phones (≤ 480px) ── */
+        /* ΓöÇΓöÇ Extra small phones (Γëñ 480px) ΓöÇΓöÇ */
         @media (max-width: 480px) {
           .navbar-brand {
             font-size: 1.05rem;
@@ -8578,14 +8401,14 @@ const StudentInfo = () => {
                   padding: '2px 6px'
                 }}
               >
-                ✕
+                Γ£ò
               </button>
             </div>
 
             {/* Alt Account Check Row */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: debugFlags.skip_alternate_check ? '#10b981' : '#ef4444' }}>●</span>
+                <span style={{ color: debugFlags.skip_alternate_check ? '#10b981' : '#ef4444' }}>ΓùÅ</span>
                 <span>Alt Check: {debugFlags.skip_alternate_check ? 'Bypassed' : 'Enabled'}</span>
               </div>
               <button
@@ -8615,7 +8438,7 @@ const StudentInfo = () => {
             {/* Digital Tamper Check Row */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: debugFlags.skip_tamper_check ? '#10b981' : '#ef4444' }}>●</span>
+                <span style={{ color: debugFlags.skip_tamper_check ? '#10b981' : '#ef4444' }}>ΓùÅ</span>
                 <span>Tamper Check: {debugFlags.skip_tamper_check ? 'Bypassed' : 'Enabled'}</span>
               </div>
               <button
@@ -8695,7 +8518,7 @@ const StudentInfo = () => {
                 gap: '6px'
               }}
             >
-              <span style={{ fontSize: '0.9rem' }}>📂</span> Prefill Docs from Supabase
+              <span style={{ fontSize: '0.9rem' }}>≡ƒôé</span> Prefill Docs from Supabase
             </button>
 
             {/* Global Requirements Checklist Toggle Button */}
@@ -9369,7 +9192,7 @@ const StudentInfo = () => {
                                 }}
                                 title="Remove this merit"
                               >
-                                ✕
+                                Γ£ò
                               </button>
                             )}
                           </div>
@@ -10537,7 +10360,7 @@ const StudentInfo = () => {
                               try {
                                 const faceNorm = await normalizeVerificationImage(photos.face_photo);
                                 const idNorm = await normalizeVerificationImage(idImg);
-                                // Resize to 640px max before sending — optimal dimension for neural RetinaFace anchors
+                                // Resize to 640px max before sending ΓÇö optimal dimension for neural RetinaFace anchors
                                 const faceImage = await resizeImageForFaceVerification(faceNorm, 640, 0.85);
                                 const normalizedIdImage = await resizeImageForFaceVerification(idNorm, 640, 0.85);
                                 const result = await applicantAPI.verifyFaceAgainstId(faceImage, normalizedIdImage);
@@ -10546,7 +10369,7 @@ const StudentInfo = () => {
                                   setFaceVerified('success');
                                   showPromptMessage('Face successfully matched with ID!');
                                 } else if (result.message && (result.message.includes('Service Error') || result.message.includes('timed out') || result.message.includes('ConnectionPool') || result.message.includes('localhost') || result.message.includes('starting up'))) {
-                                  // Backend service unavailable — do NOT auto-pass, inform user
+                                  // Backend service unavailable ΓÇö do NOT auto-pass, inform user
                                   setFaceMatchResult({ verified: false, message: 'Verification service is warming up. Please try again in a few seconds.' });
                                   showPromptMessage('Server is warming up. Please click Verify again in a few seconds.');
                                 } else {
@@ -10558,7 +10381,7 @@ const StudentInfo = () => {
                                 const errStr = String(err?.message || err || '');
                                 const isWarmup = errStr.includes('503') || errStr.includes('502') || errStr.includes('starting up') || errStr.includes('waking') || errStr.includes('Network Error') || errStr.includes('CORS') || errStr.includes('reach the server') || err?.name === 'TypeError';
                                 const msg = isWarmup
-                                  ? 'Server is waking up (Render cold start). Please click Verify again in 10–15 seconds.'
+                                  ? 'Server is waking up (Render cold start). Please click Verify again in 10ΓÇô15 seconds.'
                                   : 'Server connection error. Please click Verify again.';
                                 setFaceMatchResult({ verified: false, message: msg });
                                 showPromptMessage(msg);
@@ -10765,7 +10588,7 @@ const StudentInfo = () => {
               whiteSpace: 'nowrap'
             }}>
               <i className={`fas ${faceDetected ? 'fa-check-circle' : 'fa-user-focus'}`} style={{ fontSize: '1rem' }}></i>
-              {faceDetected ? 'FACE DETECTED — HOLD STEADY' : 'POSITION FACE INSIDE OVAL'}
+              {faceDetected ? 'FACE DETECTED ΓÇö HOLD STEADY' : 'POSITION FACE INSIDE OVAL'}
             </div>
 
             {cameraInitializing && (
