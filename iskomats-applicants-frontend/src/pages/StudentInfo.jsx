@@ -4490,21 +4490,21 @@ const StudentInfo = () => {
           const imgData = ctx.getImageData(0, 0, w, h);
           const data = imgData.data;
 
-          // ── Check 1: Saturated Editor UI Border Artifacts (Canva/Photoshop crop artifacts) ──
+          // ── Check 1: Saturated Editor UI Border Artifacts (Canva/Photoshop electric crop guides) ──
           let magentaBorderPx = 0;
           const checkMarginPx = (x, y) => {
             const idx = (y * w + x) * 4;
             const r = data[idx], g = data[idx + 1], b = data[idx + 2];
-            // Strict vivid magenta / editor crop handle (high red + blue, low green)
-            if (r >= 120 && b >= 80 && g <= 80 && (r - g) >= 55 && (b - g) >= 35) {
+            // Canva guide lines are pure electric magenta/cyan
+            if (r >= 160 && b >= 140 && g <= 60 && (r - g) >= 90 && (b - g) >= 70) {
               magentaBorderPx++;
             }
           };
 
-          const topH = Math.floor(h * 0.06);
-          const leftW = Math.floor(w * 0.06);
-          const rightX = Math.floor(w * 0.94);
-          const botY = Math.floor(h * 0.94);
+          const topH = Math.floor(h * 0.04);
+          const leftW = Math.floor(w * 0.04);
+          const rightX = Math.floor(w * 0.96);
+          const botY = Math.floor(h * 0.96);
 
           for (let y = 0; y < topH; y += 2) {
             for (let x = 0; x < w; x += 2) checkMarginPx(x, y);
@@ -4517,10 +4517,10 @@ const StudentInfo = () => {
             for (let x = rightX; x < w; x += 2) checkMarginPx(x, y);
           }
 
-          if (magentaBorderPx >= 45) {
+          if (magentaBorderPx >= 50) {
             resolve({
               edited: true,
-              reason: `Editing canvas border detected (${magentaBorderPx} saturated editor UI border pixels found at margins). Please upload an original unedited document.`,
+              reason: `Editing canvas border detected (${magentaBorderPx} saturated editor UI border pixels found at margins). Please upload an authentic, unedited document.`,
               patchCount: magentaBorderPx
             });
             return;
@@ -4538,67 +4538,6 @@ const StudentInfo = () => {
           }
           sampleGrays.sort((a, b) => a - b);
           const paperMedian = sampleGrays.length > 0 ? sampleGrays[Math.floor(sampleGrays.length * 0.5)] : 220;
-
-          // ── Check 2b: Colored Digital Overlay Detection (yellow/blue/green text boxes) ──
-          // Natural scanned/photographed documents have LOW saturation (mostly gray/black ink on white paper).
-          // Digitally pasted text boxes (yellow highlights, blue boxes, Canva overlays) have HIGH saturation
-          // AND very uniform color fill (low pixel-to-pixel variance).
-          const cbW = 24, cbH = 16;
-          const cbMarX = Math.floor(w * 0.03);
-          const cbMarY = Math.floor(h * 0.03);
-          const cbCols = Math.floor((w - 2 * cbMarX) / cbW);
-          const cbRows = Math.floor((h - 2 * cbMarY) / cbH);
-          let coloredOverlayPatches = 0;
-
-          for (let br = 0; br < cbRows; br++) {
-            for (let bc = 0; bc < cbCols; bc++) {
-              const sx = cbMarX + bc * cbW;
-              const sy = cbMarY + br * cbH;
-              let saturatedCount = 0;
-              let totalSatSum = 0;
-              let satSqSum = 0;
-              let pixCount = 0;
-
-              for (let py = sy; py < sy + cbH && py < h; py++) {
-                for (let px = sx; px < sx + cbW && px < w; px++) {
-                  const idx = (py * w + px) * 4;
-                  const R = data[idx], G = data[idx + 1], B = data[idx + 2];
-                  const brightness = (R + G + B) / 3;
-                  // Skip near-black (ink) and near-white (paper background)
-                  if (brightness < 70 || brightness > 248) continue;
-                  const maxC = Math.max(R, G, B);
-                  const minC = Math.min(R, G, B);
-                  const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
-                  totalSatSum += sat;
-                  satSqSum += sat * sat;
-                  pixCount++;
-                  if (sat > 0.30) saturatedCount++;
-                }
-              }
-
-              if (pixCount >= 30) {
-                const meanSat = totalSatSum / pixCount;
-                const varSat = (satSqSum / pixCount) - (meanSat * meanSat);
-                const stdSat = Math.sqrt(Math.max(0, varSat));
-                // Colored overlay: > 80% of mid-tone pixels are saturated AND very low variance (solid fill)
-                // Gold text on certificates: satRatio ≈ 0.3-0.6 (mixed with white paper gaps)
-                // Digital yellow fill box: satRatio ≈ 0.88-0.98 (100% solid fill)
-                const satRatio = saturatedCount / pixCount;
-                if (satRatio > 0.80 && meanSat > 0.50 && stdSat < 0.10) {
-                  coloredOverlayPatches++;
-                }
-              }
-            }
-          }
-
-          if (coloredOverlayPatches >= 4) {
-            resolve({
-              edited: true,
-              reason: `Colored digital overlay detected (${coloredOverlayPatches} unnaturally uniform color patches found — digitally added text boxes or highlights). Please upload an authentic, unedited document.`,
-              patchCount: coloredOverlayPatches
-            });
-            return;
-          }
 
           // ── Check 3: Scan text region grid for whiteout patches and digital overlays ──
           const gridW = 28;
@@ -4644,10 +4583,8 @@ const StudentInfo = () => {
 
                 const contrast = boxBgMean - paperMedian;
                 // Whiteout block overlay (digitally pasted white/light box on photo of document):
-                // The tampered boxes read ~222 boxMean on photo paper with median ~205 → contrast ~17
-                // Uses lower mean threshold (>= 210) and looser std (< 8) to handle JPEG photo noise.
-                // Real clean-scan certificates have paperMedian ~254 → contrast ≈ 0, never triggers.
-                if (boxBgMean >= 210 && contrast >= 12.0 && boxBgStd < 8.0) {
+                // Real clean-scan certificates have paperMedian ~254 -> contrast ~ 0, never triggers.
+                if (boxBgMean >= 210 && contrast >= 15.0 && boxBgStd < 8.0) {
                   suspiciousPatches++;
                 }
               }
