@@ -4572,24 +4572,26 @@ const StudentInfo = () => {
                   totalSatSum += sat;
                   satSqSum += sat * sat;
                   pixCount++;
-                  if (sat > 0.22) saturatedCount++;
+                  if (sat > 0.30) saturatedCount++;
                 }
               }
 
-              if (pixCount >= 25) {
+              if (pixCount >= 30) {
                 const meanSat = totalSatSum / pixCount;
                 const varSat = (satSqSum / pixCount) - (meanSat * meanSat);
                 const stdSat = Math.sqrt(Math.max(0, varSat));
-                // Colored overlay: > 55% of mid-tone pixels are saturated AND low variance (uniform fill)
+                // Colored overlay: > 80% of mid-tone pixels are saturated AND very low variance (solid fill)
+                // Gold text on certificates: satRatio ≈ 0.3-0.6 (mixed with white paper gaps)
+                // Digital yellow fill box: satRatio ≈ 0.88-0.98 (100% solid fill)
                 const satRatio = saturatedCount / pixCount;
-                if (satRatio > 0.55 && meanSat > 0.28 && stdSat < 0.14) {
+                if (satRatio > 0.80 && meanSat > 0.50 && stdSat < 0.10) {
                   coloredOverlayPatches++;
                 }
               }
             }
           }
 
-          if (coloredOverlayPatches >= 3) {
+          if (coloredOverlayPatches >= 4) {
             resolve({
               edited: true,
               reason: `Colored digital overlay detected (${coloredOverlayPatches} unnaturally uniform color patches found — digitally added text boxes or highlights). Please upload an authentic, unedited document.`,
@@ -4642,16 +4644,17 @@ const StudentInfo = () => {
 
                 const contrast = boxBgMean - paperMedian;
                 // Whiteout block overlay:
-                // Box is bright white (>=236) on shaded paper (contrast >= 10.0)
-                // OR pure solid white fill (>=250) with low variance (< 3.0)
-                if ((boxBgMean >= 236 && contrast >= 10.0) || (boxBgMean >= 250 && boxBgStd < 3.0)) {
+                // A digital whiteout paste must be SIGNIFICANTLY brighter than the document's natural paper color.
+                // Clean scanners produce white backgrounds that already sit at ~252+ — contrast ≈ 0, so they are NOT flagged.
+                // Only catches cases where white is pasted onto cream/off-white/printed documents (contrast >= 18).
+                if (boxBgMean >= 236 && contrast >= 18.0 && boxBgStd < 2.5) {
                   suspiciousPatches++;
                 }
               }
             }
           }
 
-          if (suspiciousPatches >= 2) {
+          if (suspiciousPatches >= 4) {
             resolve({
               edited: true,
               reason: `Digital edit / whiteout overlay detected on document (${suspiciousPatches} artificial overlay patch(es) found). Please upload an authentic, unedited document.`,
