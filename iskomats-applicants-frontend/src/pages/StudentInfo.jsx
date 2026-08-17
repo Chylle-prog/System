@@ -2550,6 +2550,7 @@ export function merit_matches_text(detectedText, meritTitle) {
 const StudentInfo = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const localVideoBlobsRef = useRef({});
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [showSubmissionModal, setShowSubmissionModal] = useState(false);
@@ -3407,6 +3408,11 @@ const StudentInfo = () => {
     if (blob.size > MAX_SIZE) {
       alert(`The selected video file is too large (${(blob.size / (1024 * 1024)).toFixed(1)}MB). The maximum allowed size is 20MB. Please record a shorter or lower-resolution video.`);
       return;
+    }
+
+    // Save raw local blob for instant, zero-latency local OCR validation
+    if (localVideoBlobsRef?.current) {
+      localVideoBlobsRef.current[fieldName] = blob;
     }
 
     // Immediate local preview
