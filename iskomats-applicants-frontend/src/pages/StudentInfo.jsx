@@ -4461,7 +4461,7 @@ const StudentInfo = () => {
       }
       const img = new Image();
       img.crossOrigin = "anonymous";
-      img.onload = () => {
+      img.onload = async () => {
         try {
           const maxDim = 800;
           let w = img.width;
@@ -4585,14 +4585,50 @@ const StudentInfo = () => {
             }
           }
 
-          if (suspiciousPatches >= 3) {
+          // ── Check 3: Standard AI Generator Resolutions (Midjourney, DALL-E, SDXL, Flux) ──
+          const aiDims = [
+            [1024, 1024], [512, 512], [1024, 1536], [1536, 1024],
+            [768, 1024], [1024, 768], [896, 1200], [1200, 896],
+            [848, 1264], [1264, 848], [960, 1280], [1280, 960],
+            [1152, 896], [896, 1152], [1024, 576], [576, 1024]
+          ];
+          const rawW = img.naturalWidth || img.width;
+          const rawH = img.naturalHeight || img.height;
+          const isAiRes = aiDims.some(([aw, ah]) => (rawW === aw && rawH === ah) || (rawW === ah && rawH === aw));
+
+          if (isAiRes && paperMedian >= 225) {
             resolve({
               edited: true,
               isTampered: true,
-              reason: `Digital edit / whiteout overlay detected on document (${suspiciousPatches} artificial overlay patches found). Please upload an authentic, unedited document.`,
-              patchCount: suspiciousPatches
+              reason: `AI-Generated image detected (Matches standard AI diffusion generator dimensions ${rawW}x${rawH} with synthetic canvas flatness). Please upload an authentic scanned or photographed certificate.`,
+              patchCount: 1
             });
             return;
+          }
+
+          // ── Check 4: Backend Deep Security Audit (EXIF + ELA + AI) ──
+          if (typeof imageSource === 'string' && (imageSource.startsWith('data:') || imageSource.startsWith('blob:') || imageSource.startsWith('http'))) {
+            try {
+              const auditResp = await fetch(`${API_ORIGIN}/api/student/merit/security-audit`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
+                },
+                body: JSON.stringify({ image: imageSource })
+              }).then(r => r.json()).catch(() => null);
+
+              if (auditResp && auditResp.is_tampered_or_ai) {
+                resolve({
+                  edited: true,
+                  isTampered: true,
+                  reason: auditResp.reason || 'Digital tampering or AI generation detected by security auditor.'
+                });
+                return;
+              }
+            } catch (auditErr) {
+              console.warn('[MERIT AUDIT NOTE]', auditErr);
+            }
           }
 
           resolve({ edited: false, reason: "Authentic document" });

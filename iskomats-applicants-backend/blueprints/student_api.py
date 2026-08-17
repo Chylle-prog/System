@@ -4605,3 +4605,48 @@ def test_upload_video():
         print(f"[TEST VIDEO UPLOAD] Error: {e}", flush=True)
         return jsonify({'success': False, 'message': str(e)}), 500
 
+
+@student_api_bp.route('/merit/security-audit', methods=['POST'])
+def audit_merit_security():
+    """
+    Runs full EXIF, ELA, Moire Recapture, and AI Synthetic detection on merit certificates.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        image_data = data.get('image') or request.form.get('image')
+        if not image_data and 'file' in request.files:
+            image_data = request.files['file'].read()
+
+        if not image_data:
+            return jsonify({'success': False, 'message': 'No image provided for security audit'}), 400
+
+        from services.tamper_ai_detector import run_full_security_audit
+        audit_res = run_full_security_audit(image_data, doc_type="Merit Certificate")
+        audit = audit_res.get('audit', {})
+        is_tampered_or_ai = bool(audit_res.get('security_flagged'))
+        
+        reason = "Authentic certificate"
+        if is_tampered_or_ai:
+            reasons = []
+            if audit.get('exif', {}).get('edited'):
+                reasons.append(audit['exif']['exif_summary'])
+            if audit.get('ela', {}).get('suspicious'):
+                reasons.append(f"Error Level Analysis detected digital manipulation ({audit['ela'].get('ela_score', 0)}% anomaly)")
+            if audit.get('recapture', {}).get('recaptured'):
+                reasons.append("Recaptured screen photo detected")
+            if audit.get('ai_generated', {}).get('is_ai_generated'):
+                reasons.append(audit['ai_generated'].get('details', 'AI synthetic document generation detected'))
+            reason = "; ".join(reasons) if reasons else "Digital manipulation or AI generation detected"
+
+        return jsonify({
+            'success': True,
+            'is_tampered_or_ai': is_tampered_or_ai,
+            'reason': reason,
+            'audit': audit,
+            'recommendation': audit_res.get('recommendation', '')
+        })
+    except Exception as e:
+        print(f"[MERIT SECURITY AUDIT] Error: {e}", flush=True)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
