@@ -1039,12 +1039,9 @@ export default function ScholarshipDashboard({
   const sortApplicants = (list) => {
     if (!sortConfig.column || !sortConfig.direction) {
       return [...list].sort((a, b) => {
-        const dateA = new Date(a.createdAt || a.dateApplied || a.status_created_at || a.created_at || 0).getTime();
-        const dateB = new Date(b.createdAt || b.dateApplied || b.status_created_at || b.created_at || 0).getTime();
-        if (dateB !== dateA) return dateB - dateA;
         const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
         const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
-        return idB - idA;
+        return idA - idB;
       });
     }
 
@@ -1157,24 +1154,21 @@ export default function ScholarshipDashboard({
       });
 
       const uniqueApplicants = Array.from(applicantMap.values());
-      // Sort applicants on load by createdAt (created_at from applicant_status) descending (latest first)
-      const sortedByCreatedAt = uniqueApplicants.sort((a, b) => {
-        const dateA = new Date(a.createdAt || a.dateApplied || a.status_created_at || a.created_at || 0).getTime();
-        const dateB = new Date(b.createdAt || b.dateApplied || b.status_created_at || b.created_at || 0).getTime();
-        if (dateB !== dateA) return dateB - dateA;
+      // Sort applicants on load by applicant ID ascending
+      const sortedById = uniqueApplicants.sort((a, b) => {
         const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
         const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
-        return idB - idA;
+        return idA - idB;
       });
       const historicalData = calculateHistoricalData(allApplicantsRaw);
 
       setData(prev => ({
         ...prev,
-        applicants: sortedByCreatedAt.filter(a => a.status === 'Pending'),
-        accepted: sortedByCreatedAt.filter(a => a.status === 'Accepted'),
-        rejected: sortedByCreatedAt.filter(a => a.status === 'Rejected'),
-        declined: sortedByCreatedAt.filter(a => a.status === 'Declined' || a.status === 'Rejected'),
-        cancelled: sortedByCreatedAt.filter(a => a.status === 'Cancelled'),
+        applicants: sortedById.filter(a => a.status === 'Pending'),
+        accepted: sortedById.filter(a => a.status === 'Accepted'),
+        rejected: sortedById.filter(a => a.status === 'Rejected'),
+        declined: sortedById.filter(a => a.status === 'Declined' || a.status === 'Rejected'),
+        cancelled: sortedById.filter(a => a.status === 'Cancelled'),
         historicalData
       }));
     } catch (error) {
@@ -4167,13 +4161,9 @@ export default function ScholarshipDashboard({
           if (scoreB !== scoreA) return scoreB - scoreA;
         }
 
-        const dateA = new Date(a.createdAt || a.dateApplied || a.status_created_at || a.created_at || 0).getTime();
-        const dateB = new Date(b.createdAt || b.dateApplied || b.status_created_at || b.created_at || 0).getTime();
-        if (dateB !== dateA) return dateB - dateA;
-
         const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
         const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
-        return idB - idA;
+        return idA - idB;
       });
     };
 
