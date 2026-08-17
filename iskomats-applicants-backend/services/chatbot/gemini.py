@@ -24,7 +24,7 @@ class GeminiService:
             groq_key = _DEFAULT_GROQ_KEY
             
         self.groq_api_key = groq_key
-        self.model = os.getenv("GROQ_MODEL") or "llama-3.1-8b-instant"
+        self.model = os.getenv("GROQ_MODEL") or "openai/gpt-oss-20b"
 
         # Initialize Google GenAI client as fallback if needed
         self.client = None
@@ -54,7 +54,18 @@ class GeminiService:
 
         # 1. USE GROQ API (If GROQ_API_KEY is configured)
         if groq_key:
-            groq_model = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+            configured_model = os.getenv("GROQ_MODEL", "").strip()
+            candidate_models = [
+                m for m in [
+                    configured_model,
+                    "openai/gpt-oss-20b",
+                    "openai/gpt-oss-120b",
+                    "qwen/qwen3.6-27b",
+                    "groq/compound-mini"
+                ] if m
+            ]
+            # Deduplicate while preserving order
+            candidate_models = list(dict.fromkeys(candidate_models))
             endpoint = "https://api.groq.com/openai/v1/chat/completions"
             
             messages = [{"role": "system", "content": system_instruction}]
@@ -67,42 +78,53 @@ class GeminiService:
                 "Authorization": f"Bearer {groq_key}",
                 "Content-Type": "application/json"
             }
-            payload = {
-                "model": groq_model,
-                "messages": messages,
-                "temperature": 0.2,
-                "max_tokens": 450,
-                "stream": True
-            }
 
-            try:
-                response = requests.post(endpoint, headers=headers, json=payload, stream=True, timeout=30)
-                if response.status_code != 200:
-                    error_msg = response.text
-                    logger.error(f"Groq API error {response.status_code}: {error_msg}")
-                    yield f"\n[Error: Groq API status {response.status_code}]"
-                    return
+            groq_succeeded = False
+            last_error_status = None
 
-                for line in response.iter_lines():
-                    if not line:
+            for current_model in candidate_models:
+                payload = {
+                    "model": current_model,
+                    "messages": messages,
+                    "temperature": 0.2,
+                    "max_tokens": 450,
+                    "stream": True
+                }
+
+                try:
+                    response = requests.post(endpoint, headers=headers, json=payload, stream=True, timeout=30)
+                    if response.status_code != 200:
+                        last_error_status = response.status_code
+                        logger.warning(f"Groq model {current_model} error {response.status_code}: {response.text}")
                         continue
-                    line_str = line.decode('utf-8')
-                    if line_str.startswith("data: "):
-                        data_str = line_str[6:].strip()
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data_str)
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-                            content_piece = delta.get("content", "")
-                            if content_piece:
-                                yield content_piece
-                        except Exception:
-                            pass
-                return
-            except Exception as e:
-                logger.error(f"Groq API streaming exception: {e}")
-                yield f"\n[Error: {str(e)}]"
+
+                    has_yielded = False
+                    for line in response.iter_lines():
+                        if not line:
+                            continue
+                        line_str = line.decode('utf-8')
+                        if line_str.startswith("data: "):
+                            data_str = line_str[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data_str)
+                                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                                content_piece = delta.get("content", "")
+                                if content_piece:
+                                    has_yielded = True
+                                    yield content_piece
+                            except Exception:
+                                pass
+                    if has_yielded:
+                        groq_succeeded = True
+                        return
+                except Exception as e:
+                    logger.warning(f"Groq model {current_model} exception: {e}")
+                    continue
+
+            if not groq_succeeded and not self.client and last_error_status:
+                yield f"\n[Error: Groq API status {last_error_status}]"
                 return
 
         # 2. FALLBACK TO GEMINI (If GEMINI_API_KEY is configured)
