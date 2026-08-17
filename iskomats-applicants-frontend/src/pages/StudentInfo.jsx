@@ -703,26 +703,17 @@ function extractOcrKeyValues(rawText) {
 
   const labelMap = {
     name: [
-      /student\s*name\s*[:\-1l\|\]\}\)]\s*(.+)/i,
-      /name\s*of\s*student\s*[:\-1l\|\]\}\)]\s*(.+)/i,
-      /pangalan\s*[:\-1l\|\]\}\)]\s*(.+)/i,
-      /^name\s*[:\-]\s*(.+)/i,
-      /name\s*[:\-1l\|\]\}\)]\s*(.+)/i
+      /(?:student\s*name|name\s*of\s*student|pangalan)\s*[:\-]\s*([^\r\n]+)/i,
+      /(?<!printed\s+|above[\-\s]+|^printed\s+)\bname\s*[:\-]\s*([^\r\n]+)/i
     ],
     studentId: [
-      /student\s*(?:no|number|id|num)?\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
-      /st(?:u|o|a|e)d(?:e|a|o)nt\s*(?:no|number|id)\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
-      /s[u|o|a]et\s*(?:0|o|no)?\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
-      /ld\s*[1l|]?\s*(.+)/i,
-      /id\s*(?:no|number)\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
-      /sr\s*code\s*[:\-1l\|\]\}\)]?\s*(.+)/i,
-      /reg\s*no\s*[:\-1l\|\]\}\)]?\s*(.+)/i
+      /(?:student\s*(?:no|number|id|num)|st(?:u|o|a|e)d(?:e|a|o)nt\s*(?:no|number|id)|id\s*(?:no|number)|sr\s*code|reg\s*no)\s*[:\-]\s*([^\r\n]+)/i
     ],
-    yearLevel: [/year\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i, /yr\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i, /year\s*[:\-1l\|\]\}\)]\s*(.+)/i, /grade\s*level\s*[:\-1l\|\]\}\)]\s*(.+)/i],
-    course: [/course\s*[:\-1l\|\]\}\)]\s*(.+)/i, /program\s*[:\-1l\|\]\}\)]\s*(.+)/i, /degree\s*[:\-1l\|\]\}\)]\s*(.+)/i, /strand\s*[:\-1l\|\]\}\)]\s*(.+)/i],
-    schoolYearSem: [/school\s*year\s*(?:sem)?\s*[:\-1l\|\]\}\)]\s*(.+)/i, /academic\s*year\s*[:\-1l\|\]\}\)]\s*(.+)/i, /a\.?y\.?\s*[:\-1l\|\]\}\)]\s*(.+)/i, /s\.?y\.?\s*[:\-1l\|\]\}\)]\s*(.+)/i],
-    semester: [/semester\s*[:\-]\s*(.+)/i, /sem\s*[:\-]\s*(.+)/i, /term\s*[:\-]\s*(.+)/i],
-    barangay: [/barangay\s*[:\-]\s*(.+)/i, /brgy\s*[:\-]\s*(.+)/i, /resident\s*of\s*(?:brgy|barangay)?\s*[:\-]?\s*(.+)/i]
+    yearLevel: [/(?:year\s*level|yr\s*level|grade\s*level)\s*[:\-]\s*([^\r\n]+)/i],
+    course: [/(?:course|program|degree|strand)\s*[:\-]\s*([^\r\n]+)/i],
+    schoolYearSem: [/(?:school\s*year\s*(?:sem)?|academic\s*year|a\.?y\.?|s\.?y\.?)\s*[:\-]\s*([^\r\n]+)/i],
+    semester: [/(?:semester|sem|term)\s*[:\-]\s*([^\r\n]+)/i],
+    barangay: [/(?:barangay|brgy|resident\s*of\s*(?:brgy|barangay)?)\s*[:\-]\s*([^\r\n]+)/i]
   };
 
   for (const line of splitLines) {
@@ -735,7 +726,7 @@ function extractOcrKeyValues(rawText) {
           val = val.replace(/\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref|Total\s*Units|Total)[\s\S]*/i, '').trim();
           if (val.length > 0) {
             // Reject false matches that contain digits or academic year / semester header keywords
-            if (key === 'name' && (/\d/.test(val) || /AY\s*\d|School\s*Year|Semester|1st|2nd|3rd|Official|Certificate|Registration/i.test(val))) {
+            if (key === 'name' && (/\d/.test(val) || /AY\s*\d|School\s*Year|Semester|1st|2nd|3rd|Official|Certificate|Registration|Born|October|Single|Married|Resident/i.test(val))) {
               continue;
             }
             fields[key] = val;
@@ -745,6 +736,31 @@ function extractOcrKeyValues(rawText) {
       }
     }
   }
+
+  // Indigency / Residency Certificate Candidate Name Anchor
+  // e.g. "This is to certify that NEIL IVAN L. ATIENZA, 20 years old, born on OCTOBER 22, 2005, SINGLE..."
+  // e.g. "This is to certify that MIKAELA YSABEL L. LANTAFE 23 years of age..."
+  if (!fields.name) {
+    const certAnchorPatterns = [
+      /(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|pinatutunayan\s+na\s+si|katibayan\s+na\s+si)\s+([A-Za-z\s,\.\-]{3,60}?)(?=,\s*\d+\s*years|\s+\d+\s*years|,\s*born\s+on|\s+born\s+on|,\s*single|,\s*married|\s+of\s+legal|\s+filipino|\s+citizen|\s+is\s+a\s+resident|\s+resident)/i,
+      /(?:certify|certifies|pinatutunayan)\s+(?:that|na\s+si)?\s+([A-Za-z\s,\.\-]{3,60}?)(?=,\s*\d+\s*years|\s+\d+\s*years|,\s*born\s+on|\s+born\s+on|,\s*single|,\s*married|\s+of\s+legal|\s+filipino|\s+citizen|\s+is\s+a\s+resident|\s+resident)/i
+    ];
+    for (const pat of certAnchorPatterns) {
+      const m = rawText.match(pat);
+      if (m && m[1]) {
+        let cand = m[1].trim()
+          .replace(/^(?:this\s+is\s+to\s+|sto\s+)?(?:certify|certifies|patunay|katibayan|pinatutunayan)\s*(?:that|na\s+si)?\s*/i, '')
+          .replace(/^[^a-zA-Z]+/, '')
+          .replace(/,\s*$/, '')
+          .trim();
+        if (cand.length >= 3 && !/certify|certificate|barangay|office|republic|philippines|punong|born|october|single|clearance/i.test(cand)) {
+          fields.name = cand;
+          break;
+        }
+      }
+    }
+  }
+
   // Fallbacks for column-separated OCR text layouts & National ID / PhilSys multi-line formats
   if (!fields.name) {
     const philsysFirstMatch = rawText.match(/(?:mga\s*pangalan\s*[\/\-]\s*given\s*names?|given\s*names?|mga\s*pangalan|first\s*name)\s*[:\-\/]*\s*([A-Za-z\s]{2,50})/i);
@@ -759,11 +775,11 @@ function extractOcrKeyValues(rawText) {
   }
 
   if (!fields.name) {
-    // Restrict fnMatch to single-line spaces (no \n) and filter out noise/header/address keywords
+    // Restrict fnMatch to single-line spaces (no \n) and filter out noise/header/address/status/date keywords
     const fnMatch = rawText.match(/\b([A-Za-z]{2,20}\s*,\s*[A-Za-z ]{3,40})\b/);
     if (fnMatch && fnMatch[1]) {
       const cand = fnMatch[1].trim();
-      const isNoise = /OFFICIAL|CERTIFICATE|REGISTRATION|COLLEGE|UNIVERSITY|ENGINEERING|INFORMATION|BACHELOR|CERTIFY|AGE|RESIDENT|BARANGAY|PHILIPPINES|BATANGAS|CITY|PROVINCE|HIGHWAY|STREET|ROAD|ADDRESS|TEL|TELEFAX|WWW|PAGE/i.test(cand);
+      const isNoise = /OFFICIAL|CERTIFICATE|REGISTRATION|COLLEGE|UNIVERSITY|ENGINEERING|INFORMATION|BACHELOR|CERTIFY|AGE|RESIDENT|BARANGAY|PHILIPPINES|BATANGAS|CITY|PROVINCE|HIGHWAY|STREET|ROAD|ADDRESS|TEL|TELEFAX|WWW|PAGE|BORN|OCTOBER|JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|NOVEMBER|DECEMBER|SINGLE|MARRIED|YEARS|OLD|CLEARANCE|VALID/i.test(cand);
       if (!isNoise) {
         fields.name = cand;
       }
@@ -771,11 +787,9 @@ function extractOcrKeyValues(rawText) {
   }
   if (!fields.studentId) {
     // Match common DLSL/PH student ID formats: 20xxxxxxxx (10 digits) or 15xxxxxxxx etc.
-    // Avoid matching with a spurious leading digit from OCR artifacts (e.g. "1 2021305751" -> "12021305751")
     const idMatch = rawText.match(/\b(20\d{8}|15\d{8}|19\d{8}|18\d{8}|\d{9,10})\b/);
     if (idMatch) {
       let candidate = idMatch[1];
-      // If 11 digits and starts with 1 followed by a known prefix (20, 15, 19), strip the leading 1
       if (candidate.length === 11 && /^1(?:20|15|19|18)/.test(candidate)) {
         candidate = candidate.slice(1);
       }
@@ -906,56 +920,57 @@ function formatExtractedRequirementsSummary(rawText) {
   }
   academicYrSem = academicYrSem || "Not detected";
 
-  // 6. Enrolled Subjects & Units Extraction
+  // 6. Enrolled Subjects & Units Extraction (only for COR/COE and Grades documents)
+  const isCertificateOnly = /indigency|indigent|residency|residence|katibayan|punong\s*barangay|barangay\s*pagolingin|barangay\s*inosluban/i.test(rawText) && !/certificate\s*of\s*registration|transcript\s*of\s*records|grading\s*system/i.test(rawText);
   const subjectRows = [];
   const lines = String(rawText).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
   // Blacklist: lines that look like subject codes but actually come from Indigency/Residency certificate text
-  const certLineBlacklist = /^(?:issued?|isssued?|certif|barangay|brgy|punong|office|republic|province|city|municipality|purok|zone|sitio|signature|specimen|concern|request|fulfillment|requirement|april|january|february|march|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday|hon\.?|atty\.?|dr\.?)/i;
+  const certLineBlacklist = /^(?:issued?|isssued?|certif|barangay|brgy|punong|office|republic|province|city|municipality|purok|zone|sitio|signature|specimen|concern|request|fulfillment|requirement|april|january|february|march|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday|hon\.?|atty\.?|dr\.?|this|clearance|valid|invalid|control|applicant)/i;
 
-  // Strategy A: Row-based subject matcher
-  for (const line of lines) {
-    if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(line)) break;
-    // Skip lines that are obviously certificate boilerplate, not subject codes
-    if (certLineBlacklist.test(line.trim())) continue;
+  if (!isCertificateOnly) {
+    // Strategy A: Row-based subject matcher
+    for (const line of lines) {
+      if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(line)) break;
+      if (certLineBlacklist.test(line.trim())) continue;
 
-    const subMatch = line.match(/^([A-Za-z0-9]{3,12})\s+(.+?)\s+([1-6])\s+(?:IT[1-4]B|MB|JRF|[A-Z]{2,4}\d{0,3})/i) ||
-                     line.match(/^([A-Za-z0-9]{3,12})\s+(.+?)\s+([1-6])\b/i);
-    if (subMatch) {
-      const code = subMatch[1].trim();
-      const desc = subMatch[2].trim().slice(0, 32);
-      const units = subMatch[3].trim();
-      if (!/total|official|certificate|registration|enrolled|run\s*date|user|student|assessed|fees/i.test(code) && !certLineBlacklist.test(code)) {
-        subjectRows.push({ code, desc, units });
+      const subMatch = line.match(/^([A-Za-z0-9]{3,12})\s+(.+?)\s+([1-6])\s+(?:IT[1-4]B|MB|JRF|[A-Z]{2,4}\d{0,3})/i) ||
+                       line.match(/^([A-Za-z0-9]{3,12})\s+(.+?)\s+([1-6])\b/i);
+      if (subMatch) {
+        const code = subMatch[1].trim();
+        const desc = subMatch[2].trim().slice(0, 32);
+        const units = subMatch[3].trim();
+        if (!/total|official|certificate|registration|enrolled|run\s*date|user|student|assessed|fees|clearance|valid/i.test(code) && !certLineBlacklist.test(code)) {
+          subjectRows.push({ code, desc, units });
+        }
+      }
+    }
+
+    // Strategy B: Column-separated fallback (DLSL column block format)
+    if (subjectRows.length === 0) {
+      const knownCodes = [];
+      const knownDescs = [];
+      
+      for (const l of lines) {
+        if (/assessed\s*fees|schedule\s*of/i.test(l)) break;
+        if (/^(?:ITCaproj2|Itelect4|Itsopri|Liferiz|IT\w+|CS\w+|IS\w+|CPE\w+|ENG\w+|MATH\w+|PHYS\w+)/i.test(l)) {
+          knownCodes.push(l);
+        } else if (/^(?:Capstone\s*Project|IT\s*Elective|IT\s*Social|The\s*Life\s*and\s*Works|General\s*Psychology|Calculus|Physics|Chemistry)/i.test(l)) {
+          knownDescs.push(l);
+        }
+      }
+
+      if (knownCodes.length > 0) {
+        for (let i = 0; i < knownCodes.length; i++) {
+          const code = knownCodes[i];
+          const desc = knownDescs[i] || "Enrolled Subject";
+          subjectRows.push({ code, desc, units: "3" });
+        }
       }
     }
   }
 
-  // Strategy B: Column-separated fallback (DLSL column block format)
-  if (subjectRows.length === 0) {
-    const knownCodes = [];
-    const knownDescs = [];
-    
-    // Find subject code blocks (e.g. ITCaproj2, Itelect4, Itsopri, Liferiz)
-    for (const l of lines) {
-      if (/assessed\s*fees|schedule\s*of/i.test(l)) break;
-      if (/^(?:ITCaproj2|Itelect4|Itsopri|Liferiz|IT\w+|CS\w+|IS\w+|CPE\w+|ENG\w+|MATH\w+|PHYS\w+)/i.test(l)) {
-        knownCodes.push(l);
-      } else if (/^(?:Capstone\s*Project|IT\s*Elective|IT\s*Social|The\s*Life\s*and\s*Works|General\s*Psychology|Calculus|Physics|Chemistry)/i.test(l)) {
-        knownDescs.push(l);
-      }
-    }
-
-    if (knownCodes.length > 0) {
-      for (let i = 0; i < knownCodes.length; i++) {
-        const code = knownCodes[i];
-        const desc = knownDescs[i] || "Enrolled Subject";
-        subjectRows.push({ code, desc, units: "3" });
-      }
-    }
-  }
-
-  const totalUnits = extractTotalUnitsFromText(rawText) || (subjectRows.length > 0 ? subjectRows.length * 3 : "Not detected");
+  const totalUnits = isCertificateOnly ? "N/A" : (extractTotalUnitsFromText(rawText) || (subjectRows.length > 0 ? subjectRows.length * 3 : "Not detected"));
 
   // Extract Financial Summary
   const totalAssessmentMatch = rawText.match(/(?:total\s*assessment|total\s*assasament|total\s*amount)\s*[:\-]?\s*([0-9\.\,]+)/i);
@@ -1167,8 +1182,8 @@ function studentNameMatchesText(text, first, middle, last) {
   if (!normText) return { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
 
   const kv = extractOcrKeyValues(text);
-  // Prefer the parsed name field from document (e.g. "Name: ..."); fall back to full text
-  const targetText = kv.name ? normalizeForOcr(kv.name) : normText;
+  const isInvalidKvName = !kv.name || /born|october|january|february|march|april|may|june|july|august|september|november|december|single|married|resident|certify|clearance|valid/i.test(kv.name);
+  const targetText = !isInvalidKvName ? normalizeForOcr(kv.name) : "";
 
   const normFirst = normalizeForOcr(first || '');
   const normLast = normalizeForOcr(last || '');
