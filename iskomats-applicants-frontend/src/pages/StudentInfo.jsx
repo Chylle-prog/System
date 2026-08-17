@@ -4539,6 +4539,65 @@ const StudentInfo = () => {
           sampleGrays.sort((a, b) => a - b);
           const paperMedian = sampleGrays.length > 0 ? sampleGrays[Math.floor(sampleGrays.length * 0.5)] : 220;
 
+          // ── Check 2b: Colored Digital Overlay Detection (yellow/blue/green text boxes) ──
+          // Natural scanned/photographed documents have LOW saturation (mostly gray/black ink on white paper).
+          // Digitally pasted text boxes (yellow highlights, blue boxes, Canva overlays) have HIGH saturation
+          // AND very uniform color fill (low pixel-to-pixel variance).
+          const cbW = 24, cbH = 16;
+          const cbMarX = Math.floor(w * 0.03);
+          const cbMarY = Math.floor(h * 0.03);
+          const cbCols = Math.floor((w - 2 * cbMarX) / cbW);
+          const cbRows = Math.floor((h - 2 * cbMarY) / cbH);
+          let coloredOverlayPatches = 0;
+
+          for (let br = 0; br < cbRows; br++) {
+            for (let bc = 0; bc < cbCols; bc++) {
+              const sx = cbMarX + bc * cbW;
+              const sy = cbMarY + br * cbH;
+              let saturatedCount = 0;
+              let totalSatSum = 0;
+              let satSqSum = 0;
+              let pixCount = 0;
+
+              for (let py = sy; py < sy + cbH && py < h; py++) {
+                for (let px = sx; px < sx + cbW && px < w; px++) {
+                  const idx = (py * w + px) * 4;
+                  const R = data[idx], G = data[idx + 1], B = data[idx + 2];
+                  const brightness = (R + G + B) / 3;
+                  // Skip near-black (ink) and near-white (paper background)
+                  if (brightness < 70 || brightness > 248) continue;
+                  const maxC = Math.max(R, G, B);
+                  const minC = Math.min(R, G, B);
+                  const sat = maxC > 0 ? (maxC - minC) / maxC : 0;
+                  totalSatSum += sat;
+                  satSqSum += sat * sat;
+                  pixCount++;
+                  if (sat > 0.22) saturatedCount++;
+                }
+              }
+
+              if (pixCount >= 25) {
+                const meanSat = totalSatSum / pixCount;
+                const varSat = (satSqSum / pixCount) - (meanSat * meanSat);
+                const stdSat = Math.sqrt(Math.max(0, varSat));
+                // Colored overlay: > 55% of mid-tone pixels are saturated AND low variance (uniform fill)
+                const satRatio = saturatedCount / pixCount;
+                if (satRatio > 0.55 && meanSat > 0.28 && stdSat < 0.14) {
+                  coloredOverlayPatches++;
+                }
+              }
+            }
+          }
+
+          if (coloredOverlayPatches >= 3) {
+            resolve({
+              edited: true,
+              reason: `Colored digital overlay detected (${coloredOverlayPatches} unnaturally uniform color patches found — digitally added text boxes or highlights). Please upload an authentic, unedited document.`,
+              patchCount: coloredOverlayPatches
+            });
+            return;
+          }
+
           // ── Check 3: Scan text region grid for whiteout patches and digital overlays ──
           const gridW = 28;
           const gridH = 18;
