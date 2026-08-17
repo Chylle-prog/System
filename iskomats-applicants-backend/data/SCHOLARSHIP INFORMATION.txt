@@ -2,33 +2,10 @@
 SCHOLARSHIP INFORMATION
 ============================================================
 
-The iskoMats system currently supports three scholarship programs:
+The iskoMats system currently supports two scholarship programs:
 
-1. CHED Tulong Dunong Scholarship
-2. Mayor Africa Scholarship
-3. Governor Vilma Scholarship
-
-============================================================
-CHED TULONG DUNONG SCHOLARSHIP
-============================================================
-
-Description
-
-The CHED Tulong Dunong Program provides financial assistance to qualified college students.
-
-Eligibility Requirements for CHED Tulong Dunong Scholarship
-
-• Must be a Filipino citizen.
-• Must be currently residing in Lipa City.
-• Must be currently studying in a college or university located in Lipa City.
-• Must have NO failing grades.
-• Must submit all required documents.
-
-Required Documents for CHED Tulong Dunong Scholarship
-
-1. Certified True Copy or Electronically Generated Certificate of Enrolment (COE) or Certificate of Registration (COR) showing the number of enrolled units.
-2. Certificate of Indigency signed by the Punong Barangay where the applicant resides.
-3. School ID (Front and Back).
+1. Mayor Africa Scholarship
+2. Governor Vilma Scholarship
 
 ============================================================
 MAYOR AFRICA SCHOLARSHIP
@@ -107,9 +84,9 @@ GENERAL SCHOLARSHIP POLICIES
 COMMON QUESTIONS
 ============================================================
 
-Q: Can I apply for all three scholarships?
+Q: Can I apply for both scholarships?
 
-A: Yes. You may apply for all available scholarships if you satisfy their eligibility requirements. However, once you are officially accepted into one scholarship, your remaining scholarship applications will automatically be cancelled.
+A: Yes. You may apply for both available scholarships if you satisfy their eligibility requirements. However, once you are officially accepted into one scholarship, your remaining scholarship applications will automatically be cancelled.
 
 ------------------------------------------------------------
 
@@ -122,7 +99,6 @@ A: No. Only students who are currently residing and studying in Lipa City are el
 Q: I have one failing grade. Can I apply?
 
 A:
-• CHED Tulong Dunong – No, applicants must have no failing grades.
 • Mayor Africa College Educational Financial Assistance – No, applicants must have no failing grades.
 • Governor Vilma Educational Financial Assistance – No, applicants must have no failing grades.
 
