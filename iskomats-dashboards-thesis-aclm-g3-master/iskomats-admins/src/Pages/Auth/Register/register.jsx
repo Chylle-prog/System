@@ -8,7 +8,6 @@ import logo from "../../../assets/logo.png";
 const FALLBACK_PROVIDERS = [
   { pro_no: 'africa', provider_name: 'Africa' },
   { pro_no: 'vilma', provider_name: 'Vilma' },
-  { pro_no: 'tulong', provider_name: 'Tulong' },
 ];
 
 const Register = () => {

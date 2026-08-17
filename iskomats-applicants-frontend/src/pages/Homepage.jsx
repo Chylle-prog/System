@@ -168,39 +168,6 @@ const HomePage = () => {
           ]
         }
       ]
-    },
-    'ched-scholarship': {
-      name: "CHED's Tulong Dunong",
-      icon: 'fas fa-graduation-cap',
-      description: "A national scholarship program by the Commission on Higher Education providing financial assistance to students in priority courses. Supports STEM and other critical fields.",
-      sections: [
-        {
-          title: "Qualifications:",
-          items: [
-            "Mga Pilipinong undergraduate students;",
-            "Ang pinagsamang gross income ng household (magulang o guardian) ay hindi dapat lumalampas sa PHP 400,000 sa loob ng isang taon;",
-            "Naka-enrol sa anumang unang undergraduate degree programs sa SUCs, LUCs, o Private Higher Education Institutions na kasama sa CHED Registry;",
-            "Hindi hihigit sa tinakdang palugit ng programa; at",
-            "Hindi benepisyaryo ng TES, CHED Scholarship Programs (CSPs), at iba pang national government-funded StuFAPs."
-          ]
-        },
-        {
-          title: "Requirements:",
-          items: [
-            "Tulong Dunong Program–Tertiary Education Subsidy Application Form.",
-            "Certified True Copy / Electronically Generated Certificate of Enrolment (COE) o Certificate of Registration (COR) na nag-papakita ng bilang ng units bilang patunay ng pag-enrol.",
-            "Certificate of Indigency bilang patunay ng kita na pirmado ng Punong Barangay kung saan nakatira ang aplikante."
-          ]
-        },
-        {
-          title: "Benefits & Coverage:",
-          items: [
-            "Financial assistance of Php 15,000 per academic year",
-            "Support for tertiary education expenses including school fees and tuition",
-            "Living allowance to help manage day-to-day expenses"
-          ]
-        }
-      ]
     }
   };
 
@@ -312,20 +279,6 @@ const HomePage = () => {
                 <li>Will be prioritizing applicants who have not received any educational assistance from a national government agency or LGU</li>
               </ul>
               <button className="see-more-btn" onClick={() => showScholarshipModal('governor-scholarship')}>See More</button>
-            </div>
-            
-            <div className="scholarship-card">
-              <div className="scholarship-icon">
-                <img src="/chedlogo.png" alt="CHED Logo" style={{width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover'}} />
-              </div>
-              <h3>CHED's Tulong Dunong</h3>
-              <p>A national scholarship program by the Commission on Higher Education providing financial assistance to students in priority courses. Supports STEM and other critical fields.</p>
-              <ul>
-                <li>Grantees or student beneficiaries are entitled to receive a grant of fifteen thousand pesos (Php 15,000) per academic year.</li>
-                <li>This financial assistance is designed to support tertiary education expenses, including school fees or tuition expenses.</li>
-                <li>Additionally, the grant provides a living allowance to help students manage their day-to-day expenses while pursuing their education.</li>
-              </ul>
-              <button className="see-more-btn" onClick={() => showScholarshipModal('ched-scholarship')}>See More</button>
             </div>
           </div>
         </div>

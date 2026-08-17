@@ -578,15 +578,6 @@ const ALL_ADMIN_PROVIDER_ROOMS = [
     studentEmail: "Governor Vilma Admin Channel",
     badge: "Governor Vilma",
     icon: "fas fa-award"
-  },
-  {
-    room: 'provider_room_3',
-    pro_no: 3,
-    applicant_no: 'admin-room-3',
-    studentName: "CHED's Tulong Dunong",
-    studentEmail: "CHED Tulong Dunong Channel",
-    badge: "CHED",
-    icon: "fas fa-graduation-cap"
   }
 ];
 

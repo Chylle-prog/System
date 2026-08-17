@@ -87,7 +87,7 @@ function AppContent() {
   }
 
   // Routes that should show navbar
-  const dashboardRoutes = ['/dash', PROVIDER_DASHBOARD_ROUTE, '/dash-africa', '/dash-vilma', '/dash-tulong'];
+  const dashboardRoutes = ['/dash', PROVIDER_DASHBOARD_ROUTE, '/dash-africa', '/dash-vilma'];
   const showNavbar = dashboardRoutes.includes(location.pathname);
 
   // Check authentication status on mount and route change
@@ -195,11 +195,6 @@ function AppContent() {
           </ProtectedRoute>
         } />
         <Route path='/dash-vilma' element={
-          <ProtectedRoute requiredRole="provider">
-            <Navigate to={PROVIDER_DASHBOARD_ROUTE} replace />
-          </ProtectedRoute>
-        } />
-        <Route path='/dash-tulong' element={
           <ProtectedRoute requiredRole="provider">
             <Navigate to={PROVIDER_DASHBOARD_ROUTE} replace />
           </ProtectedRoute>

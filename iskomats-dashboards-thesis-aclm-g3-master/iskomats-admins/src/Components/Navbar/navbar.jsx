@@ -12,7 +12,7 @@ const Navbar = () => {
   const dashboardPath = isProviderDashboardRole(userRole) ? PROVIDER_DASHBOARD_ROUTE : '/dash';
 
   // Check if current route is a dashboard route
-  const isDashboardRoute = ['/dash', PROVIDER_DASHBOARD_ROUTE, '/dash-africa', '/dash-vilma', '/dash-tulong'].includes(location.pathname);
+  const isDashboardRoute = ['/dash', PROVIDER_DASHBOARD_ROUTE, '/dash-africa', '/dash-vilma'].includes(location.pathname);
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 

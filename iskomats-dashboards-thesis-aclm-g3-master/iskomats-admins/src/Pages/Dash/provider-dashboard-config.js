@@ -1,6 +1,5 @@
 import africaLogo from '../../assets/ad1.jpg';
 import vilmaLogo from '../../assets/ad2.jpg';
-import tulongLogo from '../../assets/ad3.jpg';
 
 export const PROVIDER_DASHBOARD_ROUTE = '/provider-dashboard';
 
@@ -16,13 +15,6 @@ export const providerDashboardConfigs = {
     providerName: 'Vilma',
     proNo: 2,
     logo: vilmaLogo,
-  },
-  tulong: {
-    providerKey: 'tulong',
-    providerName: 'Tulong',
-    programName: 'Tulong Dunong Program',
-    proNo: 3,
-    logo: tulongLogo,
   },
 };
 

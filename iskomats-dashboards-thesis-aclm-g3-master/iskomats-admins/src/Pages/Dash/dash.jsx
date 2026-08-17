@@ -148,9 +148,6 @@ function matchesProgramFilter(scholarship, filterValue, providerName = '') {
   if (filterClean.includes('africa') && (schClean.includes('africa') || provClean.includes('africa'))) {
     return true;
   }
-  if (filterClean.includes('ched') && (schClean.includes('ched') || schClean.includes('tulong dunong') || provClean.includes('ched'))) {
-    return true;
-  }
   if (filterClean.includes('vilma') && (schClean.includes('vilma') || provClean.includes('vilma'))) {
     return true;
   }
