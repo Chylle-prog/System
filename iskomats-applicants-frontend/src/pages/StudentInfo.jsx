@@ -4643,11 +4643,11 @@ const StudentInfo = () => {
                 const boxBgStd = Math.sqrt(varSum / count);
 
                 const contrast = boxBgMean - paperMedian;
-                // Whiteout block overlay:
-                // A digital whiteout paste must be SIGNIFICANTLY brighter than the document's natural paper color.
-                // Clean scanners produce white backgrounds that already sit at ~252+ — contrast ≈ 0, so they are NOT flagged.
-                // Only catches cases where white is pasted onto cream/off-white/printed documents (contrast >= 18).
-                if (boxBgMean >= 236 && contrast >= 18.0 && boxBgStd < 2.5) {
+                // Whiteout block overlay (digitally pasted white/light box on photo of document):
+                // The tampered boxes read ~222 boxMean on photo paper with median ~205 → contrast ~17
+                // Uses lower mean threshold (>= 210) and looser std (< 8) to handle JPEG photo noise.
+                // Real clean-scan certificates have paperMedian ~254 → contrast ≈ 0, never triggers.
+                if (boxBgMean >= 210 && contrast >= 12.0 && boxBgStd < 8.0) {
                   suspiciousPatches++;
                 }
               }
