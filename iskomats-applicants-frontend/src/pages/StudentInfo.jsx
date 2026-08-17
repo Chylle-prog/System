@@ -4044,8 +4044,11 @@ const StudentInfo = () => {
         coeVerified: (extraState.coeVerified !== undefined ? extraState.coeVerified : coeVerified) === 'verifying' ? null : (extraState.coeVerified !== undefined ? extraState.coeVerified : coeVerified),
         gradesVerified: (extraState.gradesVerified !== undefined ? extraState.gradesVerified : gradesVerified) === 'verifying' ? null : (extraState.gradesVerified !== undefined ? extraState.gradesVerified : gradesVerified),
         idVerified: (extraState.idVerified !== undefined ? extraState.idVerified : idVerified) === 'verifying' ? null : (extraState.idVerified !== undefined ? extraState.idVerified : idVerified),
+        meritScanVerified: (extraState.meritScanVerified !== undefined ? extraState.meritScanVerified : meritScanVerified) === 'verifying' ? null : (extraState.meritScanVerified !== undefined ? extraState.meritScanVerified : meritScanVerified),
         faceVerified: (extraState.faceVerified !== undefined ? extraState.faceVerified : faceVerified) === 'verifying' ? null : (extraState.faceVerified !== undefined ? extraState.faceVerified : faceVerified),
         signatureVerified: (extraState.signatureVerified !== undefined ? extraState.signatureVerified : signatureVerified) === 'verifying' ? null : (extraState.signatureVerified !== undefined ? extraState.signatureVerified : signatureVerified),
+        meritScanStatus: extraState.meritScanStatus !== undefined ? extraState.meritScanStatus : meritScanStatus,
+        meritResults: extraState.meritResults || meritResults,
         ocrStatus: extraState.ocrStatus !== undefined ? extraState.ocrStatus : ocrStatus,
         coeStatus: extraState.coeStatus !== undefined ? extraState.coeStatus : coeStatus,
         gradesStatus: extraState.gradesStatus !== undefined ? extraState.gradesStatus : gradesStatus,
@@ -4344,6 +4347,13 @@ const StudentInfo = () => {
       setIdResults([]);
       lastIdScanRef.current = { front: null, back: null, frontVid: null, backVid: null };
       setOcrDebugLogs(prev => ({ ...prev, SchoolID: { status: 'Not Scanned', detectedText: '', requirements: {}, scoreDetails: {} } }));
+    }
+    if (!docType || docType === 'Merit') {
+      setMeritScanVerified(null);
+      setMeritScanStatus('');
+      setMeritResults([]);
+      setMeritList(prev => prev.map(m => ({ ...m, verified: null, status: '', scoreDetails: null })));
+      setOcrDebugLogs(prev => ({ ...prev, Merit: { status: 'Not Scanned', detectedText: '', requirements: {}, scoreDetails: {} } }));
     }
 
     setScanProgress(0);
@@ -5877,13 +5887,22 @@ const StudentInfo = () => {
     const lastName = formData.lastName || userProfile?.last_name || '';
     const middleName = formData.middleName || userProfile?.middle_name || '';
 
+    const controller = new AbortController();
+    const scanToken = { aborted: false, controller };
+    activeOcrControllersRef.current['Merit'] = scanToken;
+
     setMeritScanVerified('verifying');
     setMeritScanStatus('Scanning merit certificate(s)...');
     setScanProgress(15);
 
     const scanProgressTimer = setInterval(() => {
+      if (scanToken.aborted) {
+        clearInterval(scanProgressTimer);
+        return;
+      }
       setScanProgress(p => p < 85 ? p + 8 : p);
     }, 150);
+    scanToken.progressInterval = scanProgressTimer;
 
     try {
       const updatedList = [...meritList];
@@ -5893,6 +5912,11 @@ const StudentInfo = () => {
       let combinedDetectedText = '';
 
       for (let i = 0; i < updatedList.length; i++) {
+        if (scanToken.aborted) {
+          clearInterval(scanProgressTimer);
+          return;
+        }
+
         const item = updatedList[i];
         if (!item.title || !item.title.trim() || !item.photo) {
           continue;
@@ -5904,6 +5928,10 @@ const StudentInfo = () => {
         // ── Security Check: Tamper & AI Detection ONLY on Merit Documents ──
         if (!isTamperBypassActive()) {
           const tamperCheck = await detectDocumentTampering(certSource);
+          if (scanToken.aborted) {
+            clearInterval(scanProgressTimer);
+            return;
+          }
           if (tamperCheck.edited) {
             allPassed = false;
             failureReason = `Merit #${i + 1} (${item.title}): Tampering / AI Generation Alert: ${tamperCheck.reason}`;
@@ -5926,6 +5954,10 @@ const StudentInfo = () => {
 
         // Run Google Vision OCR scan
         const ocrText = await performGoogleVisionOcrScan(certSource);
+        if (scanToken.aborted) {
+          clearInterval(scanProgressTimer);
+          return;
+        }
         combinedDetectedText += `\n[MERIT #${i + 1}: ${item.title}]\n${ocrText || 'No text extracted.'}\n`;
 
         // Check 1: Name verification (First Name and Last Name matching)
@@ -5961,6 +5993,7 @@ const StudentInfo = () => {
       }
 
       clearInterval(scanProgressTimer);
+      if (scanToken.aborted) return;
       setScanProgress(100);
       setMeritList(updatedList);
       setMeritResults(aggregatedResults);
@@ -7002,7 +7035,7 @@ const StudentInfo = () => {
   };
 
   const isAnyVideoUploading = Object.keys(uploadingFields).some(key => key.toLowerCase().includes('video'));
-  const isAnyScanning = [idVerified, coeVerified, gradesVerified, ocrVerified, faceVerified, signatureVerified].some(v => v === 'verifying') || isFaceMatching || isAnyVideoUploading;
+  const isAnyScanning = [idVerified, coeVerified, gradesVerified, ocrVerified, meritScanVerified, faceVerified, signatureVerified].some(v => v === 'verifying') || isFaceMatching || isAnyVideoUploading;
   const isStep1DocumentsVerified = ocrVerified === 'success';
   const isStep1Complete = STEP_FIELDS[1].every(field => formData[field]);
   const isStep2Complete = STEP_FIELDS[2].every(field => formData[field]);
@@ -9341,7 +9374,9 @@ const StudentInfo = () => {
                             {index > 0 && (
                               <button
                                 type="button"
+                                disabled={isAnyScanning || isSavingStep}
                                 onClick={() => {
+                                  if (isAnyScanning || isSavingStep) return;
                                   setMeritList(prev => {
                                     const next = prev.filter((_, i) => i !== index);
                                     const joined = next.map(m => m.title).filter(Boolean).join(', ');
@@ -9352,8 +9387,8 @@ const StudentInfo = () => {
                                   setMeritScanStatus('');
                                 }}
                                 style={{
-                                  background: '#fee2e2',
-                                  color: '#dc2626',
+                                  background: isAnyScanning ? '#f1f5f9' : '#fee2e2',
+                                  color: isAnyScanning ? '#94a3b8' : '#dc2626',
                                   border: 'none',
                                   borderRadius: '50%',
                                   width: '24px',
@@ -9361,10 +9396,11 @@ const StudentInfo = () => {
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                  cursor: 'pointer',
+                                  cursor: isAnyScanning ? 'not-allowed' : 'pointer',
                                   fontSize: '0.75rem',
                                   fontWeight: '800',
-                                  transition: 'all 0.2s ease'
+                                  transition: 'all 0.2s ease',
+                                  opacity: isAnyScanning ? 0.6 : 1
                                 }}
                                 title="Remove this merit"
                               >
@@ -9375,9 +9411,11 @@ const StudentInfo = () => {
 
                           <input
                             type="text"
+                            disabled={isAnyScanning || isSavingStep}
                             placeholder={index === 0 ? "e.g. Valedictorian, Dean's Lister, 1st Place Science Quiz Bee..." : `e.g. Award / Recognition #${index + 1}...`}
                             value={merit.title}
                             onChange={(e) => {
+                              if (isAnyScanning || isSavingStep) return;
                               const val = e.target.value;
                               setMeritList(prev => {
                                 const next = [...prev];
@@ -9398,7 +9436,10 @@ const StudentInfo = () => {
                               border: '1px solid #cbd5e1',
                               fontSize: '0.88rem',
                               fontFamily: 'inherit',
-                              marginBottom: hasTitle ? '10px' : '0'
+                              marginBottom: hasTitle ? '10px' : '0',
+                              background: isAnyScanning ? '#f8fafc' : '#ffffff',
+                              cursor: isAnyScanning ? 'not-allowed' : 'text',
+                              opacity: isAnyScanning ? 0.7 : 1
                             }}
                           />
 
@@ -9420,8 +9461,10 @@ const StudentInfo = () => {
                                 <input
                                   id={`merit_photo_${index}`}
                                   type="file"
+                                  disabled={isAnyScanning || isSavingStep}
                                   accept="image/*"
                                   onChange={async (e) => {
+                                    if (isAnyScanning || isSavingStep) return;
                                     const file = e.target.files[0];
                                     if (file) {
                                       const reader = new FileReader();
@@ -9441,7 +9484,7 @@ const StudentInfo = () => {
                                   style={{ display: 'none' }}
                                 />
                                 <label
-                                  htmlFor={`merit_photo_${index}`}
+                                  htmlFor={isAnyScanning ? undefined : `merit_photo_${index}`}
                                   style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
@@ -9450,22 +9493,26 @@ const StudentInfo = () => {
                                     padding: '0.65rem 1.2rem',
                                     borderRadius: '10px',
                                     border: '1px solid #cbd5e1',
-                                    background: '#ffffff',
-                                    color: '#0f172a',
-                                    cursor: 'pointer',
+                                    background: isAnyScanning ? '#f1f5f9' : '#ffffff',
+                                    color: isAnyScanning ? '#94a3b8' : '#0f172a',
+                                    cursor: isAnyScanning ? 'not-allowed' : 'pointer',
                                     fontSize: '0.78rem',
                                     fontWeight: '700',
-                                    boxShadow: '0 2px 6px rgba(0,0,0,0.04)'
+                                    boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+                                    pointerEvents: isAnyScanning ? 'none' : 'auto',
+                                    opacity: isAnyScanning ? 0.6 : 1
                                   }}
                                 >
-                                  <i className="fas fa-file-upload" style={{ color: 'var(--primary)' }}></i>
+                                  <i className="fas fa-file-upload" style={{ color: isAnyScanning ? '#94a3b8' : 'var(--primary)' }}></i>
                                   {hasPhoto ? 'Change Certificate Image' : 'Upload Certificate Photo'}
                                 </label>
 
                                 {hasPhoto && (
                                   <button
                                     type="button"
+                                    disabled={isAnyScanning || isSavingStep}
                                     onClick={() => {
+                                      if (isAnyScanning || isSavingStep) return;
                                       setMeritList(prev => {
                                         const next = [...prev];
                                         next[index] = { ...next[index], photo: null, verified: null, status: '' };
@@ -9477,10 +9524,11 @@ const StudentInfo = () => {
                                     style={{
                                       background: 'none',
                                       border: 'none',
-                                      color: '#ef4444',
+                                      color: isAnyScanning ? '#94a3b8' : '#ef4444',
                                       fontSize: '0.75rem',
-                                      cursor: 'pointer',
-                                      fontWeight: '600'
+                                      cursor: isAnyScanning ? 'not-allowed' : 'pointer',
+                                      fontWeight: '600',
+                                      opacity: isAnyScanning ? 0.5 : 1
                                     }}
                                   >
                                     Remove Image
@@ -9519,7 +9567,9 @@ const StudentInfo = () => {
                     {meritList.length < 3 && meritList[meritList.length - 1].title && meritList[meritList.length - 1].title.trim() && (
                       <button
                         type="button"
+                        disabled={isAnyScanning || isSavingStep}
                         onClick={() => {
+                          if (isAnyScanning || isSavingStep) return;
                           setMeritList(prev => [
                             ...prev,
                             { id: Date.now(), title: '', photo: null, verified: null, status: '', scoreDetails: null }
@@ -9533,13 +9583,14 @@ const StudentInfo = () => {
                           padding: '0.75rem 1rem',
                           borderRadius: '12px',
                           border: '1px dashed var(--primary)',
-                          background: 'var(--accent-soft)',
-                          color: 'var(--primary)',
+                          background: isAnyScanning ? '#f1f5f9' : 'var(--accent-soft)',
+                          color: isAnyScanning ? '#94a3b8' : 'var(--primary)',
                           fontSize: '0.82rem',
                           fontWeight: '800',
-                          cursor: 'pointer',
+                          cursor: isAnyScanning ? 'not-allowed' : 'pointer',
                           transition: 'all 0.2s ease',
-                          marginTop: '4px'
+                          marginTop: '4px',
+                          opacity: isAnyScanning ? 0.6 : 1
                         }}
                       >
                         <i className="fas fa-plus-circle"></i> Add Another Merit (Up to 3)
@@ -9552,11 +9603,11 @@ const StudentInfo = () => {
                         <button
                           type="button"
                           onClick={meritScanVerified === 'verifying' ? () => cancelOcrScan('Merit') : handleMeritScan}
-                          disabled={isSavingStep || meritScanVerified === 'verifying'}
+                          disabled={isSavingStep}
                           style={{
                             width: '100%',
-                            padding: '0.85rem',
-                            borderRadius: '14px',
+                            padding: '0.9rem',
+                            borderRadius: '16px',
                             background: meritScanVerified === 'verifying' ? '#ef4444' : (meritScanVerified === 'success' ? '#10b981' : 'var(--primary)'),
                             color: 'white',
                             border: 'none',
@@ -9565,15 +9616,17 @@ const StudentInfo = () => {
                             alignItems: 'center',
                             justifyContent: 'center',
                             gap: '10px',
-                            fontSize: '0.9rem',
+                            fontSize: '0.95rem',
                             fontWeight: '800',
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                            boxShadow: meritScanVerified === 'verifying' ? '0 8px 20px rgba(239, 68, 68, 0.35)' : (meritScanVerified === 'success' ? '0 10px 15px -5px rgba(16, 185, 129, 0.2)' : '0 10px 15px -5px rgba(79, 13, 0, 0.2)'),
-                            textTransform: 'uppercase'
+                            boxShadow: meritScanVerified === 'verifying' ? '0 8px 20px rgba(239, 68, 68, 0.35)' : (meritScanVerified === 'success' ? '0 10px 20px -5px rgba(16, 185, 129, 0.3)' : '0 10px 20px -5px rgba(79, 13, 0, 0.3)'),
+                            textTransform: 'uppercase',
+                            letterSpacing: '1px',
+                            marginTop: '0.5rem'
                           }}
                         >
-                          <i className={`fas ${meritScanVerified === 'verifying' ? 'fa-spinner fa-spin' : (meritScanVerified === 'success' ? 'fa-check' : 'fa-award')}`}></i>
-                          {meritScanVerified === 'verifying' ? 'Scanning Merit Certificate(s)...' : (meritScanVerified === 'success' ? 'Merit Verified' : 'Scan Merit Certificate(s)')}
+                          <i className={`fas ${meritScanVerified === 'verifying' ? 'fa-stop-circle' : (meritScanVerified === 'success' ? 'fa-check' : 'fa-award')}`}></i>
+                          {meritScanVerified === 'verifying' ? 'Cancel Scan' : (meritScanVerified === 'success' ? 'Merit Verified' : 'Scan Merit Certificate(s)')}
                         </button>
 
                         {meritScanVerified === 'verifying' && (
