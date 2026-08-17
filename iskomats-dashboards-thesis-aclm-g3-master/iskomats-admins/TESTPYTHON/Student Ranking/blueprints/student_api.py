@@ -2865,12 +2865,10 @@ def submit_application():
                 }), 400
 
         # ── UPDATE APPLICANT PROFILE ──────────────────────────────────────────
-        updates = []
-        params = []
+        updates_dict = {}
 
         def add_update(column_name, value):
-            updates.append(f'{column_name} = %s')
-            params.append(value)
+            updates_dict[column_name] = value
 
         field_mapping = {
             'lastName': 'last_name', 'firstName': 'first_name', 'middleName': 'middle_name',
@@ -2940,8 +2938,7 @@ def submit_application():
         for column_name, value in binary_map.items():
             if value is not None:
                 if column_name == 'profile_picture' and has_profile_picture_column:
-                    updates.append(f'{column_name} = %s')
-                    params.append(value)
+                    add_update(column_name, value)
                 elif column_name != 'profile_picture':
                     # STORAGE MIGRATION: These specific columns are now text/URLs
                     storage_columns = {
@@ -2966,8 +2963,10 @@ def submit_application():
                     else:
                         document_updates[column_name] = value
 
-        if updates:
-            sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
+        if updates_dict:
+            cols = list(updates_dict.keys())
+            sql = f"UPDATE applicants SET {', '.join(f'{col} = %s' for col in cols)} WHERE applicant_no = %s"
+            params = [updates_dict[c] for c in cols]
             params.append(current_user_id)
             cur.execute(sql, tuple(params))
         if document_updates:

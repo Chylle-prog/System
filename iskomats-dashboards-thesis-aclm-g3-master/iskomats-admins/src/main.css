@@ -78,6 +78,13 @@
     display: none;
   }
 
+  /* Mobile touch scrolling utilities */
+  .mobile-touch-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+
   /* Fixed sidebar layout helper - prevents content overflow on mobile */
   .fixed-sidebar-layout {
     width: 100%;

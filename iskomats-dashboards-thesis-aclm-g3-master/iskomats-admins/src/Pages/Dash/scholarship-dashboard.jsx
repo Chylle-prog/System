@@ -6124,8 +6124,8 @@ export default function ScholarshipDashboard({
 
 
   const renderInbox = () => (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-gradient-to-br from-gray-50 to-blue-50/30 animate-in fade-in duration-300">
-      <div className="flex items-center gap-3 mb-3 flex-shrink-0">
+    <div className="flex-1 flex flex-col min-h-0 h-full overflow-hidden bg-gradient-to-br from-gray-50 to-blue-50/30 animate-in fade-in duration-300">
+      <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3 flex-shrink-0">
         {!isSuperAdminUser && (
           <button
             type="button"
@@ -6133,12 +6133,12 @@ export default function ScholarshipDashboard({
               setInboxMode('applicants');
               setViewMessage(null);
             }}
-            className={`px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2.5 ${inboxMode === 'applicants'
+            className={`px-3 py-2 sm:px-5 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-1.5 sm:gap-2.5 ${inboxMode === 'applicants'
                 ? 'bg-[#800020] text-white shadow-lg shadow-rose-900/20 ring-2 ring-[#800020]/30'
                 : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
               }`}
           >
-            <FaUsers className="text-sm" /> Applicant Messages
+            <FaUsers className="text-xs sm:text-sm" /> <span>Applicant Messages</span>
           </button>
         )}
         <button
@@ -6147,17 +6147,17 @@ export default function ScholarshipDashboard({
             setInboxMode('admin_rooms');
             setViewMessage(null);
           }}
-          className={`px-5 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2.5 ${inboxMode === 'admin_rooms'
+          className={`px-3 py-2 sm:px-5 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-1.5 sm:gap-2.5 ${inboxMode === 'admin_rooms'
               ? 'bg-[#800020] text-white shadow-lg shadow-rose-900/20 ring-2 ring-[#800020]/30'
               : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
             }`}
         >
-          <FaInbox className="text-sm" /> Super Admin Chat
+          <FaInbox className="text-xs sm:text-sm" /> <span>Super Admin Chat</span>
         </button>
       </div>
 
-      <div className="flex-1 flex flex-col md:flex-row gap-3 sm:gap-4 overflow-hidden min-h-0">
-        <div className={`w-full md:w-80 flex-shrink-0 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col min-h-0 overflow-hidden ${selectedConversation ? 'hidden md:flex' : 'flex'}`}>
+      <div className="flex-1 flex flex-col md:flex-row gap-3 sm:gap-4 overflow-hidden min-h-0 h-full">
+        <div className={`w-full md:w-80 flex-shrink-0 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col min-h-0 h-full overflow-hidden ${selectedConversation ? 'hidden md:flex' : 'flex'}`}>
           {inboxMode === 'applicants' ? (
             <div className="p-3 sm:p-4 border-b border-gray-100 bg-white flex-shrink-0">
               <div className="flex items-center gap-2 mb-2 sm:mb-3">
@@ -6211,7 +6211,7 @@ export default function ScholarshipDashboard({
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto min-h-0 h-full custom-scrollbar mobile-touch-scroll overscroll-contain">
             {filteredConversations.length > 0 ? (
               <div className="divide-y divide-gray-100">
                 {filteredConversations.map((conv) => {
@@ -6297,7 +6297,7 @@ export default function ScholarshipDashboard({
           </div>
         </div>
 
-        <div className={`flex-1 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col min-h-0 overflow-hidden ${selectedConversation ? 'flex' : 'hidden md:flex'}`}>
+        <div className={`flex-1 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 flex flex-col min-h-0 h-full overflow-hidden ${selectedConversation ? 'flex' : 'hidden md:flex'}`}>
           {currentConversation ? (
             <>
               <div className="p-3 sm:p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between gap-3 flex-shrink-0">
@@ -6327,7 +6327,7 @@ export default function ScholarshipDashboard({
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 bg-white min-h-0 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-4 bg-white min-h-0 h-full custom-scrollbar mobile-touch-scroll overscroll-contain">
                 {currentConversationMessages.length > 0 ? (
                   currentConversationMessages.map((msg) => {
                     let isFromMe = false;
@@ -6498,7 +6498,7 @@ export default function ScholarshipDashboard({
         </nav>
       </aside>
 
-      <main className={`transition-all duration-300 ml-0 ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-72'} flex-1 flex flex-col ${section === 'inbox' ? 'h-[calc(100vh-4rem)] sm:h-[calc(100vh-5rem)] overflow-hidden py-3 sm:py-4' : 'overflow-y-auto py-4 sm:py-6 lg:py-10'} px-3 sm:px-6 lg:px-10 custom-scrollbar border-l border-r border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`} style={{ maxHeight: 'calc(100vh - 4rem)' }}>
+      <main className={`transition-all duration-300 ml-0 ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-72'} flex-1 flex flex-col ${section === 'inbox' ? 'h-[calc(100dvh-4rem)] sm:h-[calc(100dvh-5rem)] max-h-[calc(100dvh-4rem)] sm:max-h-[calc(100dvh-5rem)] overflow-hidden py-2 sm:py-4' : 'overflow-y-auto py-4 sm:py-6 lg:py-10'} px-2 sm:px-6 lg:px-10 custom-scrollbar border-l border-r border-gray-200/80 shadow-[inset_10px_0_15px_-10px_rgba(0,0,0,0.05)]`}>
         <header className={`bg-white rounded-2xl shadow-sm px-3.5 sm:px-6 lg:px-8 py-3 sm:py-4 lg:py-5 flex flex-row items-center justify-between gap-2 sm:gap-4 border border-gray-100 flex-shrink-0 ${section === 'inbox' ? 'mb-3 sm:mb-4' : 'mb-4 sm:mb-6 lg:mb-8'}`}>
           <div className="flex items-center gap-2 sm:gap-3 text-[#800020] font-bold text-sm sm:text-lg lg:text-xl min-w-0 flex-1">
             <button

@@ -3504,12 +3504,10 @@ def submit_application():
                     }), 400
 
             # ── UPDATE APPLICANT PROFILE ──────────────────────────────────────────
-            updates = []
-            params = []
+            updates_dict = {}
 
             def add_update(column_name, value):
-                updates.append(f'{column_name} = %s')
-                params.append(value)
+                updates_dict[column_name] = value
 
             field_mapping = {
                 'lastName': 'last_name', 'firstName': 'first_name', 'middleName': 'middle_name',
@@ -3590,8 +3588,7 @@ def submit_application():
                 # If we already have a URL (from profile_pic_url etc), use it directly
                 if column_name == 'profile_picture' and profile_pic_url:
                     if has_profile_picture_column:
-                        updates.append(f'{column_name} = %s')
-                        params.append(profile_pic_url)
+                        add_update(column_name, profile_pic_url)
                     else:
                         document_updates[column_name] = profile_pic_url
                     continue
@@ -3603,8 +3600,7 @@ def submit_application():
                         if url:
                             print(f"[SUBMIT] SUCCESS: {column_name} uploaded to {url[:50]}...", flush=True)
                             if column_name == 'profile_picture' and has_profile_picture_column:
-                                updates.append(f'{column_name} = %s')
-                                params.append(url)
+                                add_update(column_name, url)
                             else:
                                 document_updates[column_name] = url
                         else:
@@ -3614,8 +3610,10 @@ def submit_application():
                         print(f"[SUBMIT] CRITICAL STORAGE ERROR for {column_name}: {e}", flush=True)
                         raise ValueError(f"Storage System Error: {str(e)}")
 
-            if updates:
-                sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
+            if updates_dict:
+                cols = list(updates_dict.keys())
+                sql = f"UPDATE applicants SET {', '.join(f'{col} = %s' for col in cols)} WHERE applicant_no = %s"
+                params = [updates_dict[c] for c in cols]
                 params.append(current_user_id)
                 cur.execute(sql, tuple(params))
             if document_updates:
