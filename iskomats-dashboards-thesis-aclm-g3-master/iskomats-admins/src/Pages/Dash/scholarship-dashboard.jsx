@@ -1041,7 +1041,7 @@ export default function ScholarshipDashboard({
       return [...list].sort((a, b) => {
         const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
         const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
-        return idA - idB;
+        return idB - idA;
       });
     }
 
@@ -1154,11 +1154,11 @@ export default function ScholarshipDashboard({
       });
 
       const uniqueApplicants = Array.from(applicantMap.values());
-      // Sort applicants on load by applicant ID ascending
+      // Sort applicants on load by applicant ID descending (most recent first)
       const sortedById = uniqueApplicants.sort((a, b) => {
         const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
         const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
-        return idA - idB;
+        return idB - idA;
       });
       const historicalData = calculateHistoricalData(allApplicantsRaw);
 
@@ -3265,9 +3265,75 @@ export default function ScholarshipDashboard({
     }
   };
 
+  const allKnownApplicants = useMemo(() => [
+    ...(data.applicants || []),
+    ...(data.accepted || []),
+    ...(data.rejected || []),
+    ...(data.declined || []),
+    ...(data.cancelled || [])
+  ], [data.applicants, data.accepted, data.rejected, data.declined, data.cancelled]);
+
   const allMessages = data.inbox || [];
   const unreadCount = allMessages.filter((m) => !m.read).length;
   const conversations = useMemo(() => groupMessagesByStudent(allMessages), [allMessages, inboxMode]);
+
+  const recentApplicantMessages = useMemo(() => {
+    const rawInbox = data.inbox || [];
+    // Only include applicant-related messages (exclude admin provider channels like provider_room_X, superadmin_room_X, 0+X)
+    const applicantMsgs = rawInbox.filter(m => {
+      if (!m.room) return false;
+      if (
+        m.room.startsWith('provider_room_') ||
+        m.room.startsWith('superadmin_room_') ||
+        m.room.startsWith('admin_room') ||
+        m.room === '0+1' || m.room === '0+2' || m.room === '0+3' ||
+        /^0\+/.test(m.room)
+      ) return false;
+      return true;
+    });
+
+    return applicantMsgs.map(msg => {
+      let resolvedApplicantNo = msg.applicant_no ? String(msg.applicant_no) : '';
+      if (!resolvedApplicantNo && msg.room && msg.room.includes('+')) {
+        const p = msg.room.split('+')[0];
+        if (/^[1-9]\d*$/.test(p)) resolvedApplicantNo = p;
+      }
+
+      // Match applicant in all applicant lists
+      const match = allKnownApplicants.find(a => {
+        const aNo = (a.applicant_no || a.applicantNo || a.applicant_id || a.user_no || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id) || '').toString();
+        if (resolvedApplicantNo && aNo === resolvedApplicantNo) return true;
+        const aEmail = (a.email || a.emailAddress || a.studentContact?.email || '').toLowerCase();
+        if (msg.studentEmail && aEmail && aEmail === msg.studentEmail.toLowerCase()) return true;
+        const aName = (a.name || `${a.firstName || ''} ${a.lastName || ''}`.trim()).toLowerCase();
+        if (msg.studentName && aName && aName === msg.studentName.toLowerCase()) return true;
+        return false;
+      });
+
+      let applicantFullName = '';
+      if (match) {
+        if (match.firstName && match.lastName) applicantFullName = `${match.firstName} ${match.lastName}`;
+        else if (match.first_name && match.last_name) applicantFullName = `${match.first_name} ${match.last_name}`;
+        else if (match.name && !match.name.toLowerCase().startsWith('applicant ')) applicantFullName = match.name;
+      }
+
+      if (!applicantFullName) {
+        if (resolvedApplicantNo) {
+          applicantFullName = `Applicant ${resolvedApplicantNo}`;
+        } else if (msg.studentName && !adminSenderAliases.has(normalizeProviderIdentity(msg.studentName))) {
+          applicantFullName = msg.studentName;
+        } else {
+          applicantFullName = 'Applicant';
+        }
+      }
+
+      return {
+        ...msg,
+        applicant_no: resolvedApplicantNo || msg.applicant_no,
+        studentName: applicantFullName
+      };
+    });
+  }, [data.inbox, allKnownApplicants]);
 
   const filteredConversations = useMemo(() => {
     let filtered = conversations;
@@ -3411,9 +3477,20 @@ export default function ScholarshipDashboard({
               <button onClick={() => setSection('inbox')} className="text-xs font-bold text-[#800020] hover:underline">View Inbox</button>
             </div>
             <div className="divide-y divide-gray-50 max-h-96 overflow-y-auto">
-              {allMessages.slice(0, 15).map(msg => (
-                <div key={msg.id} className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4 hover:bg-gray-50 transition-colors">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center text-white bg-blue-500 flex-shrink-0 text-sm"><FaEnvelope /></div>
+              {recentApplicantMessages.slice(0, 15).map(msg => (
+                <div
+                  key={msg.id}
+                  className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                  onClick={() => {
+                    if (msg.applicant_no) {
+                      setViewMessage({ applicant_no: msg.applicant_no, room: msg.room, messageId: msg.id });
+                    }
+                    setSection('inbox');
+                  }}
+                >
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center text-white bg-blue-500 flex-shrink-0 text-sm shadow-xs">
+                    <FaEnvelope />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center mb-0.5 gap-2">
                       <span className="text-xs sm:text-sm font-black text-gray-900 truncate">{msg.studentName}</span>
@@ -3423,7 +3500,7 @@ export default function ScholarshipDashboard({
                   </div>
                 </div>
               ))}
-              {allMessages.length === 0 && (
+              {recentApplicantMessages.length === 0 && (
                 <div className="p-8 text-center text-gray-400 text-sm">No recent messages.</div>
               )}
             </div>
@@ -4163,7 +4240,7 @@ export default function ScholarshipDashboard({
 
         const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
         const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
-        return idA - idB;
+        return idB - idA;
       });
     };
 
