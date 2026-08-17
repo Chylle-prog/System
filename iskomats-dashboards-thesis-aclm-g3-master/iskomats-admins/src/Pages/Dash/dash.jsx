@@ -79,11 +79,18 @@ function normalizeAccount(account) {
   };
 }
 
+function getLocalDateString(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function buildCreatedAccount(account, accountType) {
   return normalizeAccount({
     ...account,
     type: account.type || accountType,
-    joined: account.joined || new Date().toISOString().split('T')[0],
+    joined: account.joined || getLocalDateString(),
   });
 }
 
@@ -375,17 +382,33 @@ export default function Dash() {
     setSubmenus((previousState) => ({ ...previousState, [menu]: !previousState[menu] }));
   };
 
+  const parseSafeDate = (timestamp) => {
+    if (!timestamp) return null;
+    if (timestamp instanceof Date) return isNaN(timestamp.getTime()) ? null : timestamp;
+    let tsStr = String(timestamp).trim();
+    if (!tsStr) return null;
+    // If format is like '2026-08-17 16:31:00' or '2026-08-17 16:31' or '2026-08-17T16:31:00' without timezone indicator
+    if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(tsStr)) {
+      tsStr = tsStr.replace(' ', 'T') + 'Z';
+    }
+    const d = new Date(tsStr);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   const formatDate = (timestamp) => {
     if (!timestamp) return 'No timestamp';
-    const date = new Date(timestamp);
-    if (isNaN(date.getTime())) return timestamp;
-    return date.toISOString().split('T')[0];
+    const date = parseSafeDate(timestamp);
+    if (!date) return String(timestamp);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const formatActivityTimestamp = (timestamp) => {
     if (!timestamp) return 'No timestamp';
-    const date = new Date(timestamp);
-    if (isNaN(date.getTime())) return timestamp;
+    const date = parseSafeDate(timestamp);
+    if (!date) return String(timestamp);
 
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');

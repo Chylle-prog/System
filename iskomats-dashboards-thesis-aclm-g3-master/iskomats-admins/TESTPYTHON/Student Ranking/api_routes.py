@@ -3384,7 +3384,7 @@ def get_activity_logs(current_user_id, pro_no, role):
                 'activity': row['activity'],
                 'status': (row['status'] or 'success').lower(),
                 'scholarship': row['scholarship'],
-                'date': row['occurred_at'].strftime('%Y-%m-%d %H:%M') if row['occurred_at'] else None,
+                'date': (row['occurred_at'].isoformat() + ('Z' if not str(row['occurred_at']).endswith(('+', 'Z')) else '')) if row['occurred_at'] else None,
             }
             for row in rows
         ]
