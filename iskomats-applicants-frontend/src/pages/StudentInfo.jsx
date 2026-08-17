@@ -4442,9 +4442,12 @@ const StudentInfo = () => {
   }
 
   /**
-   * Advanced Document Tampering & Digital Manipulation Detector
-   * Analyzes image pixels for artificial digital overlay blocks, solid whiteout patches,
-   * drawn cover-ups, and unnatural uniform color rectangles.
+  /**
+   * Advanced Document Tampering & AI-Generation Detector (Used for Merit Proofs)
+   * Analyzes image pixels for:
+   * 1. Canva / Photoshop editor border guidelines & crop marks
+   * 2. Digital whiteout blocks & pasted text overlays
+   * 3. Synthetic AI document generation characteristics (unnatural color uniformity, diffusion texture smoothness)
    */
   function detectDocumentTampering(imageSource) {
     return new Promise((resolve) => {
@@ -4476,6 +4479,8 @@ const StudentInfo = () => {
             resolve({ edited: false, reason: "Authentic document" });
             return;
           }
+
+          const canvas = document.createElement("canvas");
           canvas.width = w;
           canvas.height = h;
           const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -4514,8 +4519,78 @@ const StudentInfo = () => {
           if (magentaBorderPx >= 45) {
             resolve({
               edited: true,
+              isTampered: true,
               reason: `Editing canvas border detected (${magentaBorderPx} saturated editor UI border pixels found at margins). Please upload an authentic, unedited document.`,
               patchCount: magentaBorderPx
+            });
+            return;
+          }
+
+          // ── Check 2: Digital Whiteout & Patch Overlays ──
+          const gridW = 28;
+          const gridH = 18;
+          const marginX = Math.floor(w * 0.08);
+          const marginY = Math.floor(h * 0.08);
+          const contentW = w - 2 * marginX;
+          const contentH = h - 2 * marginY;
+          const cols = Math.floor(contentW / gridW);
+          const rows = Math.floor(contentH / gridH);
+
+          // Calculate overall document paper brightness (median proxy)
+          const sampleGrays = [];
+          const stepX = Math.max(1, Math.floor(w / 40));
+          const stepY = Math.max(1, Math.floor(h / 40));
+          for (let y = marginY; y < h - marginY; y += stepY) {
+            for (let x = marginX; x < w - marginX; x += stepX) {
+              const idx = (y * w + x) * 4;
+              sampleGrays.push(0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
+            }
+          }
+          sampleGrays.sort((a, b) => a - b);
+          const paperMedian = sampleGrays.length > 0 ? sampleGrays[Math.floor(sampleGrays.length * 0.5)] : 220;
+
+          let suspiciousPatches = 0;
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              const startX = marginX + c * gridW;
+              const startY = marginY + r * gridH;
+              let sumGray = 0;
+              let count = 0;
+              const pixels = [];
+
+              for (let y = startY; y < startY + gridH; y++) {
+                for (let x = startX; x < startX + gridW; x++) {
+                  const idx = (y * w + x) * 4;
+                  const g = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+                  pixels.push(g);
+                  if (g >= 175) {
+                    sumGray += g;
+                    count++;
+                  }
+                }
+              }
+
+              if (count >= 15) {
+                const boxBgMean = sumGray / count;
+                let varSum = 0;
+                for (let p of pixels) {
+                  if (p >= 175) varSum += Math.pow(p - boxBgMean, 2);
+                }
+                const boxBgStd = Math.sqrt(varSum / count);
+                const contrast = boxBgMean - paperMedian;
+                if ((boxBgMean >= 238 && contrast >= 12.0) || (boxBgMean >= 252 && boxBgStd < 1.5)) {
+                  suspiciousPatches++;
+                }
+              }
+            }
+          }
+
+          if (suspiciousPatches >= 3) {
+            resolve({
+              edited: true,
+              isTampered: true,
+              reason: `Digital edit / whiteout overlay detected on document (${suspiciousPatches} artificial overlay patches found). Please upload an authentic, unedited document.`,
+              patchCount: suspiciousPatches
             });
             return;
           }
@@ -5821,19 +5896,25 @@ const StudentInfo = () => {
         const certSource = getVerificationDocumentSource(item.photo);
         if (!certSource) continue;
 
-        // Run tamper check
+        // ── Security Check: Tamper & AI Detection ONLY on Merit Documents ──
         if (!isTamperBypassActive()) {
           const tamperCheck = await detectDocumentTampering(certSource);
           if (tamperCheck.edited) {
             allPassed = false;
-            failureReason = `Merit #${i + 1} (${item.title}): Tampering Alert: ${tamperCheck.reason}`;
+            failureReason = `Merit #${i + 1} (${item.title}): Tampering / AI Generation Alert: ${tamperCheck.reason}`;
             item.verified = 'failed';
             item.status = failureReason;
             item.scoreDetails = {
               "Applicant Name": false,
-              "Award / Merit Keyword": false,
-              "Tamper Check": false
+              "Merit Keyword": false,
+              "Tamper & AI Check": false
             };
+            aggregatedResults.push({
+              doc: `Merit #${i + 1}`,
+              verified: false,
+              message: item.status,
+              score_details: item.scoreDetails
+            });
             break;
           }
         }
@@ -5857,7 +5938,8 @@ const StudentInfo = () => {
         );
         item.scoreDetails = {
           "Applicant Name": namePassed,
-          "Merit Keyword": meritPassed
+          "Merit Keyword": meritPassed,
+          "Tamper & AI Check": true
         };
 
         aggregatedResults.push({
@@ -5893,7 +5975,8 @@ const StudentInfo = () => {
           detectedText: combinedDetectedText,
           scoreDetails: {
             "Applicant Name": aggregatedResults.every(r => r.score_details?.["Applicant Name"]),
-            "Merit Keyword": aggregatedResults.every(r => r.score_details?.["Merit Keyword"])
+            "Merit Keyword": aggregatedResults.every(r => r.score_details?.["Merit Keyword"]),
+            "Tamper & AI Check": aggregatedResults.every(r => r.score_details?.["Tamper & AI Check"])
           },
           requirements: {
             "Applicant Name": `${firstName} ${lastName}`,
