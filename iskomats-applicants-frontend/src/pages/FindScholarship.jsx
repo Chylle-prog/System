@@ -7,6 +7,18 @@ import iskoLogo from '../assets/iskologo.png';
 const FIND_SCHOLARSHIP_FORM_KEY = 'findScholarshipForm';
 const FIND_SCHOLARSHIP_PROFILE_KEY = 'findScholarshipProfile';
 
+const splitFullName = (fullName) => {
+  const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: '', middleName: '', lastName: '' };
+  if (parts.length === 1) return { firstName: parts[0], middleName: '', lastName: '' };
+  if (parts.length === 2) return { firstName: parts[0], middleName: '', lastName: parts[1] };
+  return {
+    firstName: parts.slice(0, -2).join(' '),
+    middleName: parts[parts.length - 2],
+    lastName: parts[parts.length - 1]
+  };
+};
+
 const FindScholarship = () => {
   const navigate = useNavigate();
   const { userProfile: globalProfile } = useAuth();
@@ -20,7 +32,9 @@ const FindScholarship = () => {
   const [scholarshipMatches, setScholarshipMatches] = useState([]);
   const [ineligibleMatches, setIneligibleMatches] = useState([]);
   const [successBanner, setSuccessBanner] = useState('');
-
+  const [portalLocked, setPortalLocked] = useState(false);
+  const [portalLockMessage, setPortalLockMessage] = useState('');
+  const [alternateAccountError, setAlternateAccountError] = useState('');
 
   const [incomeLevel, setIncomeLevel] = useState('');
 
@@ -37,8 +51,6 @@ const FindScholarship = () => {
 
   const videoRef = useRef(null);
   const cameraTimeoutRef = useRef(null);
-
-
 
   useEffect(() => {
     // Add Font Awesome link
@@ -93,6 +105,13 @@ const FindScholarship = () => {
         setUserProfile(profile);
 
         if (profile) {
+          if (profile.duplicate_applicant_exists) {
+            const lockMsg = profile.portal_lock_message || 'This is a duplicate account. Please use your original login.';
+            setPortalLocked(true);
+            setPortalLockMessage(lockMsg);
+            setAlternateAccountError(lockMsg);
+          }
+
           const fullName = [
             profile.first_name,
             profile.middle_name,
@@ -154,17 +173,13 @@ const FindScholarship = () => {
 
       const numValue = parseInt(raw, 10);
       let level = '';
-      let color = 'var(--text-soft)';
 
       if (numValue >= 0 && numValue <= 30000) {
         level = 'Low';
-        color = 'var(--success)';
       } else if (numValue >= 30001 && numValue <= 100000) {
         level = 'Middle';
-        color = 'var(--warning)';
       } else if (numValue >= 100001) {
         level = 'High';
-        color = 'var(--danger)';
       }
 
       setIncomeLevel(level ? `Income level: ${level}` : '');
@@ -209,7 +224,7 @@ const FindScholarship = () => {
       'kolehiyo ng lungsod ng lipa', 'kll',
       'philippine state college of aeronautics', 'philsca', 'philsca fab',
       'lipa city colleges', 'lcc',
-      'university of batangas', 'ub ', 'ub lipa', // Note: 'ub ' with space to avoid matching 'subnet'
+      'university of batangas', 'ub ', 'ub lipa',
       'new era university', 'neu',
       'batangas college of arts and sciences', 'bcas',
       'royal british college', 'rbc',
@@ -248,24 +263,46 @@ const FindScholarship = () => {
 
     setLoadingMessage({ title: 'Searching Scholarships', message: 'Analyzing your profile to find the best matches...' });
     setShowLoadingOverlay(true);
+    setAlternateAccountError('');
 
     try {
-      // Step 1: Save GPA / income to profile
-      try {
-        await applicantAPI.updateProfile({
-          schoolName: formData.university,
-          gpa: gpa, // Sending converted percentage for ranking consistency
-          parentsGrossIncome: income,
-          streetBarangay: formData.street_brgy,
-          townCity: formData.town_city_municipality,
-          province: formData.province,
-          zipCode: formData.zip_code,
-        });
-      } catch (saveErr) {
-        console.warn('Could not save profile:', saveErr.message);
+      // Step 1: Save all four inputs to their respective columns in applicants table:
+      // - Full Name -> first_name, middle_name, last_name
+      // - University -> school
+      // - GPA -> overall_gpa
+      // - Income -> financial_income_of_parents
+      const nameParts = splitFullName(formData.fullName);
+      await applicantAPI.updateProfile({
+        firstName: nameParts.firstName,
+        middleName: nameParts.middleName,
+        lastName: nameParts.lastName,
+        fullName: formData.fullName,
+        schoolName: formData.university,
+        university: formData.university,
+        gpa: rawGpa,
+        overallGpa: rawGpa,
+        parentsGrossIncome: income,
+        income: income,
+        streetBarangay: formData.street_brgy,
+        townCity: formData.town_city_municipality,
+        province: formData.province,
+        zipCode: formData.zip_code,
+      });
+
+      // Step 2: Alternate Account Pre-Flight Check (must trigger and verify before revealing scholarships)
+      const refreshedProfile = await applicantAPI.getProfile();
+      if (refreshedProfile?.duplicate_applicant_exists) {
+        const lockMsg = refreshedProfile.portal_lock_message || 'Alternate account detected. Please use your original account.';
+        setPortalLocked(true);
+        setPortalLockMessage(lockMsg);
+        setAlternateAccountError(lockMsg);
+        setShowLoadingOverlay(false);
+        setShowFormView(true);
+        setShowResultsView(false);
+        return;
       }
 
-      // Step 2: Scholarship ranking
+      // Step 3: Scholarship ranking (only reached if Alternate Account check passes)
       const applicantNo = localStorage.getItem('applicantNo');
       const response = await scholarshipAPI.getRankings({
         gpa,
@@ -310,10 +347,29 @@ const FindScholarship = () => {
 
     } catch (err) {
       setShowLoadingOverlay(false);
+      const errMsg = String(err?.message || '');
+      const isAlternate = errMsg && (
+        errMsg.toLowerCase().includes('alternate account') ||
+        errMsg.toLowerCase().includes('duplicate') ||
+        errMsg.toLowerCase().includes('main account') ||
+        errMsg.toLowerCase().includes('original account') ||
+        errMsg.toLowerCase().includes('original login')
+      );
+
+      if (isAlternate) {
+        setAlternateAccountError(errMsg);
+        setPortalLocked(true);
+        setPortalLockMessage(errMsg);
+        setShowFormView(true);
+        setShowResultsView(false);
+        return;
+      }
+
       console.error('Scholarship search error:', err);
-      alert(`Error searching scholarships: ${err.message}`);
+      alert(`Error searching scholarships: ${errMsg}`);
     }
   };
+
 
 
   const switchToFormView = () => {
@@ -1071,6 +1127,43 @@ const FindScholarship = () => {
               Find Scholarships
             </h3>
 
+            {alternateAccountError && (
+              <div style={{
+                maxWidth: '600px',
+                margin: '0 auto 1.5rem auto',
+                padding: '1.2rem 1.4rem',
+                borderRadius: '20px',
+                border: '1.5px solid #fca5a5',
+                background: 'linear-gradient(135deg, #fff1f2, #ffffff)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1rem',
+                color: '#991b1b',
+                boxShadow: '0 4px 16px rgba(239, 68, 68, 0.12)'
+              }}>
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '50%',
+                  background: '#fee2e2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <i className="fas fa-user-lock" style={{ fontSize: '1.2rem', color: '#dc2626' }}></i>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: '0.98rem', marginBottom: '0.2rem' }}>
+                    {alternateAccountError}
+                  </div>
+                  <div style={{ fontSize: '0.82rem', lineHeight: '1.45', color: '#7f1d1d' }}>
+                    Only your main account can search and apply for scholarships. Alternate accounts are restricted.
+                  </div>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleScholarshipSearch} className="feedback-form">
               <div className="form-group">
                 <label>Full Name</label>
@@ -1151,7 +1244,14 @@ const FindScholarship = () => {
                 )}
               </div>
 
-              <button type="submit" className="submit-btn">Find Scholarships</button>
+              <button 
+                type="submit" 
+                className="submit-btn"
+                disabled={portalLocked}
+                style={portalLocked ? { opacity: 0.6, cursor: 'not-allowed', background: '#94a3b8' } : {}}
+              >
+                {portalLocked ? 'Account Restricted' : 'Find Scholarships'}
+              </button>
 
             </form>
           </div>

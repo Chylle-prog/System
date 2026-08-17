@@ -2934,20 +2934,40 @@ def update_profile():
 
             field_mapping = {
                 'lastName': 'last_name', 'firstName': 'first_name', 'middleName': 'middle_name',
+                'last_name': 'last_name', 'first_name': 'first_name', 'middle_name': 'middle_name',
                 'maidenName': 'maiden_name', 'dateOfBirth': 'birthdate', 'placeOfBirth': 'birth_place',
                 'streetBarangay': 'street_brgy', 'townCity': 'town_city_municipality',
                 'townCityMunicipality': 'town_city_municipality',
                 'province': 'province', 'zipCode': 'zip_code', 'sex': 'sex',
                 'citizenship': 'citizenship', 'schoolIdNumber': 'school_id_no',
-                'schoolName': 'school', 'schoolAddress': 'school_address',
+                'schoolName': 'school', 'university': 'school', 'school': 'school',
+                'schoolAddress': 'school_address',
                 'schoolSector': 'school_sector', 'mobileNumber': 'mobile_no',
                 'yearLevel': 'year_lvl', 'fatherPhoneNumber': 'father_phone_no',
                 'motherPhoneNumber': 'mother_phone_no', 'fatherOccupation': 'father_occupation',
-                'motherOccupation': 'mother_occupation', 'parentsGrossIncome': 'financial_income_of_parents',
-                'gpa': 'overall_gpa', 'numberOfSiblings': 'sibling_no', 'course': 'course',
+                'motherOccupation': 'mother_occupation', 
+                'parentsGrossIncome': 'financial_income_of_parents',
+                'income': 'financial_income_of_parents',
+                'financial_income_of_parents': 'financial_income_of_parents',
+                'gpa': 'overall_gpa', 'overallGpa': 'overall_gpa', 'overall_gpa': 'overall_gpa',
+                'numberOfSiblings': 'sibling_no', 'course': 'course',
                 'meritsAwardsReceived': 'merits_awards_received',
                 'grades_year': 'grades_year', 'units': 'units'
             }
+
+            if 'fullName' in data and not ('firstName' in data and 'lastName' in data):
+                raw_full = str(data.get('fullName') or '').strip()
+                if raw_full:
+                    name_parts = raw_full.split()
+                    if len(name_parts) == 1:
+                        add_update('first_name', name_parts[0])
+                    elif len(name_parts) == 2:
+                        add_update('first_name', name_parts[0])
+                        add_update('last_name', name_parts[1])
+                    elif len(name_parts) >= 3:
+                        add_update('first_name', ' '.join(name_parts[:-2]))
+                        add_update('middle_name', name_parts[-2])
+                        add_update('last_name', name_parts[-1])
 
             document_field_mapping = {
                 'id_vid_url': 'id_vid_url',
@@ -2962,7 +2982,7 @@ def update_profile():
             for frontend_key, db_col in field_mapping.items():
                 if frontend_key in data:
                     value = data[frontend_key]
-                    # Integer columns — coerce safely
+                    # Numeric columns — coerce safely
                     if db_col in ('school_id_no', 'semester', 'grades_sem', 'grades_year'):
                         try:
                             if isinstance(value, str):
@@ -2975,6 +2995,11 @@ def update_profile():
                             value = int(value) if value not in (None, '', 'null') else None
                         except (ValueError, TypeError):
                             value = None
+                    elif db_col in ('overall_gpa', 'financial_income_of_parents'):
+                        try:
+                            value = float(value) if value not in (None, '', 'null') else None
+                        except (ValueError, TypeError):
+                            pass
                     add_update(db_col, value)
                     
 
