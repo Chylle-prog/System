@@ -1130,6 +1130,8 @@ export default function ScholarshipDashboard({
   const locationChartInstance = useRef(null);
   const currentInboxRoomRef = useRef(null);
   const inboxMessagesEndRef = useRef(null);
+  const readMessageIdsRef = useRef(new Set());
+  const readRoomsRef = useRef(new Set());
 
   const loadApplicants = async () => {
     try {
@@ -1287,6 +1289,12 @@ export default function ScholarshipDashboard({
 
           const isActiveRoom = currentInboxRoomRef.current === normRoom || currentInboxRoomRef.current === msg.room;
           const isAdminMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
+          const isPreviouslyRead = (msg.m_id && readMessageIdsRef.current.has(String(msg.m_id))) ||
+                                   (readRoomsRef.current.has(normRoom) || readRoomsRef.current.has(msg.room));
+          const isRead = isActiveRoom || isAdminMessage || isPreviouslyRead;
+          if (isRead && msg.m_id) {
+            readMessageIdsRef.current.add(String(msg.m_id));
+          }
           const nextMessage = {
             id: msg.m_id || (Date.now() + Math.random()),
             m_id: msg.m_id,
@@ -1296,7 +1304,7 @@ export default function ScholarshipDashboard({
             studentStatus: msg.student_status,
             message: msg.message,
             timestamp: msg.timestamp,
-            read: isActiveRoom || isAdminMessage,
+            read: isRead,
             is_student_sender: msg.is_student_sender !== undefined ? msg.is_student_sender : !isAdminMessage,
             room: normRoom
           };
@@ -1332,6 +1340,16 @@ export default function ScholarshipDashboard({
 
             const isActiveRoom = currentInboxRoomRef.current === normRoom || currentInboxRoomRef.current === roomId;
             const isSelfMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
+            const isRoomMarkedRead = readRoomsRef.current.has(normRoom) || readRoomsRef.current.has(roomId);
+            const isPreviouslyRead = (msg.m_id && readMessageIdsRef.current.has(String(msg.m_id))) ||
+                                     (msg.id && readMessageIdsRef.current.has(String(msg.id)));
+            const isRead = isActiveRoom || isSelfMessage || isRoomMarkedRead || isPreviouslyRead;
+            if (isRead && msg.m_id) {
+              readMessageIdsRef.current.add(String(msg.m_id));
+            }
+            if (isRead && msg.id) {
+              readMessageIdsRef.current.add(String(msg.id));
+            }
             const resolvedApplicantNo = msg.applicant_no
               ? String(msg.applicant_no)
               : (isApplicantRoom ? normRoom.split('+')[0] : null);
@@ -1348,7 +1366,7 @@ export default function ScholarshipDashboard({
               timestamp: msg.timestamp,
               sender_id: msg.sender_id,
               is_student_sender: msg.is_student_sender !== undefined ? msg.is_student_sender : !isSelfMessage,
-              read: isActiveRoom || isSelfMessage,
+              read: isRead,
               room: normRoom
             });
           });
@@ -1446,6 +1464,15 @@ export default function ScholarshipDashboard({
 
             const appNo = m.applicant_no ? String(m.applicant_no) : (normRoom.includes('+') ? normRoom.split('+')[0] : null);
             const isStudentName = m.username && !m.username.toLowerCase().includes('admin') && !m.username.toLowerCase().includes('mayor') && !m.username.toLowerCase().includes('ched') && !m.username.toLowerCase().includes('vilma');
+            const isSelfMessage = adminSenderAliases.has(normalizeProviderIdentity(m.username));
+            const isActiveRoom = currentInboxRoomRef.current === normRoom || currentInboxRoomRef.current === m.room;
+            const isRoomMarkedRead = readRoomsRef.current.has(normRoom) || readRoomsRef.current.has(m.room);
+            const isPreviouslyRead = (m.m_id && readMessageIdsRef.current.has(String(m.m_id))) ||
+                                     (m.id && readMessageIdsRef.current.has(String(m.id)));
+            const isRead = isActiveRoom || isSelfMessage || isRoomMarkedRead || isPreviouslyRead;
+            if (isRead && m.m_id) {
+              readMessageIdsRef.current.add(String(m.m_id));
+            }
             return {
               id: m.m_id,
               m_id: m.m_id,
@@ -1460,7 +1487,7 @@ export default function ScholarshipDashboard({
               is_student_sender: m.is_student_sender,
               student_status: m.student_status || 'Pending',
               studentStatus: m.student_status || 'Pending',
-              read: false,
+              read: isRead,
               starred: false,
             };
           });
@@ -3034,7 +3061,12 @@ export default function ScholarshipDashboard({
 
           if (!isDuplicate) {
             roomMsgs.push(m);
-            if (!m.read) grouped[targetRoom.applicant_no].unreadCount += 1;
+            const isMsgRead = m.read ||
+                              (m.m_id && readMessageIdsRef.current.has(String(m.m_id))) ||
+                              (m.id && readMessageIdsRef.current.has(String(m.id))) ||
+                              (targetRoom && (readRoomsRef.current.has(targetRoom.room) || currentInboxRoomRef.current === targetRoom.room)) ||
+                              (m.room && (readRoomsRef.current.has(m.room) || currentInboxRoomRef.current === m.room));
+            if (!isMsgRead) grouped[targetRoom.applicant_no].unreadCount += 1;
             grouped[targetRoom.applicant_no].lastMessage = m;
           }
         }
@@ -3169,7 +3201,12 @@ export default function ScholarshipDashboard({
 
         if (!exists) {
           grouped[key].messages.push(m);
-          if (!m.read) grouped[key].unreadCount += 1;
+          const isMsgRead = m.read ||
+                            (m.m_id && readMessageIdsRef.current.has(String(m.m_id))) ||
+                            (m.id && readMessageIdsRef.current.has(String(m.id))) ||
+                            (m.room && (readRoomsRef.current.has(m.room) || currentInboxRoomRef.current === m.room)) ||
+                            (key && readRoomsRef.current.has(String(key)));
+          if (!isMsgRead) grouped[key].unreadCount += 1;
           grouped[key].lastMessage = m;
         }
       });
@@ -3207,12 +3244,19 @@ export default function ScholarshipDashboard({
   };
 
   const markConversationAsRead = (applicantNo, room) => {
+    if (room) readRoomsRef.current.add(room);
+    if (applicantNo) readRoomsRef.current.add(String(applicantNo));
     setData((d) => ({
       ...d,
       inbox: d.inbox.map((m) => {
         const sameApplicant = applicantNo && m.applicant_no?.toString() === applicantNo?.toString();
-        const sameRoom = room && m.room === room;
-        return sameApplicant || sameRoom ? { ...m, read: true } : m;
+        const sameRoom = room && (m.room === room || m.room === `provider_room_${room.split('_')[2]}`);
+        if (sameApplicant || sameRoom) {
+          if (m.m_id) readMessageIdsRef.current.add(String(m.m_id));
+          if (m.id) readMessageIdsRef.current.add(String(m.id));
+          return { ...m, read: true };
+        }
+        return m;
       }),
     }));
   };
@@ -6238,6 +6282,7 @@ export default function ScholarshipDashboard({
                       key={conv.room || conv.applicant_no}
                       onClick={() => {
                         markConversationAsRead(conv.applicant_no, conv.room);
+                        currentInboxRoomRef.current = conv.room || null;
                         setViewMessage({
                           messageId: conv.lastMessage?.id || `new-${conv.applicant_no}`,
                           applicant_no: conv.applicant_no,
@@ -6248,11 +6293,20 @@ export default function ScholarshipDashboard({
                         if (conv.room && messagingAPI) {
                           messagingAPI.getRoomMessages(conv.room).then(res => {
                             if (res.data?.messages && Array.isArray(res.data.messages)) {
+                              const readRoomMsgs = res.data.messages.map(m => {
+                                if (m.m_id) readMessageIdsRef.current.add(String(m.m_id));
+                                if (m.id) readMessageIdsRef.current.add(String(m.id));
+                                return {
+                                  ...m,
+                                  read: true,
+                                  room: conv.room
+                                };
+                              });
                               setData(prev => ({
                                 ...prev,
                                 inbox: sortMessages([
                                   ...(prev.inbox || []).filter(m => m.room !== conv.room),
-                                  ...res.data.messages
+                                  ...readRoomMsgs
                                 ])
                               }));
                             }
