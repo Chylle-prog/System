@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import SignaturePad from '../components/SignaturePad';
 import VideoRecorder from '../components/VideoRecorder';
-import { applicantAPI, applicationAPI, scholarshipAPI, verificationAPI, uploadProfilePicture, API_ORIGIN, debugAPI } from '../services/api';
+import { applicantAPI, applicationAPI, scholarshipAPI, verificationAPI, uploadProfilePicture, API_ORIGIN, debugAPI, isAltCheckBypassed } from '../services/api';
 import { SCHOOLS, BARANGAYS } from '../utils/constants';
 
 const FIND_SCHOLARSHIP_PROFILE_KEY = 'findScholarshipProfile';
@@ -2557,19 +2557,15 @@ const StudentInfo = () => {
     { id: 1, title: '', photo: null, verified: null, status: '', scoreDetails: null }
   ]);
 
-  // Global debug flags — fetched from DB so they sync across all deployments
+  // Local debug flags — stored per-user in localStorage (defaults to ON for everyone)
   const [debugFlags, setDebugFlags] = useState({
-    skip_alternate_check: localStorage.getItem('debug_skip_alternate_check') === 'true',
+    skip_alternate_check: isAltCheckBypassed(),
   });
 
   useEffect(() => {
-    debugAPI.getFlags().then(flags => {
-      if (flags && Object.keys(flags).length > 0) {
-        setDebugFlags(flags);
-        // Sync to localStorage so same-session API calls (X-Skip-Alternate-Check header) stay current
-        localStorage.setItem('debug_skip_alternate_check', flags.skip_alternate_check ? 'true' : 'false');
-      }
-    }).catch(() => {});
+    setDebugFlags({
+      skip_alternate_check: isAltCheckBypassed(),
+    });
   }, []);
 
   const calculateVerificationPercentage = (results) => {

@@ -227,6 +227,18 @@ const getAuthToken = () => {
   return localStorage.getItem('authToken');
 };
 
+export const isAltCheckBypassed = () => {
+  if (typeof window === 'undefined') return true;
+  const stored = localStorage.getItem('debug_skip_alternate_check');
+  if (stored === null) {
+    try {
+      localStorage.setItem('debug_skip_alternate_check', 'true');
+    } catch (e) {}
+    return true;
+  }
+  return stored !== 'false';
+};
+
 // Helper function to make API requests
 const makeRequest = async (endpoint, options = {}) => {
   // Ensure we don't have double slashes
@@ -238,7 +250,7 @@ const makeRequest = async (endpoint, options = {}) => {
     ...options.headers,
   };
 
-  if (typeof window !== 'undefined' && (localStorage.getItem('debug_skip_alternate_check') === 'true' || sessionStorage.getItem('debug_skip_alternate_check') === 'true')) {
+  if (isAltCheckBypassed()) {
     headers['X-Skip-Alternate-Check'] = 'true';
   }
 
@@ -699,7 +711,7 @@ export const applicantAPI = {
     const token = getAuthToken();
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    if (typeof window !== 'undefined' && (localStorage.getItem('debug_skip_alternate_check') === 'true' || sessionStorage.getItem('debug_skip_alternate_check') === 'true')) {
+    if (isAltCheckBypassed()) {
       headers['X-Skip-Alternate-Check'] = 'true';
     }
 
@@ -713,7 +725,7 @@ export const applicantAPI = {
     const token = getAuthToken();
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    if (typeof window !== 'undefined' && (localStorage.getItem('debug_skip_alternate_check') === 'true' || sessionStorage.getItem('debug_skip_alternate_check') === 'true')) {
+    if (isAltCheckBypassed()) {
       headers['X-Skip-Alternate-Check'] = 'true';
     }
 
@@ -1254,40 +1266,28 @@ export const announcementAPI = {
  */
 export const debugAPI = {
   /**
-   * Fetch current global debug bypass flags from the database.
+   * Fetch current debug bypass flags (driven by the current user's localStorage).
    * @returns {Promise<{skip_alternate_check: boolean}>}
    */
   getFlags: async () => {
-    try {
-      const data = await makeRequest('/student/debug/flags', { method: 'GET' });
-      return data?.flags || {};
-    } catch (e) {
-      console.warn('[debugAPI] getFlags failed, falling back to localStorage:', e);
-      return {
-        skip_alternate_check: localStorage.getItem('debug_skip_alternate_check') === 'true',
-      };
-    }
+    return {
+      skip_alternate_check: isAltCheckBypassed(),
+    };
   },
 
   /**
-   * Set a global debug bypass flag in the database.
+   * Set a debug bypass flag in localStorage for the current user session.
    * @param {'skip_alternate_check'} key
    * @param {boolean} value
    */
   setFlag: async (key, value) => {
-    try {
-      const data = await makeRequest('/student/debug/flags', {
-        method: 'POST',
-        body: JSON.stringify({ key, value }),
-      });
-      // Mirror to localStorage as cache for same-session reads
-      localStorage.setItem('debug_skip_alternate_check', value ? 'true' : 'false');
-      return data;
-    } catch (e) {
-      console.warn('[debugAPI] setFlag failed:', e);
-      // Fallback: at least update localStorage
-      localStorage.setItem('debug_skip_alternate_check', value ? 'true' : 'false');
+    if (key === 'skip_alternate_check') {
+      try {
+        localStorage.setItem('debug_skip_alternate_check', value ? 'true' : 'false');
+        sessionStorage.setItem('debug_skip_alternate_check', value ? 'true' : 'false');
+      } catch (e) {}
     }
+    return { success: true, key, value };
   },
 };
 

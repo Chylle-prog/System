@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { applicantAPI, applicationAPI, scholarshipAPI, announcementAPI, notificationAPI, messagingAPI, API_ORIGIN } from '../services/api';
+import { applicantAPI, applicationAPI, scholarshipAPI, announcementAPI, notificationAPI, messagingAPI, isAltCheckBypassed, API_ORIGIN } from '../services/api';
 import socketService from '../services/socket';
 import iskoLogo from '../assets/iskologo.png';
 import ChatbotDesign from '../components/ChatbotDesign';
@@ -140,8 +140,7 @@ const Portal = () => {
   const [dbAnnouncements, setDbAnnouncements] = useState([]);
   const [announcementSearchQuery, setAnnouncementSearchQuery] = useState('');
   const [notifications, setNotifications] = useState([]);
-  const isSkipAlt = typeof window !== 'undefined' && (localStorage.getItem('debug_skip_alternate_check') === 'true' || sessionStorage.getItem('debug_skip_alternate_check') === 'true');
-  const portalLocked = Boolean(userProfile?.duplicate_applicant_exists) && !isSkipAlt;
+  const portalLocked = Boolean(userProfile?.duplicate_applicant_exists) && !isAltCheckBypassed();
   const portalLockMessage = userProfile?.portal_lock_message || 'You already exist in the system';
 
   const setPortalSection = (nextSection) => {

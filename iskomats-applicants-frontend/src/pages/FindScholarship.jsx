@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { applicantAPI, scholarshipAPI } from '../services/api';
+import { applicantAPI, scholarshipAPI, isAltCheckBypassed } from '../services/api';
 import iskoLogo from '../assets/iskologo.png';
 
 const FIND_SCHOLARSHIP_FORM_KEY = 'findScholarshipForm';
@@ -105,8 +105,7 @@ const FindScholarship = () => {
         setUserProfile(profile);
 
         if (profile) {
-          const isSkipAlt = typeof window !== 'undefined' && (localStorage.getItem('debug_skip_alternate_check') === 'true' || sessionStorage.getItem('debug_skip_alternate_check') === 'true');
-          if (profile.duplicate_applicant_exists && !isSkipAlt) {
+          if (profile.duplicate_applicant_exists && !isAltCheckBypassed()) {
             const lockMsg = profile.portal_lock_message || 'This is a duplicate account. Please use your original login.';
             setPortalLocked(true);
             setPortalLockMessage(lockMsg);
@@ -288,8 +287,7 @@ const FindScholarship = () => {
 
       // Step 2: Alternate Account Pre-Flight Check (must trigger and verify before revealing scholarships)
       const refreshedProfile = await applicantAPI.getProfile();
-      const isSkipAlt = typeof window !== 'undefined' && (localStorage.getItem('debug_skip_alternate_check') === 'true' || sessionStorage.getItem('debug_skip_alternate_check') === 'true');
-      if (refreshedProfile?.duplicate_applicant_exists && !isSkipAlt) {
+      if (refreshedProfile?.duplicate_applicant_exists && !isAltCheckBypassed()) {
         const lockMsg = refreshedProfile.portal_lock_message || 'Alternate account detected. Please use your original account.';
         setPortalLocked(true);
         setPortalLockMessage(lockMsg);

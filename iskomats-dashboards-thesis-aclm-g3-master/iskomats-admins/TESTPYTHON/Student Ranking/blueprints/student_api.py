@@ -1086,11 +1086,8 @@ def set_debug_flag():
 
 def is_skip_alternate_check_active(cur=None):
     """
-    Checks if alternate account verification should be bypassed.
-    Checks:
-    1. HTTP header X-Skip-Alternate-Check
-    2. Query param or form field 'skip_alternate_check' / 'skipVerification'
-    3. Global debug_flags table in database
+    Checks if alternate account verification should be bypassed for the current user's request.
+    Strictly isolated per-user: only active if the user's client provided the bypass header/parameter (driven by their localStorage).
     """
     try:
         if request:
@@ -1104,24 +1101,6 @@ def is_skip_alternate_check_active(cur=None):
                 return True
     except Exception:
         pass
-
-    try:
-        if cur:
-            cur.execute("SELECT value FROM debug_flags WHERE key = 'skip_alternate_check'")
-            row = cur.fetchone()
-            if row:
-                val = row['value'] if isinstance(row, dict) else row[0]
-                return bool(val)
-        else:
-            with get_db() as conn:
-                with conn.cursor() as c:
-                    c.execute("SELECT value FROM debug_flags WHERE key = 'skip_alternate_check'")
-                    row = c.fetchone()
-                    if row:
-                        val = row['value'] if isinstance(row, dict) else row[0]
-                        return bool(val)
-    except Exception as e:
-        print(f"[DEBUG FLAGS] is_skip_alternate_check_active check error: {e}", flush=True)
 
     return False
 
