@@ -139,6 +139,7 @@ const Portal = () => {
   // Notification data structure
   const [dbAnnouncements, setDbAnnouncements] = useState([]);
   const [announcementSearchQuery, setAnnouncementSearchQuery] = useState('');
+  const [notifications, setNotifications] = useState([]);
   const isSkipAlt = typeof window !== 'undefined' && (localStorage.getItem('debug_skip_alternate_check') === 'true' || sessionStorage.getItem('debug_skip_alternate_check') === 'true');
   const portalLocked = Boolean(userProfile?.duplicate_applicant_exists) && !isSkipAlt;
   const portalLockMessage = userProfile?.portal_lock_message || 'You already exist in the system';
