@@ -738,22 +738,27 @@ function extractOcrKeyValues(rawText) {
   }
 
   // Indigency / Residency Certificate Candidate Name Anchor
-  // e.g. "This is to certify that NEIL IVAN L. ATIENZA, 20 years old, born on OCTOBER 22, 2005, SINGLE..."
-  // e.g. "This is to certify that MIKAELA YSABEL L. LANTAFE 23 years of age..."
   if (!fields.name) {
     const certAnchorPatterns = [
-      /(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|pinatutunayan\s+na\s+si|katibayan\s+na\s+si)\s+([A-Za-z\s,\.\-]{3,60}?)(?=,\s*\d+\s*years|\s+\d+\s*years|,\s*born\s+on|\s+born\s+on|,\s*single|,\s*married|\s+of\s+legal|\s+filipino|\s+citizen|\s+is\s+a\s+resident|\s+resident)/i,
-      /(?:certify|certifies|pinatutunayan)\s+(?:that|na\s+si)?\s+([A-Za-z\s,\.\-]{3,60}?)(?=,\s*\d+\s*years|\s+\d+\s*years|,\s*born\s+on|\s+born\s+on|,\s*single|,\s*married|\s+of\s+legal|\s+filipino|\s+citizen|\s+is\s+a\s+resident|\s+resident)/i
+      /(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|ito\s+ay\s+pagpapatunay\s+na\s+si|pinatutunayan\s+na\s+si|katibayan\s+na\s+si|certify\s+that|certifies\s+that|certify\s+hereby\s+that|hereby\s+certify\s+that)[\s\S]*?(?:that\s+|na\s+si\s+|i\s+personally\s+known?\s+|personally\s+known?\s*(?:to\s+me\s+)?|hereby\s+certify\s+that\s+|mr\.?\s*\/?\s*ms\.?\s*\/?\s*mrs\.?\s*|mr\.?\s+|ms\.?\s+|mrs\.?\s+|miss\s+|g\.?\s+|gng\.?\s+|bb\.?\s+)*([A-Za-z][A-Za-z\s,\.\-']{2,80}?)(?=[,\.\s]*(?:\d+\s*(?:years?|yrs?|yo|anyos|taong)|of\s*legal\s*age|born\s+on|single|married|widow|widower|separated|divorced|filipino|pilipino|citizen|is\s+a\s+(?:bonafide\s+)?resident|is\s+an?\s+indigent|belongs\s+to|resident|residing|whose\s+specimen|whose\s+signature|whose\s+photo|with\s+postal\s+address|\n|$))/i
     ];
     for (const pat of certAnchorPatterns) {
       const m = rawText.match(pat);
       if (m && m[1]) {
         let cand = m[1].trim()
           .replace(/^(?:this\s+is\s+to\s+|sto\s+)?(?:certify|certifies|patunay|katibayan|pinatutunayan)\s*(?:that|na\s+si)?\s*/i, '')
+          .replace(/^(?:i\s+personally\s+known?|personally\s+known?\s*(?:to\s+me)?|i\s+hereby\s+certify\s+that|the\s+undersigned)\s*/i, '')
+          .replace(/^(?:(?:mr|ms|mrs|miss|g|gng|bb)[\.\/\s]*)+\s*/i, '')
+          .replace(/^(?:complete\s*name|full\s*name|pangalan|name)\s*[:\-]?\s*/i, '')
           .replace(/^[^a-zA-Z]+/, '')
+          .replace(/\s*(?:\(?complete\s*name\)?|\(?age\)?|\(?civil\s*status\)?|\(?birthday\)?).*$/i, '')
+          .replace(/\s*(?:\d+\s*)?(?:years?\s*(?:of\s*age|old)?|yrs?\s*old|yo|anyos|taong\s*gulang|of\s*legal\s*age|age)\b.*$/i, '')
+          .replace(/\s*(?:single(?:\/married(?:\/widow(?:\/separated)?)?)?|married|widow(?:er)?|separated|divorced|filipino(?:\s*citizen)?|pilipino(?:\s*citizen)?|citizen)\b.*$/i, '')
+          .replace(/\s*(?:born\s+(?:on\s+)?\d.*|born\s+on.*)$/i, '')
+          .replace(/\s*(?:whose\s+specimen\s+signature|whose\s+signature|whose\s+photo|is\s+a\s+(?:bonafide\s+)?resident|is\s+an?\s+indigent|belongs\s+to|resident\s+of|residing\s+at|residing\s+in|resident|bonafide)\b.*$/i, '')
           .replace(/,\s*$/, '')
           .trim();
-        if (cand.length >= 3 && !/certify|certificate|barangay|office|republic|philippines|punong|born|october|single|clearance/i.test(cand)) {
+        if (cand.length >= 3 && !/certify|certificate|barangay|office|republic|philippines|punong|batangas|lipa|nangkaan|mataasnakahoy|inosluban|inosloban|purok|residency|indigency|sangguniang|kagawad|chairperson|secretary|treasurer|clearance|valid|municipal/i.test(cand)) {
           fields.name = cand;
           break;
         }
@@ -774,17 +779,28 @@ function extractOcrKeyValues(rawText) {
     }
   }
 
+  // DLSL/School-ID format: LASTNAME on its own all-caps line, then "First Middle." on the next line
   if (!fields.name) {
-    // Restrict fnMatch to single-line spaces (no \n) and filter out noise/header/address/status/date keywords
-    const fnMatch = rawText.match(/\b([A-Za-z]{2,20}\s*,\s*[A-Za-z ]{3,40})\b/);
-    if (fnMatch && fnMatch[1]) {
-      const cand = fnMatch[1].trim();
-      const isNoise = /OFFICIAL|CERTIFICATE|REGISTRATION|COLLEGE|UNIVERSITY|ENGINEERING|INFORMATION|BACHELOR|CERTIFY|AGE|RESIDENT|BARANGAY|PHILIPPINES|BATANGAS|CITY|PROVINCE|HIGHWAY|STREET|ROAD|ADDRESS|TEL|TELEFAX|WWW|PAGE|BORN|OCTOBER|JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|NOVEMBER|DECEMBER|SINGLE|MARRIED|YEARS|OLD|CLEARANCE|VALID/i.test(cand);
-      if (!isNoise) {
-        fields.name = cand;
+    const nameLines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    for (let i = 0; i < nameLines.length - 1; i++) {
+      const upper = nameLines[i];
+      const next  = nameLines[i + 1];
+      const isSchoolHeader = /(?:DE\s*LA\s*SALLE|LIPA|DLSL|COLLEGE|UNIVERSITY|BACHELOR|NATIONAL|OFFICIAL|CERTIFICATE|REGISTRATION|DEPARTMENT|HIGHWAY|STREET|BRGY|INC|ISSESO)/i.test(upper);
+      const isFooterOrNotice = /(?:Signature|Chancellor|Registrar|This|In\s*case|Dr\.|SY|Valid|Races|Emergency|Notify|Non-transferable|\d{4,})/i.test(next);
+
+      if (
+        /^[A-Z][A-Z\s\.\-]{1,24}$/.test(upper) &&
+        !isSchoolHeader &&
+        /[a-z]/.test(next) &&
+        /^[A-Za-z][A-Za-z\s\.\-]{2,39}$/.test(next) &&
+        !isFooterOrNotice
+      ) {
+        fields.name = `${upper.trim()}, ${next.trim()}`;
+        break;
       }
     }
   }
+
   if (!fields.studentId) {
     // Match common DLSL/PH student ID formats: 20xxxxxxxx (10 digits) or 15xxxxxxxx etc.
     const idMatch = rawText.match(/\b(20\d{8}|15\d{8}|19\d{8}|18\d{8}|\d{9,10})\b/);
@@ -820,28 +836,27 @@ function formatExtractedRequirementsSummary(rawText) {
   let fullName = kv.name;
 
   // --- Indigency / Residency Certificate Semantic Anchor ---
-  // Pattern: "certify that MIKAELA YSABEL L. LANTAFE 23 years of age..."
-  // We extract just the name portion before age/civil-status/citizenship phrases.
   if (!fullName) {
     const indigencyAnchorPatterns = [
-      /(?:certify|certifies|patunay|katibayan|pinatutunayan)\s+(?:that\s+|na\s+si\s+)?[_\W]*([A-Za-z][A-Za-z\s,\.\-]{3,60})(?=\s*(?:\d+\s*years?|of\s*legal\s*age|single|married|widow|separated|divorced|filipino|pilipino|citizen|is\s+a\s+resident|resident|bonafide|\n|$))/i,
-      /(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that)\s+[_\W]*([A-Za-z][A-Za-z\s,\.\-]{3,60})(?=\s*(?:\d+\s*years?|of\s*legal\s*age|single|married|widow|separated|filipino|citizen|resident|bonafide|\n|$))/i
+      /(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|ito\s+ay\s+pagpapatunay\s+na\s+si|pinatutunayan\s+na\s+si|katibayan\s+na\s+si|certify\s+that|certifies\s+that|certify\s+hereby\s+that|hereby\s+certify\s+that)[\s\S]*?(?:that\s+|na\s+si\s+|i\s+personally\s+known?\s+|personally\s+known?\s*(?:to\s+me\s+)?|hereby\s+certify\s+that\s+|mr\.?\s*\/?\s*ms\.?\s*\/?\s*mrs\.?\s*|mr\.?\s+|ms\.?\s+|mrs\.?\s+|miss\s+|g\.?\s+|gng\.?\s+|bb\.?\s+)*([A-Za-z][A-Za-z\s,\.\-']{2,80}?)(?=[,\.\s]*(?:\d+\s*(?:years?|yrs?|yo|anyos|taong)|of\s*legal\s*age|born\s+on|single|married|widow|widower|separated|divorced|filipino|pilipino|citizen|is\s+a\s+(?:bonafide\s+)?resident|is\s+an?\s+indigent|belongs\s+to|resident|residing|whose\s+specimen|whose\s+signature|whose\s+photo|with\s+postal\s+address|\n|$))/i
     ];
     for (const pat of indigencyAnchorPatterns) {
       const m = nameSearchText.match(pat);
       if (m && m[1]) {
         let raw = m[1].trim()
-          // Strip leading certificate boilerplate phrases if captured by greedy regex
           .replace(/^(?:this\s+is\s+to\s+|sto\s+)?(?:certify|certifies|patunay|katibayan|pinatutunayan)\s*(?:that|na\s+si)?\s*/i, '')
-          .replace(/^(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|certify\s+that|pinatutunayan\s+na\s+si)\s*/i, '')
+          .replace(/^(?:i\s+personally\s+known?|personally\s+known?\s*(?:to\s+me)?|i\s+hereby\s+certify\s+that|the\s+undersigned)\s*/i, '')
+          .replace(/^(?:(?:mr|ms|mrs|miss|g|gng|bb)[\.\/\s]*)+\s*/i, '')
+          .replace(/^(?:complete\s*name|full\s*name|pangalan|name)\s*[:\-]?\s*/i, '')
           .replace(/^[^a-zA-Z]+/, '')
-          // Strip trailing age/civil status/citizenship noise
-          .replace(/\s*(?:\d+\s*)?(?:years?\s*of\s*age|of\s*legal\s*age|years?\s*old|years?|yr|yo|taong|age)\b.*$/i, '')
-          .replace(/\s*(?:single|married|widow(?:er)?|separated|divorced|filipino(?:\s*citizen)?|pilipino(?:\s*citizen)?|citizen)\b.*$/i, '')
-          .replace(/\s*(?:is\s+a\s+resident|is\s+a\s+bonafide|resident|bonafide)\b.*$/i, '')
+          .replace(/\s*(?:\(?complete\s*name\)?|\(?age\)?|\(?civil\s*status\)?|\(?birthday\)?).*$/i, '')
+          .replace(/\s*(?:\d+\s*)?(?:years?\s*(?:of\s*age|old)?|yrs?\s*old|yo|anyos|taong\s*gulang|of\s*legal\s*age|age)\b.*$/i, '')
+          .replace(/\s*(?:single(?:\/married(?:\/widow(?:\/separated)?)?)?|married|widow(?:er)?|separated|divorced|filipino(?:\s*citizen)?|pilipino(?:\s*citizen)?|citizen)\b.*$/i, '')
+          .replace(/\s*(?:born\s+(?:on\s+)?\d.*|born\s+on.*)$/i, '')
+          .replace(/\s*(?:whose\s+specimen\s+signature|whose\s+signature|whose\s+photo|is\s+a\s+(?:bonafide\s+)?resident|is\s+an?\s+indigent|belongs\s+to|resident\s+of|residing\s+at|residing\s+in|resident|bonafide)\b.*$/i, '')
+          .replace(/,\s*$/, '')
           .trim();
-        // Must have at least 2 words (first + last) and only valid name characters
-        if (raw.length >= 3 && /\s/.test(raw) && !/certify|certificate|barangay|office|republic|philippines|punong/i.test(raw)) {
+        if (raw.length >= 3 && !/certify|certificate|barangay|office|republic|philippines|punong|batangas|lipa|nangkaan|mataasnakahoy|inosluban|inosloban|purok|residency|indigency|sangguniang|kagawad|chairperson|secretary|treasurer|clearance|valid|municipal/i.test(raw)) {
           fullName = raw;
           break;
         }
@@ -850,16 +865,13 @@ function formatExtractedRequirementsSummary(rawText) {
   }
 
   // DLSL/School-ID format: LASTNAME on its own all-caps line, then "First Middle." on the next line
-  // e.g.: "MAGBUHAT\nAlexie Chyle O."
   if (!fullName) {
     const nameLines = nameSearchText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     for (let i = 0; i < nameLines.length - 1; i++) {
       const upper = nameLines[i];
       const next  = nameLines[i + 1];
-      // Last-name line: all-caps, 2-25 letters, no school header keywords
-      // First/middle line: must contain lowercase letters (mixed/title case e.g. "Alexie Chyle O.") and no footer keywords
       const isSchoolHeader = /(?:DE\s*LA\s*SALLE|LIPA|DLSL|COLLEGE|UNIVERSITY|BACHELOR|NATIONAL|OFFICIAL|CERTIFICATE|REGISTRATION|DEPARTMENT|HIGHWAY|STREET|BRGY|INC|ISSESO)/i.test(upper);
-      const isFooterOrNotice = /(?:Signature|Chancellor|Registrar|This|In\s*case|Dr\.|SY|Valid|Races|Emergency|Notify|Non-transferable)/i.test(next);
+      const isFooterOrNotice = /(?:Signature|Chancellor|Registrar|This|In\s*case|Dr\.|SY|Valid|Races|Emergency|Notify|Non-transferable|\d{4,})/i.test(next);
 
       if (
         /^[A-Z][A-Z\s\.\-]{1,24}$/.test(upper) &&
@@ -875,12 +887,6 @@ function formatExtractedRequirementsSummary(rawText) {
   }
 
   if (!fullName) {
-    const nameMatch = nameSearchText.match(/\b([A-Z]{2,20}\s*,\s*[A-Z\s]{3,40})\b/);
-    if (nameMatch && nameMatch[1] && !/OFFICIAL|CERTIFICATE|REGISTRATION|COLLEGE|UNIVERSITY|ENGINEERING|INFORMATION/i.test(nameMatch[1])) {
-      fullName = nameMatch[1].trim();
-    }
-  }
-  if (!fullName) {
     const inlineMatch = nameSearchText.match(/(?:name|student\s*name|pangalan)\s*[:\-]\s*(.+)/i);
     if (inlineMatch && inlineMatch[1]) fullName = inlineMatch[1].trim();
   }
@@ -889,7 +895,6 @@ function formatExtractedRequirementsSummary(rawText) {
   // 2. Student No Extraction
   let studentNo = kv.studentId;
   if (!studentNo || studentNo === 'No' || !/\d/.test(studentNo)) {
-    // Strict: only accept known-length student IDs (9-10 digits), strip leading OCR artifact digit
     const idMatch = rawText.match(/\b(20\d{8}|15\d{8}|19\d{8}|18\d{8}|\d{9,10})\b/);
     if (idMatch) {
       let candidate = idMatch[1];
@@ -984,93 +989,101 @@ function formatExtractedRequirementsSummary(rawText) {
   const schoolName = schoolMatch ? schoolMatch[0] : "De La Salle Lipa";
 
   // Parse name into First Name, Middle Name, Last Name
-  // For Indigency/Residency certs the extracted name is typically: "MIKAELA YSABEL L. LANTAFE"
-  // In this format the last word is the surname; the second-to-last word that is a single letter
-  // or initial (e.g. "L.") is the middle name; the remainder are the first name.
   let firstName = "Not detected";
   let middleName = "Not detected";
   let lastName = "Not detected";
 
   if (fullName && fullName !== "Not detected") {
     let clean = fullName.trim();
+    // Strip leading honorifics / non-name prefixes
+    clean = clean.replace(/^(?:(?:mr|ms|mrs|miss|g|gng|bb)[\.\/\s]*)+\s*/i, '');
+    clean = clean.replace(/^(?:complete\s*name|full\s*name|name\s*of\s*student|student\s*name|pangalan)\s*[:\-]?\s*/i, '');
+
     if (clean.includes(',')) {
-      // Format: "LANTAFE, MIKAELA YSABEL L" or "LANTAFE, MIKAELA YSABEL LINATOC"
+      // Format: "MAGBUHAT, Alexie Chyle O." or "LANTAFE, MIKAELA YSABEL L"
       const parts = clean.split(',').map(s => s.trim());
       lastName = parts[0] || "Not detected";
       const rest = (parts[1] || '').split(/\s+/).filter(Boolean);
       if (rest.length >= 2) {
-        // Last token after comma that is a single letter or has a trailing dot = middle initial
         const lastToken = rest[rest.length - 1];
         if (/^[A-Za-z]\.?$/.test(lastToken)) {
           middleName = lastToken.replace('.', '');
           firstName = rest.slice(0, rest.length - 1).join(' ');
         } else {
-          // No clear middle initial: treat everything as first name, no middle
-          firstName = rest.join(' ');
-          middleName = "N/A";
+          middleName = lastToken;
+          firstName = rest.slice(0, rest.length - 1).join(' ');
         }
       } else if (rest.length === 1) {
         firstName = rest[0];
         middleName = "N/A";
       }
     } else {
-      // Format: "MIKAELA YSABEL L. LANTAFE" (Indigency style) or "MIKAELA YSABEL LANTAFE"
       let words = clean.split(/\s+/).filter(Boolean);
 
-      const nameNoiseWords = [
-        'age', 'years', 'year', 'yr', 'yo', 'of', 'legal', 'taong', 'gulang',
-        'single', 'married', 'widow', 'widower', 'separated', 'divorced',
-        'filipino', 'pilipino', 'citizen', 'resident', 'bonafide', 'residing',
+      const leadingNoise = [
         'this', 'is', 'to', 'certify', 'that', 'sto', 'certifies', 'patunay',
-        'katibayan', 'pinatutunayan', 'na', 'si', 'the', 'a', 'and'
+        'katibayan', 'pinatutunayan', 'na', 'si', 'the', 'a', 'and', 'i',
+        'personally', 'known', 'know', 'hereby', 'mr', 'ms', 'mrs', 'miss',
+        'complete', 'name', 'full', 'pangalan'
       ];
 
-      // Trim trailing noise words (e.g. "age", "years", "of", "23") from end of words
-      while (words.length > 0) {
-        const lastW = words[words.length - 1].toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (!lastW || nameNoiseWords.includes(lastW) || /^\d+$/.test(lastW)) {
-          words.pop();
-        } else {
-          break;
-        }
-      }
-
-      // Trim leading noise words (e.g. "This", "is", "to", "certify", "that") from start of words
       while (words.length > 0) {
         const firstW = words[0].toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (!firstW || nameNoiseWords.includes(firstW)) {
+        if (!firstW || leadingNoise.includes(firstW)) {
           words.shift();
         } else {
           break;
         }
       }
 
-      if (words.length >= 3) {
-        lastName = words[words.length - 1];
-        const potentialMiddle = words[words.length - 2];
-        // Single letter or letter+dot = middle initial; otherwise fold into first name
-        if (/^[A-Za-z]\.?$/.test(potentialMiddle)) {
-          middleName = potentialMiddle.replace('.', '');
-          firstName = words.slice(0, words.length - 2).join(' ');
+      const trailingNoise = [
+        'age', 'years', 'year', 'yr', 'yo', 'old', 'anyos', 'of', 'legal', 'taong', 'gulang',
+        'single', 'married', 'widow', 'widower', 'separated', 'divorced',
+        'filipino', 'pilipino', 'citizen', 'resident', 'bonafide', 'residing',
+        'indigent', 'whose', 'specimen', 'signature', 'appears', 'below', 'photo',
+        'complete', 'name', 'birthday', 'birth', 'civil', 'status'
+      ];
+
+      while (words.length > 0) {
+        const lastW = words[words.length - 1].toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (!lastW || trailingNoise.includes(lastW) || /^\d+$/.test(lastW)) {
+          words.pop();
         } else {
-          // No middle initial — all words except last are the first name
-          firstName = words.slice(0, words.length - 1).join(' ');
-          middleName = "N/A";
+          break;
         }
+      }
+
+      // Check for middle initial anywhere between index 1 and words.length - 2
+      let middleIdx = -1;
+      for (let i = 1; i < words.length - 1; i++) {
+        if (/^[A-Za-z]\.?$/.test(words[i])) {
+          middleIdx = i;
+          break;
+        }
+      }
+
+      if (middleIdx !== -1) {
+        middleName = words[middleIdx].replace('.', '');
+        firstName = words.slice(0, middleIdx).join(' ');
+        lastName = words.slice(middleIdx + 1).join(' ');
+      } else if (words.length >= 4) {
+        // e.g. "Alexie Chyle Ortega Magbuhat" -> First: "Alexie Chyle", Middle: "Ortega", Last: "Magbuhat"
+        lastName = words[words.length - 1];
+        middleName = words[words.length - 2];
+        firstName = words.slice(0, words.length - 2).join(' ');
+      } else if (words.length === 3) {
+        // e.g. "Alexie Chyle Magbuhat" -> First: "Alexie Chyle", Middle: "N/A", Last: "Magbuhat"
+        lastName = words[2];
+        firstName = `${words[0]} ${words[1]}`;
+        middleName = "N/A";
       } else if (words.length === 2) {
         firstName = words[0];
         lastName = words[1];
         middleName = "N/A";
       } else if (words.length === 1) {
         firstName = words[0];
+        middleName = "N/A";
       }
-    }
-
-    // Strip any residual certificate preamble stop-words (e.g. "This is to certify that") from extracted first name
-    const certStopWords = ['this', 'is', 'to', 'certify', 'that', 'sto', 'certifies', 'patunay', 'katibayan', 'pinatutunayan', 'na', 'si', 'the', 'of', 'a'];
-    if (firstName && firstName !== "Not detected") {
-      const cleanFirst = firstName.split(/\s+/).filter(w => !certStopWords.includes(w.toLowerCase())).join(' ');
-      if (cleanFirst) firstName = cleanFirst;
     }
 
     // Safety check: Ensure lastName is not a residual noise word (e.g. "age", "years") or purely digits

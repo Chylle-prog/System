@@ -941,7 +941,7 @@ export const applicantAPI = {
       }
 
       let response = null;
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://choqncwkxobwsouyotih.supabase.co';
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://zpakuzpgjgymsefjdoig.supabase.co';
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
       // 2. Direct Supabase Storage upload (0 hops to backend for maximum upload line speed)

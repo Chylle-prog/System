@@ -3074,10 +3074,14 @@ def extract_semantic_anchors_from_indigency(raw_text):
     candidate_name = None
     candidate_town = None
 
+    stop_words = r'(?:\d+\s*(?:years?|yrs?|yo|anyos|taong)|of\s*legal\s*age|born\s+on|single|married|widow|widower|separated|divorced|filipino|pilipino|citizen|is\s+a\s+resident|is\s+an\s+indigent|belongs\s+to|resident|residing|whose\s+specimen|whose\s+signature|whose\s+photo|\n|$)'
+    anchor = r'(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|ito\s+ay\s+pagpapatunay\s+na\s+si|pinatutunayan\s+na\s+si|katibayan\s+na\s+si|certify\s+that|certifies\s+that|certify\s+hereby\s+that|hereby\s+certify\s+that)'
+    prefix = r'(?:that\s+|na\s+si\s+|i\s+personally\s+known?\s+|personally\s+known?\s*(?:to\s+me\s+)?|hereby\s+certify\s+that\s+|mr\.?\s*\/?\s*ms\.?\s*\/?\s*mrs\.?\s*|mr\.?\s+|ms\.?\s+|mrs\.?\s+|miss\s+|g\.?\s+|gng\.?\s+|bb\.?\s+)*'
+
+    pattern = rf'{anchor}[\s\S]*?{prefix}([A-Za-z][A-Za-z\s,\.\-\']{{2,80}}?)(?=[,\.\s]*{stop_words})'
+
     name_anchor_patterns = [
-        r'(?:certify|certifies)\s+that\s+([A-Za-z][A-Za-z\s,\.\-]{2,60}?)(?=\s+\d+\s*(?:years?|yr|yo|taong)|\s+of\s+legal\s+age|\s+(?:single|married|widow|widower|separated|divorced|filipino|pilipino|citizen|is\s+a\s+resident|is\s+a\s+bonafide|a\s+resident|a\s+bonafide|residing|resident|registered)|\n|$)',
-        r'(?:this\s+is\s+to\s+certify\s+that)\s+([A-Za-z][A-Za-z\s,\.\-]{2,60}?)(?=\s+\d+\s*(?:years?|yr|yo)|\s+of\s+legal\s+age|\s+(?:single|married|widow|separated|filipino|is|a|the|resident|bonafide|residing)|\n|$)',
-        r'(?:pinatutunayan|patunay|katibayan)\s+na\s+si\s+([A-Za-z\s,\.\-]+?)(?=\s+(?:ay|na|taga|mamamayan|residente)|\n|$)',
+        pattern,
         r'pangalan\s*[:\-]\s*([A-Za-z\s,\.\-]+)',
         r'name\s*[:\-]\s*([A-Za-z\s,\.\-]+)'
     ]
@@ -3086,11 +3090,19 @@ def extract_semantic_anchors_from_indigency(raw_text):
         m = re.search(p, clean_text, re.IGNORECASE)
         if m:
             raw_name = m.group(1).strip()
-            # Strip trailing age / civil status / citizenship noise that may have slipped in
-            raw_name = re.sub(r'\s*(?:\d+\s*years?\s*of\s*age|of\s*legal\s*age|\d+\s*(?:years?|yr))\s*.*$', '', raw_name, flags=re.IGNORECASE).strip()
-            raw_name = re.sub(r'\s*(?:single|married|widow(?:er)?|separated|divorced|filipino(?:\s*citizen)?|pilipino(?:\s*citizen)?)\s*.*$', '', raw_name, flags=re.IGNORECASE).strip()
-            # Must have at least 2 words and valid name content
-            if len(raw_name) >= 3 and ' ' in raw_name and not re.search(r'certify|certificate|barangay|office|republic|philippines|punong|that$', raw_name, re.IGNORECASE):
+            raw_name = re.sub(r'^(?:this\s+is\s+to\s+|sto\s+)?(?:certify|certifies|patunay|katibayan|pinatutunayan)\s*(?:that|na\s+si)?\s*', '', raw_name, flags=re.IGNORECASE)
+            raw_name = re.sub(r'^(?:i\s+personally\s+known?|personally\s+known?\s*(?:to\s+me)?|i\s+hereby\s+certify\s+that|the\s+undersigned)\s*', '', raw_name, flags=re.IGNORECASE)
+            raw_name = re.sub(r'^(?:(?:mr|ms|mrs|miss|g|gng|bb)[\.\/\s]*)+\s*', '', raw_name, flags=re.IGNORECASE)
+            raw_name = re.sub(r'^(?:complete\s*name|full\s*name|pangalan|name)\s*[:\-]?\s*', '', raw_name, flags=re.IGNORECASE)
+            raw_name = re.sub(r'^[^a-zA-Z]+', '', raw_name)
+            raw_name = re.sub(r'\s*(?:\(?complete\s*name\)?|\(?age\)?|\(?civil\s*status\)?|\(?birthday\)?).*$', '', raw_name, flags=re.IGNORECASE)
+            raw_name = re.sub(r'\s*(?:\d+\s*)?(?:years?\s*(?:of\s*age|old)?|yrs?\s*old|yo|anyos|taong\s*gulang|of\s*legal\s*age|age)\b.*$', '', raw_name, flags=re.IGNORECASE).strip()
+            raw_name = re.sub(r'\s*(?:single(?:\/married(?:\/widow(?:\/separated)?)?)?|married|widow(?:er)?|separated|divorced|filipino(?:\s*citizen)?|pilipino(?:\s*citizen)?|citizen)\b.*$', '', raw_name, flags=re.IGNORECASE).strip()
+            raw_name = re.sub(r'\s*(?:born\s+(?:on\s+)?\d.*|born\s+on.*)$', '', raw_name, flags=re.IGNORECASE).strip()
+            raw_name = re.sub(r'\s*(?:whose\s+specimen\s+signature|whose\s+signature|whose\s+photo|is\s+a\s+(?:bonafide\s+)?resident|is\s+an?\s+indigent|belongs\s+to|resident\s+of|residing\s+at|residing\s+in|resident|bonafide)\b.*$', '', raw_name, flags=re.IGNORECASE).strip()
+            raw_name = re.sub(r',\s*$', '', raw_name).strip()
+
+            if len(raw_name) >= 3 and not re.search(r'certify|certificate|barangay|office|republic|philippines|punong|batangas|lipa|nangkaan|mataasnakahoy|inosluban|inosloban|purok|residency|indigency|sangguniang|kagawad|chairperson|secretary|treasurer|clearance|valid|municipal', raw_name, re.IGNORECASE):
                 candidate_name = raw_name
                 break
 
