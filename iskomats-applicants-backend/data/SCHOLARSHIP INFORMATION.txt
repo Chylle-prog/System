@@ -124,10 +124,12 @@ A: Your application may be marked as incomplete or you may be asked to upload th
 
 Q: What type of merits can I input?
 
-A: You can input any official academic or non-academic achievements—meaning those backed by a certificate, medal, or formal recognition. Examples include:
-• Academic Honors & Awards: Valedictorian, Salutatorian, Honor Student / Dean's List, research recognitions, or academic competition placements (Quiz Bees, Science/Math Olympiads).
-• Non-Academic & Extracurricular: Leadership roles (Student Council, Club Officer), sports competition placements, campus journalism, arts/culture awards, or community service recognitions.
+A: You can input official academic honors and achievements backed by a certificate, diploma, medal, or formal academic recognition. Non-academic achievements (such as sports, pageantry, social clubs, arts/culture, or non-academic extracurriculars) are not accepted for merit scoring. Examples of valid academic merits include:
+• Latin Honors: Summa Cum Laude, Magna Cum Laude, Cum Laude.
+• Class Honors: Valedictorian, Salutatorian, First Honor, Second Honor, Third Honor, Honor Student, With Honors, With High Honors, With Highest Honors.
+• College/University Honors: Dean's List, Academic Lister, President's Lister.
+• Academic Competitions & Research: Placements or awards in Quiz Bees, Math/Science/Robotics Olympiads, Academic Decathlons, and Research / Thesis recognitions.
 
-Tip: Be sure to specify the scope/level of the award (School, Division/City, Regional, or National/International) when filling out your application.
+Tip: Be sure to specify the scope/level of the academic honor (School, Division/City, Regional, National, or International) and upload the supporting certificate.
 
 ------------------------------------------------------------

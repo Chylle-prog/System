@@ -9028,7 +9028,7 @@ const StudentInfo = () => {
                     </span>
                   </div>
                   <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 12px 0', lineHeight: '1.4' }}>
-                    Leave empty if none. If you have academic honors, leadership awards, or competition recognitions, enter them below and attach supporting certificates.
+                    Leave empty if none. If you have academic honors (e.g. Summa/Magna/Cum Laude, Valedictorian, Salutatorian, 1st/2nd/3rd Honor, Dean's List) or academic competition awards, enter them below and attach supporting certificates.
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>

@@ -3672,31 +3672,89 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
 @functools.lru_cache(maxsize=512)
 def analyze_merits_onthefly(merits_text):
     """
-    Fast LRU-cached merits evaluator to ensure GET /applicants loads instantly (0ms lag).
+    Parses merits_text using Gemini API if GEMINI_API_KEY is present in env,
+    otherwise falls back to a fast rule-based parser.
+    Strictly evaluates academic achievements and academic honors:
+    - Summa Cum Laude, Magna Cum Laude, Cum Laude
+    - First Honor, Second Honor, Third Honor, Valedictorian, Salutatorian
+    - Dean's List, Honor Student, Academic Contests
+    Non-academic achievements (sports, pageantry, social clubs, etc.) are excluded and receive 0 points.
     """
+    import os
+    import json
+    import requests
+    
     if not merits_text or not merits_text.strip():
         return 0, "No merits or awards provided."
 
     text_clean = merits_text.strip().lower()
 
-    # Fast rule-based scoring (0ms execution time)
-    score = 5
-    reason = "Evaluated based on academic merits."
+    non_academic_keywords = [
+        'basketball', 'volleyball', 'soccer', 'badminton', 'taekwondo', 'swimming', 'dance',
+        'singing', 'pageant', 'mr.', 'ms.', 'mister', 'miss', 'cheerdance', 'esports',
+        'club officer', 'council officer', 'sports', 'athlete', 'athletic'
+    ]
+    academic_keywords = [
+        'summa', 'magna', 'cum laude', 'laude', 'valedictorian', 'salutatorian',
+        'first honor', '1st honor', 'second honor', '2nd honor', 'third honor', '3rd honor',
+        'honor', 'dean', 'quiz', 'olympiad', 'math', 'science', 'academic', 'research',
+        'thesis', 'scholar', 'lister'
+    ]
 
-    if any(k in text_clean for k in ['valedictorian', 'summa', '1st place', 'champion', 'gold', 'national']):
-        score = 18
-        reason = "High national / top honor award."
-    elif any(k in text_clean for k in ['salutatorian', 'magna', '2nd place', 'silver', 'regional', 'state']):
-        score = 15
-        reason = "Regional or second tier academic award."
-    elif any(k in text_clean for k in ['cum laude', 'dean', 'honor', '3rd place', 'bronze', 'district', 'city']):
-        score = 12
-        reason = "City/District level honor or dean's list."
-    elif any(k in text_clean for k in ['top', 'award', 'certificate', 'contest', 'olympiad', 'contestant']):
-        score = 8
-        reason = "School level contest or participation award."
+    api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
+    if api_key:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+            prompt = f"""
+            You are an expert academic evaluator. Analyze the student's merits and awards text and assign points from 0 to 20 based STRICTLY on academic achievements and academic honors. Non-academic achievements (such as sports, pageantry, social clubs, arts/culture, or non-academic extracurriculars) MUST NOT receive points.
+            
+            Academic Honors Rubric:
+            - 0 points: No academic honors/awards, or only non-academic/regular extracurricular activities.
+            - 1-5 points: School-level academic honors (e.g. Third Honor, Honor Student, Academic Awardee, Dean's List / Academic Lister, Quiz Bee / Science/Math contest participant).
+            - 6-10 points: High academic honors / Division-level (e.g. Second Honor, Cum Laude, With Honors / With High Honors, Division Science/Math Olympiad placement).
+            - 11-15 points: Top academic honors / Regional-level (e.g. First Honor, Salutatorian, Magna Cum Laude, With Highest Honors, Regional Science Fair / Olympiad winner).
+            - 16-20 points: Highest academic distinction / National/International (e.g. Summa Cum Laude, Valedictorian, National/International Science/Math Olympiad top placer).
+            
+            Input Text: "{merits_text}"
+            
+            Return ONLY a valid JSON object:
+            {{"score": <0-20>, "reason": "<one sentence explanation focusing strictly on academic honors>"}}
+            """
+            
+            payload = {
+                "contents": [{
+                    "parts": [{"text": prompt}]
+                }],
+                "generationConfig": {
+                    "responseMimeType": "application/json"
+                }
+            }
+            response = requests.post(url, json=payload, timeout=5)
+            if response.status_code == 200:
+                res_data = response.json()
+                text = res_data['candidates'][0]['content']['parts'][0]['text']
+                parsed = json.loads(text.strip())
+                return int(parsed.get('score', 0)), str(parsed.get('reason', 'Evaluated by AI based on academic merits.'))
+            else:
+                print(f"[AI MERITS ERROR] API call returned status {response.status_code}: {response.text}", flush=True)
+        except Exception as e:
+            print(f"[AI MERITS ERROR] API call failed: {e}", flush=True)
 
-    return score, reason
+    # Fast rule-based academic evaluation fallback
+    if any(k in text_clean for k in ['summa cum laude', 'summa', 'valedictorian', 'national math olympiad', 'national science olympiad', 'international olympiad']):
+        return 20, "Highest academic distinction (Summa Cum Laude / Valedictorian / National Olympiad)."
+    elif any(k in text_clean for k in ['magna cum laude', 'magna', 'salutatorian', 'first honor', '1st honor', 'with highest honors', 'regional olympiad', 'regional science fair']):
+        return 15, "Top academic honors (Magna Cum Laude / Salutatorian / First Honor / Regional Winner)."
+    elif any(k in text_clean for k in ['cum laude', 'second honor', '2nd honor', 'with high honors', 'division olympiad', 'division quiz bee']):
+        return 12, "High academic honors (Cum Laude / Second Honor / Division Placement)."
+    elif any(k in text_clean for k in ['third honor', '3rd honor', "dean's list", 'deans list', 'dean', 'academic lister', 'honor student', 'with honors', 'quiz bee', 'science fair', 'math contest', 'academic award']):
+        return 8, "School-level academic honors (Third Honor / Dean's List / Honor Student / Academic Contest)."
+    elif any(k in text_clean for k in non_academic_keywords) and not any(k in text_clean for k in academic_keywords):
+        return 0, "Non-academic achievement; merit scoring is restricted strictly to academic honors."
+    elif any(k in text_clean for k in ['academic', 'honor', 'award', 'certificate', 'contestant']):
+        return 5, "General academic recognition."
+    
+    return 0, "No recognized academic honors or awards."
 
 @api_bp.route('/test-ai', methods=['GET'])
 def test_ai():
