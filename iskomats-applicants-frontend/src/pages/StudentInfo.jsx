@@ -501,37 +501,7 @@ const compressImageForOcr = async (blobOrDataUrl, maxDim = 1280, quality = 0.75)
   }
 };
 
-export const isTamperBypassActive = () => {
-  if (typeof window === 'undefined') return false;
-  try {
-    return (
-      localStorage.getItem('debug_skip_tamper_check') === 'true' ||
-      localStorage.getItem('bypass_tamper_check') === 'true' ||
-      localStorage.getItem('bypass_tamper') === 'true' ||
-      localStorage.getItem('skip_tamper_check') === 'true' ||
-      localStorage.getItem('skip_tamper') === 'true' ||
-      localStorage.getItem('tamper_bypass') === 'true' ||
-      sessionStorage.getItem('debug_skip_tamper_check') === 'true' ||
-      sessionStorage.getItem('bypass_tamper_check') === 'true' ||
-      window.debug_skip_tamper_check === true ||
-      window.bypass_tamper_check === true
-    );
-  } catch (e) {
-    return false;
-  }
-};
 
-if (typeof window !== 'undefined') {
-  window.setTamperBypass = (enable = true) => {
-    try {
-      localStorage.setItem('debug_skip_tamper_check', enable ? 'true' : 'false');
-      console.log(`[TAMPER BYPASS] debug_skip_tamper_check set to: ${enable} (Applies ONLY to this browser)`);
-    } catch (e) {}
-  };
-  window.isTamperBypassActive = isTamperBypassActive;
-}
-
-let lastOcrScanTamperResult = { hasAlert: false, message: "" };
 
 const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
   if (!imageInput) return "";
@@ -603,9 +573,6 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
         const token = localStorage.getItem('authToken');
         const headers = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
-        if (isTamperBypassActive()) {
-          headers['X-Bypass-Tamper'] = 'true';
-        }
 
         let requestBody = null;
         let isFormData = false;
@@ -624,7 +591,7 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
 
         const fetchOptions = {
           method: 'POST',
-          headers: isFormData ? (token ? { 'Authorization': `Bearer ${token}`, ...(isTamperBypassActive() ? { 'X-Bypass-Tamper': 'true' } : {}) } : (isTamperBypassActive() ? { 'X-Bypass-Tamper': 'true' } : {})) : headers,
+          headers: isFormData ? (token ? { 'Authorization': `Bearer ${token}` } : {}) : headers,
           body: requestBody,
           signal
         };
@@ -632,14 +599,6 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
         const resp = await fetch(`${cleanOrigin}/api/student/verification/ocr-scan`, fetchOptions);
         if (resp.ok) {
           const data = await resp.json();
-          if (!isTamperBypassActive() && data && (data.tamper_alert || data.security_flagged)) {
-            lastOcrScanTamperResult = {
-              hasAlert: true,
-              message: data.tamper_message || "Digital edit / canvas border artifact detected on document."
-            };
-          } else if (isTamperBypassActive()) {
-            lastOcrScanTamperResult = { hasAlert: false, message: "" };
-          }
           const text = String(data.text || "").trim();
           if (text) {
             if (cacheKey) visionOcrCache.set(cacheKey, text);
@@ -2585,7 +2544,6 @@ const StudentInfo = () => {
   // Global debug flags — fetched from DB so they sync across all deployments
   const [debugFlags, setDebugFlags] = useState({
     skip_alternate_check: localStorage.getItem('debug_skip_alternate_check') === 'true',
-    skip_tamper_check: localStorage.getItem('debug_skip_tamper_check') === 'true',
   });
 
   useEffect(() => {
@@ -2594,7 +2552,6 @@ const StudentInfo = () => {
         setDebugFlags(flags);
         // Sync to localStorage so same-session API calls (X-Skip-Alternate-Check header) stay current
         localStorage.setItem('debug_skip_alternate_check', flags.skip_alternate_check ? 'true' : 'false');
-        localStorage.setItem('debug_skip_tamper_check', flags.skip_tamper_check ? 'true' : 'false');
       }
     }).catch(() => {});
   }, []);
@@ -4420,181 +4377,7 @@ const StudentInfo = () => {
     });
   }
 
-  /**
-   * Advanced Document Tampering & Digital Manipulation Detector
-   * MERIT DOCUMENTS ONLY — Not called for Indigency, COE, Grades, or School ID.
-   * Checks for:
-   * 1. Canva/Photoshop editor border guide artifacts (magenta crop marks)
-   * 2. Digital whiteout blocks and pasted text overlay patches
-   */
-  function detectDocumentTampering(imageSource) {
-    return new Promise((resolve) => {
-      if (isTamperBypassActive()) {
-        resolve({ edited: false, reason: "Tamper check bypassed via local browser toggle" });
-        return;
-      }
-      if (!imageSource) {
-        resolve({ edited: false, reason: "Authentic document" });
-        return;
-      }
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        try {
-          const maxDim = 800;
-          let w = img.width;
-          let h = img.height;
-          if (w > maxDim || h > maxDim) {
-            if (w > h) {
-              h = Math.round((h * maxDim) / w);
-              w = maxDim;
-            } else {
-              w = Math.round((w * maxDim) / h);
-              h = maxDim;
-            }
-          }
-          if (!w || !h) {
-            resolve({ edited: false, reason: "Authentic document" });
-            return;
-          }
 
-          const canvas = document.createElement("canvas");
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext("2d", { willReadFrequently: true });
-          ctx.drawImage(img, 0, 0, w, h);
-
-          const imgData = ctx.getImageData(0, 0, w, h);
-          const data = imgData.data;
-
-          // ── Check 1: Saturated Editor UI Border Artifacts (Canva/Photoshop electric crop guides) ──
-          let magentaBorderPx = 0;
-          const checkMarginPx = (x, y) => {
-            const idx = (y * w + x) * 4;
-            const r = data[idx], g = data[idx + 1], b = data[idx + 2];
-            // Canva guide lines are pure electric magenta/cyan
-            if (r >= 160 && b >= 140 && g <= 60 && (r - g) >= 90 && (b - g) >= 70) {
-              magentaBorderPx++;
-            }
-          };
-
-          const topH = Math.floor(h * 0.04);
-          const leftW = Math.floor(w * 0.04);
-          const rightX = Math.floor(w * 0.96);
-          const botY = Math.floor(h * 0.96);
-
-          for (let y = 0; y < topH; y += 2) {
-            for (let x = 0; x < w; x += 2) checkMarginPx(x, y);
-          }
-          for (let y = botY; y < h; y += 2) {
-            for (let x = 0; x < w; x += 2) checkMarginPx(x, y);
-          }
-          for (let y = 0; y < h; y += 2) {
-            for (let x = 0; x < leftW; x += 2) checkMarginPx(x, y);
-            for (let x = rightX; x < w; x += 2) checkMarginPx(x, y);
-          }
-
-          if (magentaBorderPx >= 50) {
-            resolve({
-              edited: true,
-              reason: `Editing canvas border detected (${magentaBorderPx} saturated editor UI border pixels found at margins). Please upload an authentic, unedited document.`,
-              patchCount: magentaBorderPx
-            });
-            return;
-          }
-
-          // ── Check 2: Calculate overall document paper brightness (median proxy) ──
-          const sampleGrays = [];
-          const stepX = Math.max(1, Math.floor(w / 40));
-          const stepY = Math.max(1, Math.floor(h / 40));
-          for (let y = Math.floor(h * 0.1); y < h * 0.9; y += stepY) {
-            for (let x = Math.floor(w * 0.1); x < w * 0.9; x += stepX) {
-              const idx = (y * w + x) * 4;
-              sampleGrays.push(0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
-            }
-          }
-          sampleGrays.sort((a, b) => a - b);
-          const paperMedian = sampleGrays.length > 0 ? sampleGrays[Math.floor(sampleGrays.length * 0.5)] : 220;
-
-          // ── Check 3: Scan text region grid for whiteout patches and digital overlays ──
-          const gridW = 28;
-          const gridH = 18;
-          const marginX = Math.floor(w * 0.08);
-          const marginY = Math.floor(h * 0.08);
-          const contentW = w - 2 * marginX;
-          const contentH = h - 2 * marginY;
-          const cols = Math.floor(contentW / gridW);
-          const rows = Math.floor(contentH / gridH);
-
-          let suspiciousPatches = 0;
-
-          for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-              const startX = marginX + c * gridW;
-              const startY = marginY + r * gridH;
-
-              let sumGray = 0;
-              let count = 0;
-              const pixels = [];
-
-              for (let y = startY; y < startY + gridH; y++) {
-                for (let x = startX; x < startX + gridW; x++) {
-                  const idx = (y * w + x) * 4;
-                  const g = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-                  pixels.push(g);
-                  // Exclude dark text pixels (< 175) to measure patch background brightness
-                  if (g >= 175) {
-                    sumGray += g;
-                    count++;
-                  }
-                }
-              }
-
-              if (count >= 15) {
-                const boxBgMean = sumGray / count;
-                let varSum = 0;
-                for (let p of pixels) {
-                  if (p >= 175) varSum += Math.pow(p - boxBgMean, 2);
-                }
-                const boxBgStd = Math.sqrt(varSum / count);
-
-                const contrast = boxBgMean - paperMedian;
-                // Whiteout block overlay (digitally pasted white/light box on photo of document):
-                // Real clean-scan certificates have paperMedian ~254 -> contrast ~ 0, never triggers.
-                if (boxBgMean >= 210 && contrast >= 15.0 && boxBgStd < 8.0) {
-                  suspiciousPatches++;
-                }
-              }
-            }
-          }
-
-          if (suspiciousPatches >= 4) {
-            resolve({
-              edited: true,
-              reason: `Digital edit / whiteout overlay detected on document (${suspiciousPatches} artificial overlay patch(es) found). Please upload an authentic, unedited document.`,
-              patchCount: suspiciousPatches
-            });
-            return;
-          }
-
-          resolve({ edited: false, reason: "Authentic document" });
-        } catch (err) {
-          console.warn("[TAMPER DETECTOR] Analysis error:", err);
-          resolve({ edited: false, reason: "Authentic document" });
-        }
-      };
-      img.onerror = () => resolve({ edited: false, reason: "Authentic document" });
-
-      if (typeof imageSource === 'string' && imageSource.startsWith('http')) {
-        const sep = imageSource.includes('?') ? '&' : '?';
-        img.src = `${imageSource}${sep}_cb=${Date.now()}`;
-      } else if (typeof imageSource === 'string') {
-        img.src = imageSource;
-      } else {
-        resolve({ edited: false, reason: "Authentic document" });
-      }
-    });
-  }
 
   async function performOcrVerification(docType, docParam, extraParams = {}, videoUrl = null, silent = false) {
     const setStatus = (status) => {
@@ -5851,33 +5634,6 @@ const StudentInfo = () => {
         const certSource = getVerificationDocumentSource(item.photo);
         if (!certSource) continue;
 
-        // ── Security Check: Tamper & AI Detection ONLY on Merit Documents ──
-        if (!isTamperBypassActive()) {
-          const tamperCheck = await detectDocumentTampering(certSource);
-          if (scanToken.aborted) {
-            clearInterval(scanProgressTimer);
-            return;
-          }
-          if (tamperCheck.edited) {
-            allPassed = false;
-            failureReason = `Merit #${i + 1} (${item.title}): Tampering / AI Generation Alert: ${tamperCheck.reason}`;
-            item.verified = 'failed';
-            item.status = failureReason;
-            item.scoreDetails = {
-              "Applicant Name": false,
-              "Merit Keyword": false,
-              "Tamper & AI Check": false
-            };
-            aggregatedResults.push({
-              doc: `Merit #${i + 1}`,
-              verified: false,
-              message: item.status,
-              score_details: item.scoreDetails
-            });
-            break;
-          }
-        }
-
         // Run Google Vision OCR scan
         const ocrText = await performGoogleVisionOcrScan(certSource);
         if (scanToken.aborted) {
@@ -5916,8 +5672,7 @@ const StudentInfo = () => {
         );
         item.scoreDetails = {
           "Applicant Name": namePassed,
-          "Merit Keyword": meritPassed,
-          "Tamper & AI Check": true
+          "Merit Keyword": meritPassed
         };
 
         aggregatedResults.push({
@@ -5954,8 +5709,7 @@ const StudentInfo = () => {
           detectedText: combinedDetectedText,
           scoreDetails: {
             "Applicant Name": aggregatedResults.every(r => r.score_details?.["Applicant Name"]),
-            "Merit Keyword": aggregatedResults.every(r => r.score_details?.["Merit Keyword"]),
-            "Tamper & AI Check": aggregatedResults.every(r => r.score_details?.["Tamper & AI Check"])
+            "Merit Keyword": aggregatedResults.every(r => r.score_details?.["Merit Keyword"])
           },
           requirements: {
             "Applicant Name": `${firstName} ${lastName}`,
@@ -8606,42 +8360,7 @@ const StudentInfo = () => {
               </button>
             </div>
 
-            {/* Digital Tamper Check Row */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: debugFlags.skip_tamper_check ? '#10b981' : '#ef4444' }}>●</span>
-                <span>Tamper Check: {debugFlags.skip_tamper_check ? 'Bypassed' : 'Enabled'}</span>
-              </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  const newVal = !debugFlags.skip_tamper_check;
-                  localStorage.setItem('debug_skip_tamper_check', newVal ? 'true' : 'false');
-                  sessionStorage.setItem('debug_skip_tamper_check', newVal ? 'true' : 'false');
-                  window.debug_skip_tamper_check = newVal;
-                  visionOcrCache.clear();
-                  lastOcrScanTamperResult = { hasAlert: false, message: "" };
-                  setDebugFlags(prev => ({ ...prev, skip_tamper_check: newVal }));
-                  await debugAPI.setFlag('skip_tamper_check', newVal);
-                  if (status && typeof status === 'string' && status.includes('Tampering Alert')) {
-                    setStatus('Tamper bypass updated. Ready to verify.');
-                    setVerified('pending');
-                  }
-                }}
-                style={{
-                  background: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '0.7rem',
-                  fontWeight: '700'
-                }}
-              >
-                Toggle
-              </button>
-            </div>
+
 
             {/* Pass Step Verifications Debug Button */}
             <button

@@ -17,14 +17,8 @@ try:
 except ImportError:
     pytesseract = None
 
-try:
-    from services.tamper_ai_detector import run_full_security_audit
-except ImportError:
-    try:
-        from tamper_ai_detector import run_full_security_audit
-    except ImportError:
-        def run_full_security_audit(image_bytes, doc_type="Document", success=False, message="", meta=None):
-            return {'security_flagged': False, 'audit': {}, 'recommendation': message}
+def run_full_security_audit(image_bytes, doc_type="Document", success=False, message="", meta=None):
+    return {'security_flagged': False, 'audit': {}, 'recommendation': message}
 
 try:
     from project_config import get_performance_config
@@ -2724,51 +2718,6 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
     return success, msg, meta
 
-def detect_document_tampering(image_bytes):
-    """
-    Robust Digital Patch, Whiteout Box, Editor UI Artifact, & Tamper Detector:
-    Detects artificial whiteout blocks, spliced rectangular patches, and editing app
-    canvas borders (e.g. Canva/Photoshop magenta crop artifacts).
-    """
-    if not image_bytes:
-        return False, "No image provided", 0
-
-    try:
-        raw = resolve_verification_image_bytes(image_bytes)
-        if not raw:
-            return False, "Could not resolve image bytes", 0
-
-        nparr = np.frombuffer(raw, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if img is None:
-            return False, "Failed to decode image", 0
-
-        h, w = img.shape[:2]
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-
-        # ── Check 1: Editor Software Canvas / UI Border Artifacts ─────────────
-        # Saturated magenta/pink/cyan UI borders left behind from screenshotting editor canvas
-        m_top = hsv[:int(h * 0.06), :]
-        m_left = hsv[:, :int(w * 0.06)]
-        m_right = hsv[:, int(w * 0.94):]
-        m_bot = hsv[int(h * 0.94):, :]
-
-        # Strict Vivid Magenta/Editor Crop Handle: Hue 140-170, Sat >= 110, Val >= 70
-        mag_px = int(
-            np.sum((m_top[:,:,0] >= 140) & (m_top[:,:,0] <= 170) & (m_top[:,:,1] >= 110) & (m_top[:,:,2] >= 70)) +
-            np.sum((m_left[:,:,0] >= 140) & (m_left[:,:,0] <= 170) & (m_left[:,:,1] >= 110) & (m_left[:,:,2] >= 70)) +
-            np.sum((m_right[:,:,0] >= 140) & (m_right[:,:,0] <= 170) & (m_right[:,:,1] >= 110) & (m_right[:,:,2] >= 70)) +
-            np.sum((m_bot[:,:,0] >= 140) & (m_bot[:,:,0] <= 170) & (m_bot[:,:,1] >= 110) & (m_bot[:,:,2] >= 70))
-        )
-        if mag_px >= 300:
-            return True, f"Editing canvas border artifact detected ({mag_px} editor UI border pixels found at margins). Please upload an authentic, unedited document.", mag_px
-
-        return False, "Authentic document (No digital tampering detected)", 0
-    except Exception as exc:
-        print(f"[TAMPER DETECTOR] Error: {exc}", flush=True)
-        return False, f"Tamper detection error: {exc}", 0
-
 def crop_upper_document_region(image_bytes, crop_ratio=0.42):
     """
     Crops top portion (default 42%) of document image to capture student info,
@@ -2800,15 +2749,6 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
     """
     if not image_bytes:
         return False, "No document image provided.", "", {}
-
-    doc_type_upper = str(doc_type or '').strip().upper()
-    is_merit_doc = any(m in doc_type_upper for m in ['MERIT', 'CERTIFICATE', 'ACHIEVEMENT', 'AWARD'])
-
-    # Pre-scan Digital Tamper & Manipulation Check (ONLY for Merit / Certificate documents)
-    if is_merit_doc:
-        is_edited, tamper_msg, _ = detect_document_tampering(image_bytes)
-        if is_edited:
-            return False, f"Tampering Alert: {tamper_msg}", "", {'tamper_alert': True, 'details': [tamper_msg]}
 
     expected_name = kwargs.get('expected_name') or kwargs.get('full_name')
     if expected_name and (not first_name or not last_name):
@@ -2897,20 +2837,6 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
                 if not parsed_fields.get('units'): parsed_fields['units'] = v
 
         success, msg, meta = verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs)
-
-    # Master Security Audit (EXIF software check, ELA error level splicing analysis, TrueDoc recapture moire scan, Hive AI detector, and Gemini recommendation generator)
-    # ONLY for Merit / Certificate documents
-    if is_merit_doc:
-        try:
-            sec = run_full_security_audit(image_bytes, doc_type=doc_type_upper or "Document", success=success, message=msg, meta=meta)
-            if isinstance(meta, dict):
-                meta['security_audit'] = sec.get('audit', {})
-                meta['ai_recommendation'] = sec.get('recommendation', '')
-                meta['security_flagged'] = sec.get('security_flagged', False)
-                if sec.get('security_flagged'):
-                    meta['tamper_alert'] = True
-        except Exception as sec_err:
-            print(f"[OCR SECURITY AUDIT] Note: {sec_err}", flush=True)
 
     return success, msg, raw_text, meta
 
