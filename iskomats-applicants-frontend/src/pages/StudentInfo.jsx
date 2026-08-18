@@ -3461,11 +3461,6 @@ const StudentInfo = () => {
           return next;
         });
 
-        // Persist to profile in background
-        applicantAPI.updateProfile({ [fieldName]: publicUrl }).catch(err => {
-          console.warn(`Could not sync ${fieldName} to profile:`, err.message);
-        });
-
         console.log(`Video uploaded successfully for ${fieldName}:`, publicUrl);
 
         // Trigger auto-scan logic
@@ -6266,16 +6261,7 @@ const StudentInfo = () => {
       scholarshipSearchProfile = null;
     }
 
-    const searchNameParts = splitFullName(scholarshipSearchProfile?.fullName);
-    setLockedNameFields({
-      firstName: Boolean(searchNameParts.firstName),
-      middleName: Boolean(searchNameParts.middleName),
-      lastName: Boolean(searchNameParts.lastName),
-    });
     setFormData((prev) => mergeMeaningfulValues(prev, {
-      firstName: searchNameParts.firstName,
-      middleName: searchNameParts.middleName,
-      lastName: searchNameParts.lastName,
       schoolName: scholarshipSearchProfile?.university || '',
       gpa: urlGpa || scholarshipSearchProfile?.gpa || '',
       parentsGrossIncome: urlIncome || scholarshipSearchProfile?.income || '',
@@ -6306,19 +6292,16 @@ const StudentInfo = () => {
         const profile = await applicantAPI.getProfile();
         setUserProfile(profile);
 
-        const profileFullName = [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(' ');
-        const searchFullName = scholarshipSearchProfile?.fullName || '';
-
+        // Applicant name is strictly sourced from Supabase
         targetFirstName = profile.first_name || '';
         targetMiddleName = profile.middle_name || '';
         targetLastName = profile.last_name || '';
 
-        if (searchFullName && searchFullName.trim().toLowerCase() !== profileFullName.trim().toLowerCase()) {
-          const parts = splitFullName(searchFullName);
-          targetFirstName = parts.firstName || targetFirstName;
-          targetMiddleName = parts.middleName || targetMiddleName;
-          targetLastName = parts.lastName || targetLastName;
-        }
+        setLockedNameFields({
+          firstName: Boolean(profile.first_name),
+          middleName: Boolean(profile.middle_name),
+          lastName: Boolean(profile.last_name),
+        });
 
         const token = localStorage.getItem('authToken');
         const apiOrigin = API_ORIGIN;

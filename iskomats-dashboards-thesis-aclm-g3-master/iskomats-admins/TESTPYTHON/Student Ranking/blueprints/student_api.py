@@ -953,12 +953,18 @@ def get_scholarship_restriction(scope, scholarship_no):
             'blocking_application': prior_row,
         }
 
+    is_self = (subject == 'You')
+    has_verb = 'have' if is_self else 'has'
+    was_verb = 'were' if is_self else 'was'
+    app_noun = 'your application' if is_self else 'the application'
+    your_noun = 'your' if is_self else 'the'
+
     same_scholarship_row = next((row for row in self_related_rows if row['is_accepted'] == 'Accepted'), None)
     if same_scholarship_row:
         return {
             'already_applied': True,
             'blocked': True,
-            'message': f"{subject} already has an accepted application for this scholarship.",
+            'message': f"{subject} already {has_verb} an accepted application for this scholarship.",
             'reason': 'identity-accepted-same-scholarship',
             'auto_reject': False,
             'blocking_application': same_scholarship_row,
@@ -969,7 +975,7 @@ def get_scholarship_restriction(scope, scholarship_no):
         return {
             'already_applied': True,
             'blocked': True,
-            'message': f"{subject} has already applied for this scholarship and is still pending review.",
+            'message': f"{subject} {has_verb} already applied for this scholarship and {app_noun} is still pending review.",
             'reason': 'identity-pending-same-scholarship',
             'auto_reject': False,
             'blocking_application': same_scholarship_row,
@@ -981,7 +987,7 @@ def get_scholarship_restriction(scope, scholarship_no):
         return {
             'already_applied': False,
             'blocked': True,
-            'message': f"{subject} cannot apply for another scholarship while the accepted scholarship '{scholarship_name}' is still active.",
+            'message': f"{subject} cannot apply for another scholarship while {your_noun} accepted scholarship '{scholarship_name}' is still active.",
             'reason': 'identity-active-accepted-scholarship',
             'auto_reject': False,
             'blocking_application': active_accepted_row,
@@ -2606,37 +2612,47 @@ def update_profile():
             if not updates and not document_updates:
                 return jsonify({'message': 'No changes provided'}), 200
 
+            # Preventive Duplicate Check BEFORE writing to database:
+            # Check if incoming/updated first_name, middle_name, last_name matches another registered applicant.
+            cur.execute("SELECT first_name, middle_name, last_name FROM applicants WHERE applicant_no = %s", (request.user_no,))
+            curr_applicant = cur.fetchone() or {}
+
+            cand_first = data.get('firstName') or data.get('first_name') or curr_applicant.get('first_name')
+            cand_middle = data.get('middleName') or data.get('middle_name') or curr_applicant.get('middle_name')
+            cand_last = data.get('lastName') or data.get('last_name') or curr_applicant.get('last_name')
+
+            simulated_applicant = {
+                'applicant_no': request.user_no,
+                'first_name': cand_first,
+                'middle_name': cand_middle,
+                'last_name': cand_last
+            }
+
+            duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, simulated_applicant)
+            other_duplicate_ids = [aid for aid in duplicate_ids if aid != request.user_no]
+            if other_duplicate_ids:
+                main_id = min(other_duplicate_ids)
+                app_email_table = get_applicant_email_table(cur)
+                cur.execute(f"SELECT email_address FROM {app_email_table} WHERE applicant_no = %s", (main_id,))
+                main_email_row = cur.fetchone()
+                main_email = main_email_row['email_address'] if main_email_row else "your registered account"
+
+                first_val = (cand_first or '').strip()
+                mid_val = (cand_middle or '').strip()
+                last_val = (cand_last or '').strip()
+                mid_part = f"{mid_val} " if mid_val and mid_val.lower() not in ['n/a', 'none', 'null', '.'] else ""
+                dup_name = f"{first_val} {mid_part}{last_val}".strip()
+                return jsonify({
+                    'message': f'Alternate Account detected: An applicant with the name "{dup_name}" already exists.',
+                    'error': f'Please use your existing account ({main_email}).'
+                }), 409
+
             if updates:
                 params.append(request.user_no)
                 sql = f"UPDATE applicants SET {', '.join(updates)} WHERE applicant_no = %s"
                 cur.execute(sql, tuple(params))
             if document_updates:
                 persist_applicant_document_values(cur, request.user_no, document_updates)
-
-            # Preventive Duplicate Check:
-            # Check if another applicant already has the exact same full name (first_name, middle_name, last_name).
-            cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
-            potential_duplicate = cur.fetchone()
-            if potential_duplicate:
-                duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, potential_duplicate)
-                other_duplicate_ids = [aid for aid in duplicate_ids if aid != request.user_no]
-                if other_duplicate_ids:
-                    main_id = min(other_duplicate_ids)
-                    app_email_table = get_applicant_email_table(cur)
-                    cur.execute(f"SELECT email_address FROM {app_email_table} WHERE applicant_no = %s", (main_id,))
-                    main_email_row = cur.fetchone()
-                    main_email = main_email_row['email_address'] if main_email_row else "your registered account"
-                    
-                    conn.rollback()
-                    first_val = (potential_duplicate.get('first_name') or '').strip()
-                    mid_val = (potential_duplicate.get('middle_name') or '').strip()
-                    last_val = (potential_duplicate.get('last_name') or '').strip()
-                    mid_part = f"{mid_val} " if mid_val and mid_val.lower() not in ['n/a', 'none', 'null', '.'] else ""
-                    dup_name = f"{first_val} {mid_part}{last_val}".strip()
-                    return jsonify({
-                        'message': f'Alternate Account detected: An applicant with the name "{dup_name}" already exists.',
-                        'error': f'Please use your existing account ({main_email}).'
-                    }), 409
 
             conn.commit()
 

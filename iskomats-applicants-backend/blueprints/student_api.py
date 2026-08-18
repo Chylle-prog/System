@@ -1100,12 +1100,18 @@ def get_scholarship_restriction(scope, scholarship_no):
             'blocking_application': prior_row,
         }
 
+    is_self = (subject == 'You')
+    has_verb = 'have' if is_self else 'has'
+    was_verb = 'were' if is_self else 'was'
+    app_noun = 'your application' if is_self else 'the application'
+    your_noun = 'your' if is_self else 'the'
+
     same_scholarship_row = next((row for row in self_related_rows if str(row.get('is_accepted')).strip().title() == 'Accepted'), None)
     if same_scholarship_row:
         return {
             'already_applied': True,
             'blocked': True,
-            'message': f"{subject} already has an accepted application for this scholarship.",
+            'message': f"{subject} already {has_verb} an accepted application for this scholarship.",
             'reason': 'identity-accepted-same-scholarship',
             'auto_reject': False,
             'blocking_application': same_scholarship_row,
@@ -1116,7 +1122,7 @@ def get_scholarship_restriction(scope, scholarship_no):
         return {
             'already_applied': True,
             'blocked': True,
-            'message': f"{subject} has already applied for this scholarship and is still pending review.",
+            'message': f"{subject} {has_verb} already applied for this scholarship and {app_noun} is still pending review.",
             'reason': 'identity-pending-same-scholarship',
             'auto_reject': False,
             'blocking_application': same_scholarship_row,
@@ -1130,7 +1136,7 @@ def get_scholarship_restriction(scope, scholarship_no):
         return {
             'already_applied': True,
             'blocked': True,
-            'message': f"{subject} was previously rejected for this scholarship and cannot re-apply.",
+            'message': f"{subject} {was_verb} previously rejected for this scholarship and cannot re-apply.",
             'reason': 'identity-rejected-same-scholarship',
             'auto_reject': False,
             'blocking_application': same_scholarship_rejected_row,
@@ -1142,7 +1148,7 @@ def get_scholarship_restriction(scope, scholarship_no):
         return {
             'already_applied': False,
             'blocked': True,
-            'message': f"{subject} cannot apply for another scholarship while the accepted scholarship '{scholarship_name}' is still active.",
+            'message': f"{subject} cannot apply for another scholarship while {your_noun} accepted scholarship '{scholarship_name}' is still active.",
             'reason': 'identity-active-accepted-scholarship',
             'auto_reject': False,
             'blocking_application': active_accepted_row,
@@ -3111,6 +3117,44 @@ def update_profile():
             if not updates_dict and not document_updates:
                 return jsonify({'message': 'No changes provided'}), 200
 
+            # Preventive Duplicate Check BEFORE writing to database:
+            # Check if incoming/updated first_name, middle_name, last_name matches another registered applicant.
+            skip_alternate_check = request.headers.get('X-Skip-Alternate-Check') == 'true'
+            if not skip_alternate_check:
+                cur.execute("SELECT first_name, middle_name, last_name FROM applicants WHERE applicant_no = %s", (request.user_no,))
+                curr_applicant = cur.fetchone() or {}
+
+                cand_first = updates_dict.get('first_name') if 'first_name' in updates_dict else curr_applicant.get('first_name')
+                cand_middle = updates_dict.get('middle_name') if 'middle_name' in updates_dict else curr_applicant.get('middle_name')
+                cand_last = updates_dict.get('last_name') if 'last_name' in updates_dict else curr_applicant.get('last_name')
+
+                simulated_applicant = {
+                    'applicant_no': request.user_no,
+                    'first_name': cand_first,
+                    'middle_name': cand_middle,
+                    'last_name': cand_last
+                }
+
+                duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, simulated_applicant)
+                other_duplicate_ids = [aid for aid in duplicate_ids if aid != request.user_no]
+                if other_duplicate_ids:
+                    main_id = min(other_duplicate_ids)
+                    app_email_table = get_applicant_email_table(cur)
+                    cur.execute(f"SELECT email_address FROM {app_email_table} WHERE applicant_no = %s", (main_id,))
+                    main_email_row = cur.fetchone()
+                    main_email = main_email_row['email_address'] if main_email_row else "your registered account"
+
+                    first_val = (cand_first or '').strip()
+                    mid_val = (cand_middle or '').strip()
+                    last_val = (cand_last or '').strip()
+                    mid_part = f"{mid_val} " if mid_val and mid_val.lower() not in ['n/a', 'none', 'null', '.'] else ""
+                    dup_name = f"{first_val} {mid_part}{last_val}".strip()
+                    print(f"[CONFLICT] Pre-save rejection: User {request.user_no} attempted to save duplicate identity '{dup_name}' matching applicant {main_id} ({main_email})", flush=True)
+                    return jsonify({
+                        'message': f'Alternate Account detected: An applicant with the name "{dup_name}" already exists.',
+                        'error': f'Please use your existing account ({main_email}).'
+                    }), 409
+
             if updates_dict:
                 cols = list(updates_dict.keys())
                 params = [updates_dict[c] for c in cols]
@@ -3167,34 +3211,6 @@ def update_profile():
 
             if merit_entries_to_save is not None:
                 save_merit_proofs(cur, request.user_no, merit_entries_to_save)
-
-            # Preventive Duplicate Check:
-            # Check if another applicant already has the exact same full name (first_name, middle_name, last_name).
-            skip_alternate_check = request.headers.get('X-Skip-Alternate-Check') == 'true'
-            if not skip_alternate_check:
-                cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
-                potential_duplicate = cur.fetchone()
-                if potential_duplicate:
-                    duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, potential_duplicate)
-                    other_duplicate_ids = [aid for aid in duplicate_ids if aid != request.user_no]
-                    if other_duplicate_ids:
-                        main_id = min(other_duplicate_ids)
-                        app_email_table = get_applicant_email_table(cur)
-                        cur.execute(f"SELECT email_address FROM {app_email_table} WHERE applicant_no = %s", (main_id,))
-                        main_email_row = cur.fetchone()
-                        main_email = main_email_row['email_address'] if main_email_row else "your registered account"
-                        
-                        conn.rollback()
-                        first_val = (potential_duplicate.get('first_name') or '').strip()
-                        mid_val = (potential_duplicate.get('middle_name') or '').strip()
-                        last_val = (potential_duplicate.get('last_name') or '').strip()
-                        mid_part = f"{mid_val} " if mid_val and mid_val.lower() not in ['n/a', 'none', 'null', '.'] else ""
-                        dup_name = f"{first_val} {mid_part}{last_val}".strip()
-                        print(f"[CONFLICT] User {request.user_no} attempted to save duplicate identity '{dup_name}' matching applicant {main_id} ({main_email})", flush=True)
-                        return jsonify({
-                            'message': f'Alternate Account detected: An applicant with the name "{dup_name}" already exists.',
-                            'error': f'Please use your existing account ({main_email}).'
-                        }), 409
 
             conn.commit()
 
