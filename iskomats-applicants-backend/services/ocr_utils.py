@@ -2705,10 +2705,14 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
     if not image_bytes:
         return False, "No document image provided.", "", {}
 
-    # Pre-scan Digital Tamper & Manipulation Check
-    is_edited, tamper_msg, _ = detect_document_tampering(image_bytes)
-    if is_edited:
-        return False, f"Tampering Alert: {tamper_msg}", "", {'tamper_alert': True, 'details': [tamper_msg]}
+    doc_type_upper = str(doc_type or '').strip().upper()
+    is_merit_doc = any(m in doc_type_upper for m in ['MERIT', 'CERTIFICATE', 'ACHIEVEMENT', 'AWARD'])
+
+    # Pre-scan Digital Tamper & Manipulation Check (ONLY for Merit / Certificate documents)
+    if is_merit_doc:
+        is_edited, tamper_msg, _ = detect_document_tampering(image_bytes)
+        if is_edited:
+            return False, f"Tampering Alert: {tamper_msg}", "", {'tamper_alert': True, 'details': [tamper_msg]}
 
     expected_name = kwargs.get('expected_name') or kwargs.get('full_name')
     if expected_name and (not first_name or not last_name):
@@ -2799,16 +2803,18 @@ def verify_document_with_ocr(image_bytes, doc_type, first_name=None, middle_name
         success, msg, meta = verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_name, **kwargs)
 
     # Master Security Audit (EXIF software check, ELA error level splicing analysis, TrueDoc recapture moire scan, Hive AI detector, and Gemini recommendation generator)
-    try:
-        sec = run_full_security_audit(image_bytes, doc_type=doc_type_upper or "Document", success=success, message=msg, meta=meta)
-        if isinstance(meta, dict):
-            meta['security_audit'] = sec.get('audit', {})
-            meta['ai_recommendation'] = sec.get('recommendation', '')
-            meta['security_flagged'] = sec.get('security_flagged', False)
-            if sec.get('security_flagged'):
-                meta['tamper_alert'] = True
-    except Exception as sec_err:
-        print(f"[OCR SECURITY AUDIT] Note: {sec_err}", flush=True)
+    # ONLY for Merit / Certificate documents
+    if is_merit_doc:
+        try:
+            sec = run_full_security_audit(image_bytes, doc_type=doc_type_upper or "Document", success=success, message=msg, meta=meta)
+            if isinstance(meta, dict):
+                meta['security_audit'] = sec.get('audit', {})
+                meta['ai_recommendation'] = sec.get('recommendation', '')
+                meta['security_flagged'] = sec.get('security_flagged', False)
+                if sec.get('security_flagged'):
+                    meta['tamper_alert'] = True
+        except Exception as sec_err:
+            print(f"[OCR SECURITY AUDIT] Note: {sec_err}", flush=True)
 
     return success, msg, raw_text, meta
 

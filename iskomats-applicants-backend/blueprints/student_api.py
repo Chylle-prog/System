@@ -3790,20 +3790,7 @@ def ocr_scan():
         if not image_bytes:
             return jsonify({'success': False, 'message': 'No image data provided for OCR scan.', 'text': ''}), 400
 
-        from services.ocr_utils import extract_text_with_google_cloud_vision, resolve_verification_image_bytes, detect_document_tampering
-
-        # Check if caller requested tamper bypass (per-browser debug mode)
-        bypass_tamper = (
-            request.headers.get('X-Bypass-Tamper', '').lower() == 'true' or
-            request.headers.get('X-Debug-Skip-Tamper', '').lower() == 'true' or
-            request.args.get('bypass_tamper', '').lower() == 'true'
-        )
-
-        # Run Ultra-Fast Digital Tamper & Editor Canvas Border Check (<10ms)
-        is_edited = False
-        tamper_msg = ""
-        if not bypass_tamper:
-            is_edited, tamper_msg, _ = detect_document_tampering(image_bytes)
+        from services.ocr_utils import extract_text_with_google_cloud_vision, resolve_verification_image_bytes
 
         extracted_text, debug_info = extract_text_with_google_cloud_vision(image_bytes, return_debug=True)
         return jsonify({
@@ -3811,9 +3798,9 @@ def ocr_scan():
             'text': extracted_text or "",
             'length': len(extracted_text or ""),
             'debug': debug_info,
-            'tamper_alert': bool(is_edited),
-            'tamper_message': str(tamper_msg) if is_edited else "",
-            'security_flagged': bool(is_edited)
+            'tamper_alert': False,
+            'tamper_message': "",
+            'security_flagged': False
         }), 200
     except Exception as e:
         print(f"[OCR SCAN API EXCEPTION] {e}", flush=True)

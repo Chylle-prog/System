@@ -5003,24 +5003,6 @@ const StudentInfo = () => {
 
         if (scanToken.aborted || activeOcrControllersRef.current[docType]?.aborted) return 'aborted';
 
-        if (!isTamperBypassActive() && lastOcrScanTamperResult.hasAlert) {
-          const tamperReason = lastOcrScanTamperResult.message;
-          const scoreDetails = {
-            "Document Authenticity": false,
-            "Digital Tamper Check": false,
-            "First Name": false,
-            "Last Name": false,
-            "Video Proof": true
-          };
-          const finalMessage = `Tampering Alert: ${tamperReason}`;
-          const resultsList = [{ doc: docType, verified: false, message: finalMessage, score_details: scoreDetails }];
-          if (!silent) {
-            setVerified('failed');
-            setStatus(`Verification failed: ${finalMessage}`);
-          }
-          return { isSuccess: false, scoreDetails, finalMessage, resultsList, detectedText: "[DIGITAL TAMPERING DETECTED]" };
-        }
-
         frontVidCheck = fVidRes;
         backVidCheck = bVidRes;
         detectedText = isNationalId ? `[NATIONAL ID FRONT TEXT]\n${frontText}\n\n[NATIONAL ID BACK TEXT (NO VERIFICATION REQUIRED)]\n${backText}` : `[FRONT ID TEXT]\n${frontText}\n\n[BACK ID TEXT]\n${backText}`;
@@ -5112,24 +5094,6 @@ const StudentInfo = () => {
         ]);
 
         if (scanToken.aborted || activeOcrControllersRef.current[docType]?.aborted) return 'aborted';
-
-        if (!isTamperBypassActive() && lastOcrScanTamperResult.hasAlert) {
-          const tamperReason = lastOcrScanTamperResult.message;
-          const scoreDetails = {
-            "Document Authenticity": false,
-            "Digital Tamper Check": false,
-            "First Name": false,
-            "Last Name": false,
-            "Video Proof": true
-          };
-          const finalMessage = `Tampering Alert: ${tamperReason}`;
-          const resultsList = [{ doc: docType, verified: false, message: finalMessage, score_details: scoreDetails }];
-          if (!silent) {
-            setVerified('failed');
-            setStatus(`Verification failed: ${finalMessage}`);
-          }
-          return { isSuccess: false, scoreDetails, finalMessage, resultsList, detectedText: "[DIGITAL TAMPERING DETECTED]" };
-        }
 
         detectedText = detectedTextRes;
         videoCheck = videoCheckRes;
