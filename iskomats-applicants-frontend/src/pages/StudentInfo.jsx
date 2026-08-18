@@ -2569,6 +2569,7 @@ const StudentInfo = () => {
   const [showSubmissionModal, setShowSubmissionModal] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
   const [promptMessage, setPromptMessage] = useState('');
+  const promptTimerRef = useRef(null);
   const [idPicturePreview, setIdPicturePreview] = useState(null);
 
   useEffect(() => {
@@ -7243,13 +7244,46 @@ const StudentInfo = () => {
     }
   };
 
-  const showPromptMessage = (message, duration = 3000) => {
+  const dismissPrompt = () => {
+    if (promptTimerRef.current) {
+      clearTimeout(promptTimerRef.current);
+      promptTimerRef.current = null;
+    }
+    setShowPrompt(false);
+  };
+
+  const showPromptMessage = (message, duration = 10000) => {
+    if (promptTimerRef.current) {
+      clearTimeout(promptTimerRef.current);
+    }
     setPromptMessage(message);
     setShowPrompt(true);
-    setTimeout(() => {
-      setShowPrompt(false);
-    }, duration);
+    if (duration > 0) {
+      promptTimerRef.current = setTimeout(() => {
+        setShowPrompt(false);
+        promptTimerRef.current = null;
+      }, duration);
+    }
   };
+
+  useEffect(() => {
+    if (!showPrompt) return;
+
+    const handleUserDismissAction = (e) => {
+      // Dismiss toast on button clicks, link clicks, inputs, or key presses
+      if (e.type === 'keydown' || (e.target && e.target.closest('button, a, input, select, textarea, label'))) {
+        dismissPrompt();
+      }
+    };
+
+    window.addEventListener('click', handleUserDismissAction, true);
+    window.addEventListener('keydown', handleUserDismissAction, true);
+
+    return () => {
+      window.removeEventListener('click', handleUserDismissAction, true);
+      window.removeEventListener('keydown', handleUserDismissAction, true);
+    };
+  }, [showPrompt]);
 
   const handleNextStep = async (e) => {
     if (e) e.preventDefault();
@@ -10905,31 +10939,71 @@ const StudentInfo = () => {
       )}
 
       {/* Floating Prompt Alert */}
-      <div className={`prompt-alert ${showPrompt ? 'active' : ''}`} style={{
-        position: 'fixed',
-        bottom: '30px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        background: 'rgba(0, 0, 0, 0.85)',
-        color: 'white',
-        padding: '12px 24px',
-        borderRadius: '50px',
-        zIndex: '10000',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-        transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-        opacity: showPrompt ? 1 : 0,
-        pointerEvents: showPrompt ? 'all' : 'none',
-        marginBottom: showPrompt ? '0' : '-20px'
-      }}>
+      <div 
+        className={`prompt-alert ${showPrompt ? 'active' : ''}`} 
+        onClick={dismissPrompt}
+        style={{
+          position: 'fixed',
+          bottom: '30px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(15, 23, 42, 0.94)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          color: 'white',
+          padding: '14px 18px 14px 22px',
+          borderRadius: '50px',
+          zIndex: '10000',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          maxWidth: '92vw',
+          width: 'max-content',
+          boxShadow: '0 12px 35px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.15)',
+          transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+          opacity: showPrompt ? 1 : 0,
+          pointerEvents: showPrompt ? 'all' : 'none',
+          marginBottom: showPrompt ? '0' : '-20px',
+          cursor: 'pointer'
+        }}
+      >
         <div style={{
-          fontSize: '1rem',
-          fontWeight: '500'
+          fontSize: '0.92rem',
+          fontWeight: '500',
+          lineHeight: '1.45',
+          maxWidth: '680px',
+          wordBreak: 'break-word'
         }}>
           {promptMessage}
         </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            dismissPrompt();
+          }}
+          style={{
+            background: 'rgba(255, 255, 255, 0.15)',
+            border: 'none',
+            color: 'white',
+            borderRadius: '50%',
+            width: '26px',
+            height: '26px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '0.78rem',
+            cursor: 'pointer',
+            flexShrink: 0,
+            transition: 'background 0.2s ease',
+            marginLeft: '4px'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)'}
+          onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'}
+          title="Dismiss notice"
+        >
+          <i className="fas fa-times"></i>
+        </button>
       </div>
 
     </>
