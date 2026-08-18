@@ -3559,12 +3559,8 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
 def analyze_merits_onthefly(merits_text):
     """
     Parses merits_text using Gemini API if GEMINI_API_KEY is present in env,
-    otherwise falls back to a fast rule-based parser.
-    Strictly evaluates academic achievements and academic honors:
-    - Summa Cum Laude, Magna Cum Laude, Cum Laude
-    - First Honor, Second Honor, Third Honor, Valedictorian, Salutatorian
-    - Dean's List, Honor Student, Academic Contests
-    Non-academic achievements (sports, pageantry, social clubs, etc.) are excluded and receive 0 points.
+    otherwise falls back to a calibrated rule-based parser.
+    Strictly evaluates academic achievements and academic honors.
     """
     import os
     import json
@@ -3575,37 +3571,72 @@ def analyze_merits_onthefly(merits_text):
 
     text_clean = merits_text.strip().lower()
 
-    non_academic_keywords = [
-        'basketball', 'volleyball', 'soccer', 'badminton', 'taekwondo', 'swimming', 'dance',
-        'singing', 'pageant', 'mr.', 'ms.', 'mister', 'miss', 'cheerdance', 'esports',
-        'club officer', 'council officer', 'sports', 'athlete', 'athletic'
-    ]
     academic_keywords = [
         'summa', 'magna', 'cum laude', 'laude', 'valedictorian', 'salutatorian',
         'first honor', '1st honor', 'second honor', '2nd honor', 'third honor', '3rd honor',
-        'honor', 'dean', 'quiz', 'olympiad', 'math', 'science', 'academic', 'research',
-        'thesis', 'scholar', 'lister'
+        'highest honors', 'high honors', 'with honors', 'honor', 'dean', 'quiz', 'olympiad',
+        'math', 'science', 'academic', 'research', 'thesis', 'scholar', 'lister', 'gwa'
     ]
 
     api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
     if api_key:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
-            prompt = f"""
-            You are an expert academic evaluator. Analyze the student's merits and awards text and assign points from 0 to 20 based STRICTLY on academic achievements and academic honors. Non-academic achievements (such as sports, pageantry, social clubs, arts/culture, or non-academic extracurriculars) MUST NOT receive points.
-            
-            Academic Honors Rubric:
-            - 0 points: No academic honors/awards, or only non-academic/regular extracurricular activities.
-            - 1-5 points: School-level academic honors (e.g. Third Honor, Honor Student, Academic Awardee, Dean's List / Academic Lister, Quiz Bee / Science/Math contest participant).
-            - 6-10 points: High academic honors / Division-level (e.g. Second Honor, Cum Laude, With Honors / With High Honors, Division Science/Math Olympiad placement).
-            - 11-15 points: Top academic honors / Regional-level (e.g. First Honor, Salutatorian, Magna Cum Laude, With Highest Honors, Regional Science Fair / Olympiad winner).
-            - 16-20 points: Highest academic distinction / National/International (e.g. Summa Cum Laude, Valedictorian, National/International Science/Math Olympiad top placer).
-            
-            Input Text: "{merits_text}"
-            
-            Return ONLY a valid JSON object:
-            {{"score": <0-20>, "reason": "<one sentence explanation focusing strictly on academic honors>"}}
-            """
+            prompt = f"""You are an expert academic scholarship evaluator.
+Analyze the student's merits and awards text and assign a calibrated score from 0 to 20 points based SOLELY on verified academic honors, recognitions, and scholastic achievements.
+
+SCORING PRINCIPLES:
+1. Points are awarded exclusively for academic honors, academic competition awards, GWA distinctions, and formal scholastic recognitions.
+2. Submissions that do not describe qualifying academic honors or scholastic achievements receive 0 points.
+3. If multiple achievements are mentioned, award points based on the highest qualifying academic honor.
+
+CALIBRATED ACADEMIC RUBRIC (0 - 20 Points):
+- 20 points: Highest National / International Academic Distinction
+  • Summa Cum Laude, Batch Valedictorian, Rank 1 Overall Batch, 1st Place National/International Science/Math/Research Olympiad.
+- 17 - 19 points: High National / Top Regional Academic Distinction
+  • Magna Cum Laude, Batch Salutatorian, Rank 2 Overall Batch, 1st Place Regional Olympiad / Top 3 National Olympiad.
+- 14 - 16 points: Regional Placement / Division Champion / Highest Honors
+  • Cum Laude, 1st Honor, With Highest Honors (DepEd GWA 98-100), 1st Place Division Academic Contest / Top 3 Regional Fair.
+- 11 - 13 points: High Division Placement / High Academic Honors
+  • 2nd Honor, With High Honors (DepEd GWA 95-97), President's Lister, 2nd-3rd Place Division Science/Math Contest.
+- 7 - 10 points: School-Level Honors / Regular Academic Distinction
+  • 3rd Honor, With Honors (DepEd GWA 90-94), Dean's Lister, Academic Excellence Awardee, Division Contest Participant.
+- 3 - 6 points: General Academic Recognition / School-Level Contestant
+  • Academic Contestant / Quiz Bee Participant, Top 10 in Class/Section, Subject Academic Award (e.g., Best in Science/Math).
+- 0 points: No Qualifying Academic Honors
+  • No recognized academic honors or scholastic achievements provided.
+
+FEW-SHOT EXAMPLES:
+
+Example 1 (Top Academic Distinction):
+Input: "High School Batch Valedictorian and Champion in National Math Olympiad"
+Output: {{"score": 20, "reason": "Awarded maximum 20 points for High School Batch Valedictorian and National Olympiad Champion."}}
+
+Example 2 (DepEd K-12 Honors):
+Input: "Graduated Senior High School STEM Strand With Highest Honors (GWA 98.4)"
+Output: {{"score": 16, "reason": "Awarded 16 points for graduating With Highest Honors."}}
+
+Example 3 (Division Level Placement):
+Input: "2nd Place in Division Science Investigatory Project Contest"
+Output: {{"score": 12, "reason": "Awarded 12 points for 2nd Place in Division Science Contest."}}
+
+Example 4 (College Academic Lister):
+Input: "Consistent Dean's Lister for 1st and 2nd Semester AY 2023-2024"
+Output: {{"score": 9, "reason": "Awarded 9 points for multi-semester Dean's List academic standing."}}
+
+Example 5 (School Academic Award):
+Input: "Best in Mathematics and Top 5 in Section"
+Output: {{"score": 5, "reason": "Awarded 5 points for subject academic excellence award."}}
+
+Example 6 (No Qualifying Academic Honor):
+Input: "Member of Student Committee 2023"
+Output: {{"score": 0, "reason": "No qualifying academic honors or scholastic achievements recognized."}}
+
+Now evaluate this applicant:
+Input Text: "{merits_text}"
+
+Return ONLY a valid JSON object:
+{{"score": <0-20>, "reason": "<one sentence concise explanation focusing on academic honors>"}}"""
             
             payload = {
                 "contents": [{
@@ -3626,19 +3657,19 @@ def analyze_merits_onthefly(merits_text):
         except Exception as e:
             print(f"[AI MERITS ERROR] API call failed: {e}", flush=True)
 
-    # Fast rule-based academic evaluation fallback
-    if any(k in text_clean for k in ['summa cum laude', 'summa', 'valedictorian', 'national math olympiad', 'national science olympiad', 'international olympiad']):
-        return 20, "Highest academic distinction (Summa Cum Laude / Valedictorian / National Olympiad)."
-    elif any(k in text_clean for k in ['magna cum laude', 'magna', 'salutatorian', 'first honor', '1st honor', 'with highest honors', 'regional olympiad', 'regional science fair']):
-        return 15, "Top academic honors (Magna Cum Laude / Salutatorian / First Honor / Regional Winner)."
-    elif any(k in text_clean for k in ['cum laude', 'second honor', '2nd honor', 'with high honors', 'division olympiad', 'division quiz bee']):
-        return 12, "High academic honors (Cum Laude / Second Honor / Division Placement)."
-    elif any(k in text_clean for k in ['third honor', '3rd honor', "dean's list", 'deans list', 'dean', 'academic lister', 'honor student', 'with honors', 'quiz bee', 'science fair', 'math contest', 'academic award']):
-        return 8, "School-level academic honors (Third Honor / Dean's List / Honor Student / Academic Contest)."
-    elif any(k in text_clean for k in non_academic_keywords) and not any(k in text_clean for k in academic_keywords):
-        return 0, "Non-academic achievement; merit scoring is restricted strictly to academic honors."
-    elif any(k in text_clean for k in ['academic', 'honor', 'award', 'certificate', 'contestant']):
-        return 5, "General academic recognition."
+    # Calibrated rule-based academic evaluation fallback
+    if any(k in text_clean for k in ['summa cum laude', 'summa', 'valedictorian', 'national math olympiad', 'national science olympiad', 'international olympiad', 'rank 1 overall']):
+        return 20, "Highest academic distinction (Summa Cum Laude / Valedictorian / National Olympiad Champion)."
+    elif any(k in text_clean for k in ['magna cum laude', 'magna', 'salutatorian', 'regional olympiad champion', 'top 3 national']):
+        return 18, "Top national / regional academic distinction (Magna Cum Laude / Salutatorian / Regional Champion)."
+    elif any(k in text_clean for k in ['cum laude', 'first honor', '1st honor', 'with highest honors', 'highest honors', '1st place division']):
+        return 15, "High academic honors (Cum Laude / 1st Honor / With Highest Honors / Division Champion)."
+    elif any(k in text_clean for k in ['second honor', '2nd honor', 'with high honors', 'high honors', "president's list", 'presidents list', 'division olympiad', 'division quiz bee']):
+        return 12, "High academic honors (2nd Honor / With High Honors / President's List / Division Placement)."
+    elif any(k in text_clean for k in ['third honor', '3rd honor', "dean's list", 'deans list', 'dean', 'academic lister', 'honor student', 'with honors', 'academic excellence', 'quiz bee', 'science fair', 'math contest', 'academic award']):
+        return 8, "School-level academic honors (3rd Honor / With Honors / Dean's List / Academic Contest)."
+    elif any(k in text_clean for k in ['academic', 'honor', 'award', 'certificate', 'contestant', 'top 10', 'best in math', 'best in science', 'best in research']):
+        return 5, "General academic recognition / subject award."
     
     return 0, "No recognized academic honors or awards."
 

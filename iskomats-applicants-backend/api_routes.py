@@ -3669,105 +3669,7 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         }), 500
 
 
-@functools.lru_cache(maxsize=512)
-def analyze_merits_onthefly(merits_text):
-    """
-    Parses merits_text using Gemini API if GEMINI_API_KEY is present in env,
-    otherwise falls back to a fast rule-based parser.
-    Strictly evaluates academic achievements and academic honors:
-    - Summa Cum Laude, Magna Cum Laude, Cum Laude
-    - First Honor, Second Honor, Third Honor, Valedictorian, Salutatorian
-    - Dean's List, Honor Student, Academic Contests
-    Non-academic achievements (sports, pageantry, social clubs, etc.) are excluded and receive 0 points.
-    """
-    import os
-    import json
-    import requests
-    
-    if not merits_text or not merits_text.strip():
-        return 0, "No merits or awards provided."
 
-    text_clean = merits_text.strip().lower()
-
-    non_academic_keywords = [
-        'basketball', 'volleyball', 'soccer', 'badminton', 'taekwondo', 'swimming', 'dance',
-        'singing', 'pageant', 'mr.', 'ms.', 'mister', 'miss', 'cheerdance', 'esports',
-        'club officer', 'council officer', 'sports', 'athlete', 'athletic'
-    ]
-    academic_keywords = [
-        'summa', 'magna', 'cum laude', 'laude', 'valedictorian', 'salutatorian',
-        'first honor', '1st honor', 'second honor', '2nd honor', 'third honor', '3rd honor',
-        'honor', 'dean', 'quiz', 'olympiad', 'math', 'science', 'academic', 'research',
-        'thesis', 'scholar', 'lister'
-    ]
-
-    api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
-    if api_key:
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
-            prompt = f"""
-            You are an expert academic evaluator. Analyze the student's merits and awards text and assign points from 0 to 20 based STRICTLY on academic achievements and academic honors. Non-academic achievements (such as sports, pageantry, social clubs, arts/culture, or non-academic extracurriculars) MUST NOT receive points.
-            
-            Academic Honors Rubric:
-            - 0 points: No academic honors/awards, or only non-academic/regular extracurricular activities.
-            - 1-5 points: School-level academic honors (e.g. Third Honor, Honor Student, Academic Awardee, Dean's List / Academic Lister, Quiz Bee / Science/Math contest participant).
-            - 6-10 points: High academic honors / Division-level (e.g. Second Honor, Cum Laude, With Honors / With High Honors, Division Science/Math Olympiad placement).
-            - 11-15 points: Top academic honors / Regional-level (e.g. First Honor, Salutatorian, Magna Cum Laude, With Highest Honors, Regional Science Fair / Olympiad winner).
-            - 16-20 points: Highest academic distinction / National/International (e.g. Summa Cum Laude, Valedictorian, National/International Science/Math Olympiad top placer).
-            
-            Input Text: "{merits_text}"
-            
-            Return ONLY a valid JSON object:
-            {{"score": <0-20>, "reason": "<one sentence explanation focusing strictly on academic honors>"}}
-            """
-            
-            payload = {
-                "contents": [{
-                    "parts": [{"text": prompt}]
-                }],
-                "generationConfig": {
-                    "responseMimeType": "application/json"
-                }
-            }
-            response = requests.post(url, json=payload, timeout=5)
-            if response.status_code == 200:
-                res_data = response.json()
-                text = res_data['candidates'][0]['content']['parts'][0]['text']
-                parsed = json.loads(text.strip())
-                return int(parsed.get('score', 0)), str(parsed.get('reason', 'Evaluated by AI based on academic merits.'))
-            else:
-                print(f"[AI MERITS ERROR] API call returned status {response.status_code}: {response.text}", flush=True)
-        except Exception as e:
-            print(f"[AI MERITS ERROR] API call failed: {e}", flush=True)
-
-    # Fast rule-based academic evaluation fallback
-    if any(k in text_clean for k in ['summa cum laude', 'summa', 'valedictorian', 'national math olympiad', 'national science olympiad', 'international olympiad']):
-        return 20, "Highest academic distinction (Summa Cum Laude / Valedictorian / National Olympiad)."
-    elif any(k in text_clean for k in ['magna cum laude', 'magna', 'salutatorian', 'first honor', '1st honor', 'with highest honors', 'regional olympiad', 'regional science fair']):
-        return 15, "Top academic honors (Magna Cum Laude / Salutatorian / First Honor / Regional Winner)."
-    elif any(k in text_clean for k in ['cum laude', 'second honor', '2nd honor', 'with high honors', 'division olympiad', 'division quiz bee']):
-        return 12, "High academic honors (Cum Laude / Second Honor / Division Placement)."
-    elif any(k in text_clean for k in ['third honor', '3rd honor', "dean's list", 'deans list', 'dean', 'academic lister', 'honor student', 'with honors', 'quiz bee', 'science fair', 'math contest', 'academic award']):
-        return 8, "School-level academic honors (Third Honor / Dean's List / Honor Student / Academic Contest)."
-    elif any(k in text_clean for k in non_academic_keywords) and not any(k in text_clean for k in academic_keywords):
-        return 0, "Non-academic achievement; merit scoring is restricted strictly to academic honors."
-    elif any(k in text_clean for k in ['academic', 'honor', 'award', 'certificate', 'contestant']):
-        return 5, "General academic recognition."
-    
-    return 0, "No recognized academic honors or awards."
-
-@api_bp.route('/test-ai', methods=['GET'])
-def test_ai():
-    import os
-    merit_text = request.args.get('merits', 'Valedictorian')
-    score, reason = analyze_merits_onthefly(merit_text)
-    return jsonify({
-        'status': 'success',
-        'merit_tested': merit_text,
-        'ai_score': score,
-        'ai_reason': reason,
-        'api_key_exists': bool(os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY'))
-    })
 
 
 @api_bp.route('/applicants/<program>', methods=['GET'])
@@ -3941,12 +3843,6 @@ def get_applicants(current_user_id, pro_no, role, program):
                         a['income'] = float(a['income'])
                     except (ValueError, TypeError):
                         pass
-                
-                # AI merits evaluation calculated purely in memory (on-the-fly) without saving to DB
-                merits_text = a.get('meritsAwardsReceived') or ""
-                m_score, m_reason = analyze_merits_onthefly(merits_text)
-                a['meritScore'] = m_score
-                a['meritReason'] = m_reason
                  
                 # Convert document blobs to media arrays (Optimized: use URLs)
                 # Include both image files and video files for each document type
