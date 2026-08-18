@@ -868,7 +868,10 @@ def parse_parent_status(value):
 
 
 def normalize_identity_name(value):
-    return normalize_matching_text(value)
+    val_str = str(value or '').strip()
+    if val_str.lower() in {'n/a', 'na', 'none', 'null', '.', '-'}:
+        return ''
+    return normalize_matching_text(val_str)
 
 
 def normalize_parent_full_name(value):
@@ -2502,9 +2505,18 @@ def get_profile():
                 applicant['portal_lock_message'] = None
             else:
                 duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, applicant)
-                # Oldest Account Wins: Only restrict if the current user_no is NOT the smallest ID for this identity
-                applicant['duplicate_applicant_exists'] = request.user_no > min(duplicate_ids)
-                applicant['portal_lock_message'] = 'This is a duplicate account. Please use your original login.' if applicant['duplicate_applicant_exists'] else None
+                other_duplicate_ids = [aid for aid in duplicate_ids if aid != request.user_no]
+                is_duplicate = len(other_duplicate_ids) > 0 and request.user_no > min(duplicate_ids)
+                applicant['duplicate_applicant_exists'] = is_duplicate
+                if is_duplicate:
+                    main_id = min(duplicate_ids)
+                    app_email_table = get_applicant_email_table(cur)
+                    cur.execute(f"SELECT email_address FROM {app_email_table} WHERE applicant_no = %s", (main_id,))
+                    main_email_row = cur.fetchone()
+                    main_email = main_email_row['email_address'] if main_email_row else "your original account"
+                    applicant['portal_lock_message'] = f'This is a duplicate account. Please use your original login ({main_email}).'
+                else:
+                    applicant['portal_lock_message'] = None
 
             # Calculate sibling-blocked scholarships for the portal
             sibling_blocked_ids = []
@@ -3157,27 +3169,31 @@ def update_profile():
                 save_merit_proofs(cur, request.user_no, merit_entries_to_save)
 
             # Preventive Duplicate Check:
-            # We fetch the potentially updated applicant and check if they've become a duplicate.
-            # "Oldest Wins": If the current account is NOT the oldest for this identity, we reject the save.
+            # Check if another applicant already has the exact same full name (first_name, middle_name, last_name).
             skip_alternate_check = request.headers.get('X-Skip-Alternate-Check') == 'true'
             if not skip_alternate_check:
                 cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
                 potential_duplicate = cur.fetchone()
                 if potential_duplicate:
                     duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, potential_duplicate)
-                    if len(duplicate_ids) > 1 and request.user_no > min(duplicate_ids):
-                        main_id = min(duplicate_ids)
-                        # Correctly fetch email from the auth table, not the applicant data table
+                    other_duplicate_ids = [aid for aid in duplicate_ids if aid != request.user_no]
+                    if other_duplicate_ids:
+                        main_id = min(other_duplicate_ids)
                         app_email_table = get_applicant_email_table(cur)
                         cur.execute(f"SELECT email_address FROM {app_email_table} WHERE applicant_no = %s", (main_id,))
                         main_email_row = cur.fetchone()
-                        main_email = main_email_row['email_address'] if main_email_row else "your original account"
+                        main_email = main_email_row['email_address'] if main_email_row else "your registered account"
                         
                         conn.rollback()
-                        print(f"[CONFLICT] User {request.user_no} attempted to create/update to a duplicate identity of {main_id} ({main_email})", flush=True)
+                        first_val = (potential_duplicate.get('first_name') or '').strip()
+                        mid_val = (potential_duplicate.get('middle_name') or '').strip()
+                        last_val = (potential_duplicate.get('last_name') or '').strip()
+                        mid_part = f"{mid_val} " if mid_val and mid_val.lower() not in ['n/a', 'none', 'null', '.'] else ""
+                        dup_name = f"{first_val} {mid_part}{last_val}".strip()
+                        print(f"[CONFLICT] User {request.user_no} attempted to save duplicate identity '{dup_name}' matching applicant {main_id} ({main_email})", flush=True)
                         return jsonify({
-                            'message': 'Alternate Account detected',
-                            'error': f'Please use your main account: {main_email}'
+                            'message': f'Alternate Account detected: An applicant with the name "{dup_name}" already exists.',
+                            'error': f'Please use your existing account ({main_email}).'
                         }), 409
 
             conn.commit()

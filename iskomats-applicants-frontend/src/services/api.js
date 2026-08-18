@@ -332,7 +332,10 @@ const makeRequest = async (endpoint, options = {}) => {
       } catch (e) {
         throw new Error(`Server Error (${response.status}): ${response.statusText || 'Server warming up or unavailable'}`);
       }
-      throw new Error(errorData.message || errorData.error || `Request failed with status ${response.status}`);
+      const detailedErr = (errorData.message && errorData.error && errorData.message !== errorData.error)
+        ? `${errorData.message} ${errorData.error}`
+        : (errorData.message || errorData.error || `Request failed with status ${response.status}`);
+      throw new Error(detailedErr);
     }
 
     try {
