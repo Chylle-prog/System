@@ -501,7 +501,23 @@ const compressImageForOcr = async (blobOrDataUrl, maxDim = 1280, quality = 0.75)
   }
 };
 
-
+export const dataUrlToBlob = (dataUrl) => {
+  if (!dataUrl || typeof dataUrl !== 'string') return null;
+  if (!dataUrl.startsWith('data:')) return null;
+  try {
+    const arr = dataUrl.split(',');
+    const match = arr[0].match(/:(.*?);/);
+    const mime = match ? match[1] : 'image/jpeg';
+    const bstr = atob(arr[1] || '');
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) u8arr[n] = bstr.charCodeAt(n);
+    return new Blob([u8arr], { type: mime });
+  } catch (e) {
+    console.warn('[dataUrlToBlob] Conversion error:', e);
+    return null;
+  }
+};
 
 const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
   if (!imageInput) return "";
@@ -5765,22 +5781,6 @@ const StudentInfo = () => {
       payload.append(payloadFieldName, typeof value === 'boolean' ? String(value) : value);
       hasPayload = true;
     }
-
-    // Helper to convert base64 dataUrl to Blob
-    const dataUrlToBlob = (dataUrl) => {
-      try {
-        const arr = dataUrl.split(',');
-        const match = arr[0].match(/:(.*?);/);
-        const mime = match ? match[1] : 'video/mp4';
-        const bstr = atob(arr[1] || '');
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) u8arr[n] = bstr.charCodeAt(n);
-        return new Blob([u8arr], { type: mime });
-      } catch (e) {
-        return null;
-      }
-    };
 
     const appendSmartFile = (fieldName, sourceValue) => {
       if (!sourceValue) return;
