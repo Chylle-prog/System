@@ -2551,7 +2551,7 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
     name_ok = (first_ok and last_ok)
     if not name_ok:
-        failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}'. Found in COR: '{parsed_fields.get('name', 'Not found')}')")
+        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}'. Found in COR: '{parsed_fields.get('name', 'Not found')}')")
 
     # 2. STUDENT ID MATCHING
     if expected_id_no and str(expected_id_no).strip():
@@ -3072,8 +3072,8 @@ def verify_grades_fields(parsed_fields, raw_text, first_name, middle_name, last_
         first_name, last_name, target_name_str, raw_text, middle_name
     )
 
-    if not (first_ok and middle_ok and last_ok and sequence_ok):
-        failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}'. Found in Grades: '{parsed_fields.get('name', 'Not found')}')")
+    if not (first_ok and last_ok and sequence_ok):
+        failures.append(f"Name mismatch (Expected: '{first_name} {last_name}'. Found in Grades: '{parsed_fields.get('name', 'Not found')}')")
 
     # 2. STUDENT ID MATCHING
     if expected_id_no and str(expected_id_no).strip():
@@ -3249,11 +3249,11 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
         first_name, last_name, search_target, search_raw, middle_name
     )
 
-    if not (first_ok and middle_ok and last_ok and sequence_ok):
+    if not (first_ok and last_ok and sequence_ok):
         if name_errors:
             failures.extend(name_errors)
         else:
-            failures.append(f"Name mismatch (Expected: '{first_name} {middle_name or ''} {last_name}' in Indigency Certificate)")
+            failures.append(f"Name mismatch (Expected: '{first_name} {last_name}' in Indigency Certificate)")
 
     # 2. ADDRESS / TOWN MATCHING
     addr_ok = True
@@ -3284,14 +3284,14 @@ def verify_indigency_fields(raw_text, first_name, middle_name, last_name, expect
     if not doc_type_ok:
         failures.append("Document Type Mismatch: Certificate does not contain required 'Indigency' / 'Residency' keywords")
 
-    success = first_ok and middle_ok and last_ok and sequence_ok and addr_ok and doc_type_ok
+    success = first_ok and last_ok and sequence_ok and addr_ok and doc_type_ok
     if success:
         doc_name = "Residency Certificate" if is_residency_doc else "Indigency Certificate"
-        msg = f"{doc_name} Verified: Name ({first_name} {middle_name or ''} {last_name}) and document type matched."
+        msg = f"{doc_name} Verified: Name ({first_name} {last_name}) and document type matched."
     else:
         msg = "Indigency/Residency Verification Failed: " + "; ".join(failures)
 
-    meta['name_ok'] = first_ok and middle_ok and last_ok and sequence_ok
+    meta['name_ok'] = first_ok and last_ok and sequence_ok
     meta['details'] = failures
     meta['detected_text'] = raw_text
 

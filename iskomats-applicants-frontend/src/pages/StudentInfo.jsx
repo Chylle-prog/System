@@ -3433,7 +3433,6 @@ const StudentInfo = () => {
         message: 'Indigency Certificate verified successfully! (Debug Bypass)',
         score_details: {
           "First Name": true,
-          "Middle Name": middleName ? true : null,
           "Last Name": true,
           "Barangay Address": true
         }
@@ -3447,7 +3446,6 @@ const StudentInfo = () => {
         message: 'Certificate of Enrollment verified successfully! (Debug Bypass)',
         score_details: {
           "First Name": true,
-          "Middle Name": middleName ? true : null,
           "Last Name": true,
           "ID Number": true,
           "School Name": true,
@@ -3463,7 +3461,6 @@ const StudentInfo = () => {
         message: 'Grades document verified successfully! (Debug Bypass)',
         score_details: {
           "First Name": true,
-          "Middle Name": middleName ? true : null,
           "Last Name": true
         }
       }]);
@@ -5079,7 +5076,6 @@ const StudentInfo = () => {
           isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && effectiveVideoOk && coeTypeOk && unitsOk;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
-            "Middle Name": middleName ? nameCheck.details.middle_ok : null,
             "Last Name": nameCheck.details.last_ok,
             "School Name": schoolName ? schoolOk : null,
             "Course / Track": course ? courseOk : null,
@@ -5138,7 +5134,6 @@ const StudentInfo = () => {
           isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && effectiveVideoOk && gradesTypeOk;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
-            "Middle Name": null,
             "Last Name": nameCheck.details.last_ok,
             "Document Type": gradesTypeOk,
             "GPA (Document)": detectedDocGpa ? (gpaOk ? true : false) : (gpa ? false : null),
@@ -5169,7 +5164,6 @@ const StudentInfo = () => {
           // because it can contain unrelated content that causes false positives)
           const docOnlyText = (detectedText || "").toLowerCase();
           const combinedText = (detectedText + " " + (videoCheck?.detectedText || "")).toLowerCase();
-          // Use full name (including middle) with the same strict reverse-candidate check as COR
           const nameCheck = studentNameMatchesText(docOnlyText, firstName, "", lastName);
           const addrOk = targetBarangay ? addressMatchesText(docOnlyText, targetBarangay) : true;
           const townCityOk = townCity ? addressMatchesText(docOnlyText, townCity) : true;
@@ -5257,7 +5251,6 @@ const StudentInfo = () => {
 
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
-            "Middle Name": null,
             "Last Name": nameCheck.details.last_ok,
             "Barangay Address": targetBarangay ? addrOk : null,
             "Town / City": townCity ? townCityOk : null,
@@ -5317,7 +5310,6 @@ const StudentInfo = () => {
 
         debugRequirements = {
           "First Name": firstName || 'N/A',
-          "Middle Name": middleName ? middleName : null,
           "Last Name": lastName || 'N/A',
           "School Name": schoolName || 'N/A',
           "Course / Track": course || 'N/A',
