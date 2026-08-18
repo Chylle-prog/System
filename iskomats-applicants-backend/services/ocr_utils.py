@@ -3331,7 +3331,7 @@ def verify_school_id_fields(raw_text, first_name, middle_name, last_name, **kwar
 
     # 1. Name Verification
     first_ok, middle_ok, last_ok, seq_ok = verify_name_sequence(first_name, last_name, raw_text, full_raw_text=raw_text, middle_name=middle_name)
-    name_matched = first_ok and last_ok and seq_ok
+    name_matched = seq_ok or (first_ok and last_ok)
     if not name_matched:
         failures.append(f"Name mismatch (Expected: '{first_name} {last_name}' on School ID)")
 
@@ -3398,7 +3398,7 @@ def verify_national_id_fields(raw_text, first_name, middle_name, last_name, **kw
 
     # 1. Full Name Verification
     first_ok, middle_ok, last_ok, seq_ok = verify_name_sequence(first_name, last_name, raw_text, full_raw_text=raw_text, middle_name=middle_name)
-    name_matched = first_ok and last_ok and seq_ok
+    name_matched = seq_ok or (first_ok and last_ok)
     if not name_matched:
         failures.append(f"Name mismatch (Expected: '{first_name} {last_name}' on National ID)")
 

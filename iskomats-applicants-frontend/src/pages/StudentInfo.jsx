@@ -695,6 +695,11 @@ function isDocNoise(text) {
   return false;
 }
 
+const isOfficerOrSignatory = (str) => {
+  if (!str) return false;
+  return /\b(?:hon\.?|honorable|punong\s*barangay|brgy\s*captain|barangay\s*captain|kagawad|sk\s*chairman|secretary|kalihim|treasurer|ingat[\-\s]*yaman|administrator|dean|chancellor|registrar|president|director|principal|instructor|professor|teacher|adviser|notary\s*public|atty\.?|dr\.?|engr\.?|officer[\-\s]*in[\-\s]*charge|oic)\b/i.test(str);
+};
+
 function extractStudentNameFromOcr(rawText) {
   if (!rawText) return "Not detected";
   const lines = String(rawText).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -710,19 +715,33 @@ function extractStudentNameFromOcr(rawText) {
       let val = m[1].trim();
       val = val.replace(/\s+(?:Reg\s*No|Tran\s*Date|College|Course|Pay\s*Type|User|Run\s*Date|Scholarship|Discount|Total|Section|Bldg).*$/i, '').trim();
       val = val.replace(/^[:=\+\-\|\s]+/, '').trim();
-      if (val && !isDocNoise(val) && !/\b(?:AY\s*\d|Semester|School\s*Year|1st|2nd|3rd)\b/i.test(val)) {
+      if (val && !isDocNoise(val) && !isOfficerOrSignatory(val) && !/\b(?:AY\s*\d|Semester|School\s*Year|1st|2nd|3rd)\b/i.test(val)) {
         return val;
       }
     }
   }
 
-  // 2. Indigency / Residency anchor pattern
-  for (const line of lines) {
-    const mCert = line.match(/(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|pinatutunayan\s+na\s+si|katibayan\s+na\s+si)\s+([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years?|yrs?|yo|anyos)|,\s*(?:single|married|widow|filipino|citizen|a\s+resident)|whose\s+specimen|$)/i);
+  // 2. Indigency / Residency / Merit anchor pattern
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const mCert = line.match(/(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|pinatutunayan\s+na\s+si|katibayan\s+na\s+si|personally\s+known|hereby\s+acknowledges\s+that|hereby\s+certifies\s+that|presented\s+to|awarded\s+to|conferred\s+upon|given\s+to)\s+(?:that\s+)?[_\W]*(?:(?:mr|ms|mrs|miss)[\.\/\s]*)*([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years?|yrs?|yo|anyos)|,\s*(?:single|married|widow|filipino|citizen|a\s+resident)|whose\s+specimen|has\s+graduated|for\s+|in\s+recognition|who\s+|on\s+this|$)/i);
     if (mCert && mCert[1]) {
       let cand = mCert[1].trim().replace(/^(?:mr\.?|ms\.?|mrs\.?|miss)\s+/i, '').trim();
-      if (cand.length >= 3 && !isDocNoise(cand)) {
+      if (cand.length >= 3 && !isDocNoise(cand) && !isOfficerOrSignatory(cand)) {
         return cand;
+      }
+    }
+
+    if (/(?:this\s+is\s+to\s+certify\s+that|personally\s+known|hereby\s+acknowledges\s+that|hereby\s+certifies\s+that|presented\s+to|awarded\s+to|conferred\s+upon|given\s+to)\s*[:=\+\-]?(?:\s*(?:that|Mr\.?\/Ms\.?\/Mrs\.?|Mr\.?|Ms\.?|Mrs\.?))?$/i.test(line)) {
+      if (i + 1 < lines.length) {
+        const nextLine = lines[i + 1].replace(/^[:=\+\-\|\s]+/, '').trim();
+        const mNext = nextLine.match(/^(?:(?:mr|ms|mrs|miss)[\.\/\s]*)*([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years?|yrs?|yo|anyos)|,\s*(?:single|married|widow|filipino|citizen|a\s+resident)|whose\s+specimen|has\s+graduated|for\s+|in\s+recognition|who\s+|on\s+this|$)/i);
+        if (mNext && mNext[1]) {
+          const cand = mNext[1].trim();
+          if (cand.length >= 3 && !isDocNoise(cand) && !isOfficerOrSignatory(cand)) {
+            return cand;
+          }
+        }
       }
     }
   }
@@ -740,7 +759,7 @@ function extractStudentNameFromOcr(rawText) {
         if (/\b(?:AY\s*\d|Semester|Sem\b|\d{4}[\-\/]\d{4}|\d{7,12}|^\d+$|^\d+[\/\-]\d+[\/\-]\d+$|^\d+(?:st|nd|rd|th)\s*Year)\b/i.test(cleanCand)) {
           continue;
         }
-        if (isDocNoise(cleanCand)) continue;
+        if (isDocNoise(cleanCand) || isOfficerOrSignatory(cleanCand)) continue;
         if (/^[A-Za-z\s,\.\-]{4,60}$/.test(cleanCand) && cleanCand.split(/\s+/).length >= 2) {
           return cleanCand;
         }
@@ -751,12 +770,24 @@ function extractStudentNameFromOcr(rawText) {
   // 4. Multi-token Name search in Header section (first 30 lines)
   for (let i = 0; i < Math.min(30, lines.length); i++) {
     const cleanLine = lines[i].replace(/^[:=\+\-\|\s]+/, '').trim();
-    if (isDocNoise(cleanLine)) continue;
+    if (isDocNoise(cleanLine) || isOfficerOrSignatory(cleanLine)) continue;
+
+    // Check 2-line School ID layout: Line 1 = "MAGBUHAT", Line 2 = "Alexie Chyle O."
+    if (/^[A-Z]{3,25}$/.test(cleanLine) && i + 1 < lines.length) {
+      const nextClean = lines[i + 1].replace(/^[:=\+\-\|\s]+/, '').trim();
+      if (!isDocNoise(nextClean) && !isOfficerOrSignatory(nextClean) && !/\d/.test(nextClean)) {
+        const nextWords = nextClean.split(/\s+/);
+        if (nextWords.length >= 1 && nextWords.length <= 4 && nextWords.every(w => /^[A-Z][a-z]+/.test(w) || /^[A-Z]\.?$/.test(w))) {
+          return `${cleanLine}, ${nextClean}`;
+        }
+      }
+    }
+
     // Format: "LANTAFE, MIKAELA YSABEL LINATOC"
     if (/^[A-Z]{2,25},\s+[A-Z\s\.\-]{3,40}$/.test(cleanLine)) {
       return cleanLine;
     }
-    // Format: "ANA FRANCZESCA M. ARRIOLA"
+    // Format: "ANA FRANCZESCA M. ARRIOLA" or "Alexie Chyle Magbuhat"
     const words = cleanLine.split(/\s+/);
     if (words.length >= 2 && words.length <= 5 && /^[A-Za-z\s\.\-]{5,50}$/.test(cleanLine)) {
       if (!/\b(?:OFFICIAL|CERTIFICATE|REGISTRATION|OFFICE|COLLEGE|REGISTRAR|BACHELOR|SCIENCE|INFORMATION|TECHNOLOGY|DEPARTMENT|HIGHWAY|BATANGAS|PHILIPPINES|SEMESTER|YEAR|FINAL|GRADES|UNITS|SECTION|PROJECT|ELECTIVE|ISSUES|WORKS)\b/i.test(cleanLine)) {
@@ -914,7 +945,7 @@ function extractOcrKeyValues(rawText) {
   return fields;
 }
 
-function formatExtractedRequirementsSummary(rawText) {
+function formatExtractedRequirementsSummary(rawText, expectedFirst = '', expectedMiddle = '', expectedLast = '') {
   if (!rawText) return "";
 
   // --- Use only the FRONT ID section for name extraction if available ---
@@ -927,11 +958,26 @@ function formatExtractedRequirementsSummary(rawText) {
   const kv = extractOcrKeyValues(nameSearchText);
 
   // 1. Full Name Extraction & Parsing
-  const fullName = extractStudentNameFromOcr(nameSearchText) || kv.name || "Not detected";
-  const nameParts = parseStudentNameComponents(fullName);
-  const firstName = nameParts.first;
-  const middleName = nameParts.middle;
-  const lastName = nameParts.last;
+  let firstName = "Not detected";
+  let middleName = "Not detected";
+  let lastName = "Not detected";
+
+  if (expectedFirst && expectedLast) {
+    const nameMatch = studentNameMatchesText(rawText, expectedFirst, expectedMiddle, expectedLast);
+    if (nameMatch.success || (nameMatch.details.first_ok && nameMatch.details.last_ok)) {
+      firstName = expectedFirst;
+      middleName = expectedMiddle || 'N/A';
+      lastName = expectedLast;
+    }
+  }
+
+  if (firstName === "Not detected" || lastName === "Not detected") {
+    const fullName = extractStudentNameFromOcr(nameSearchText) || kv.name || "Not detected";
+    const nameParts = parseStudentNameComponents(fullName);
+    if (nameParts.first && nameParts.first !== "Not detected") firstName = nameParts.first;
+    if (nameParts.middle && nameParts.middle !== "Not detected") middleName = nameParts.middle;
+    if (nameParts.last && nameParts.last !== "Not detected") lastName = nameParts.last;
+  }
 
   // 2. Student No Extraction
   let studentNo = kv.studentId;
@@ -1232,145 +1278,15 @@ function studentNameMatchesText(text, first, middle, last) {
   const firstOk = checkNameWordGroup(first, targetText) || checkNameWordGroup(first, normText);
   const lastOk = checkNameWordGroup(last, targetText) || checkNameWordGroup(last, normText);
 
-  let middleOk = true;
-
-  // --- Two-Way Reverse Candidate First Name Check ---
-  // Extract candidate full name from document (e.g. kv.name or certificate anchor)
-  // and verify that all first-name words in document's candidate name are present in user's first/middle input.
-  let reverseFirstOk = true;
-  let reverseLastOk = true;
-  let candidateNameStr = kv.name || null;
-  if (!candidateNameStr) {
-    const certPatterns = [
-      /(?:certify|certifies|cently|certifye|certiy)\s+(?:that\s+)?[_\W]*([A-Za-z\s,\.\-]{3,60})(?=\s*(?:is\s+a|\d+\s*years|of\s*legal\s*age|single|married|widow|separated|divorced|filipino|pilipino|citizen|resident|bonafide|purok|barangay|\n|$))/gi,
-      /(?:this\s+is\s+to|sto)\s+[a-z]{3,10}\s+that\s+[_\W]*([A-Za-z\s,\.\-]{3,60})(?=\s*(?:is\s+a|\d+\s*years|of\s*legal\s*age|single|married|widow|separated|filipino|citizen|resident|bonafide|purok|barangay|\n|$))/gi,
-      /that\s+[_\W]*([A-Z\s,\.\-]{5,60})(?=\s*(?:is\s+a|\d+\s*years|of\s*legal\s*age|single|married|widow|separated|filipino|citizen|resident|bonafide|purok|barangay|\n|$))/gi,
-      /(?:^|\n|\r|\:)\s*([A-Z]{2,20}\s*,\s*[A-Z\s]{3,50})/gi,
-      /(?:student\s*name|name\s*of\s*student)\s*[:\-1l\|\]\}\)]*\s*([A-Za-z\s,\.\-]{3,60})/gi,
-      /(?:name|pangalan)\s*[:\-]?\s*([A-Za-z\s,\.\-]+?)/gi,
-      /\b([A-Za-z]{2,20}\s*,\s*[A-Za-z ]{3,40})\b/g
-    ];
-
-    const addressNoise = /CITY|BATANGAS|PHILIPPINES|HIGHWAY|STREET|ROAD|ADDRESS|BARANGAY|PROVINCE|TEL|TELEFAX|WWW|OFFICE|REGISTRAR|COLLEGE|UNIVERSITY/i;
-
-    for (const pat of certPatterns) {
-      let match;
-      while ((match = pat.exec(text)) !== null) {
-        if (match && match[1]) {
-          const rawCand = match[1].replace(/^[^a-zA-Z]+/, '').trim();
-          if (rawCand.length >= 3 && rawCand.includes(' ') && !addressNoise.test(rawCand)) {
-            candidateNameStr = rawCand;
-            break;
-          }
-        }
-      }
-      if (candidateNameStr) break;
-    }
-  }
-
-  if (!candidateNameStr) {
-    const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const stopHeader = /COLLEGE|UNIVERSITY|DE LA SALLE|LIPA|REPUBLIC|PHILIPPINES|STUDENT|SIGNATURE|VALID|UNTIL|CHANCELLOR|REGISTRAR|SECTION|COURSE|DEGREE|YEAR|LEVEL|GRADE/i;
-    for (let i = 0; i < rawLines.length; i++) {
-      const line = rawLines[i];
-      const words = line.split(/\s+/).filter(w => /^[A-Za-z\.\,]+$/.test(w));
-      if (words.length >= 2 && !stopHeader.test(line)) {
-        const prevLine = i > 0 ? rawLines[i - 1] : '';
-        if (prevLine && /^[A-Za-z]{2,20}$/.test(prevLine) && !stopHeader.test(prevLine)) {
-          candidateNameStr = `${prevLine}, ${line}`;
-        } else {
-          candidateNameStr = line;
-        }
-        break;
-      }
-    }
-  }
-
-  if (candidateNameStr) {
-    candidateNameStr = candidateNameStr.replace(/(?:is\s+a\s+|bonafide|resident|indigent|citizen|filipino|single|married|widow|separated|divorced|of\s+legal\s+age|\d+\s*years|purok|barangay|bayan|lipa|batangas|punong|kagawad|seal|signature|date|issued|total|student|course|reg|scholarship|academic|section|units|failure|incomplete|blank|drp|status|pay|discount)[\s\S]*/i, '').trim();
-  }
-
-  if (candidateNameStr && (/\d/.test(candidateNameStr) || /AY\s*\d|School\s*Year|Semester|1st|2nd|3rd|Official|Certificate|Registration/i.test(candidateNameStr))) {
-    candidateNameStr = null;
-  }
-
-  if (candidateNameStr) {
-    let cleanCandStr = candidateNameStr.replace(/(?:reg\s*no|student\s*no|id|tran\s*date|status|sec|bldg|college|course|year|level|pay|user|scholarship|discount|ref\s*no|subject|assessed|fees|units|pay\s*type|room|faculty|days|time)[\s\S]*/i, '');
-
-    let candFirstStr = cleanCandStr;
-    let candLastStr = '';
-
-    if (cleanCandStr.includes(',')) {
-      // Format: "LANTAFE, MIKAELA YSABEL LINATOC" -> Surname before comma, First/Middle after comma
-      const commaParts = cleanCandStr.split(',');
-      candLastStr = commaParts[0];
-      candFirstStr = commaParts.slice(1).join(' ');
-    } else {
-      // Format: "MIKAELA YSABEL LANTAFE" -> Last word is surname
-      const words = cleanCandStr.trim().split(/\s+/);
-      if (words.length >= 2) {
-        candLastStr = words[words.length - 1];
-        candFirstStr = words.slice(0, words.length - 1).join(' ');
-      }
-    }
-
-    const normCandFirst = normalizeForOcr(candFirstStr.replace(/[^a-zA-Z\s]/g, ' '));
-    const normCandLast = normalizeForOcr(candLastStr.replace(/[^a-zA-Z\s]/g, ' '));
-    const stopWords = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines', 'this', 'that', 'years', 'age', 'college', 'course', 'degree', 'year', 'level', 'scholarship', 'discount', 'subject', 'assessed', 'fees', 'units', 'pay', 'type', 'section', 'bldg', 'room', 'faculty', 'days', 'time', 'first', 'second', 'semester', 'sem', 'ay', 'sy', 'is', 'a', 'indigent'];
-
-    const candFirstWords = normCandFirst.split(/\s+/).filter(w => {
-      if (w.length < 2 || stopWords.includes(w.toLowerCase())) return false;
-      const userInputLastNorm = normalizeForOcr(last || '');
-      if (isSimilarWord(w, userInputLastNorm) || isSimilarWord(userInputLastNorm, w)) return false;
-      if (normCandLast && (isSimilarWord(w, normCandLast) || isSimilarWord(normCandLast, w))) return false;
-      return true;
-    });
-
-    if (candFirstWords.length >= 2) {
-      const userInputFirstNorm = normalizeForOcr(`${first || ''} ${middle || ''}`);
-      const inputFirstWords = userInputFirstNorm.split(/\s+/).filter(w => w.length >= 1);
-
-      const missingDocFirstWords = candFirstWords.filter(docW => {
-        return !inputFirstWords.some(inpW => isSimilarWord(docW, inpW) || isSimilarWord(inpW, docW) || (inpW.length === 1 && docW.toLowerCase().startsWith(inpW.toLowerCase())));
-      });
-      if (missingDocFirstWords.length > 0) {
-        console.debug('[REVERSE FIRST NAME CHECK FAILED] Document name has first name words missing in input:', missingDocFirstWords);
-        reverseFirstOk = false;
-      }
-    }
-
-    // Reverse Last Name Check: verify document's extracted surname matches user's input last name
-    if (normCandLast && normCandLast.length >= 2 && !stopWords.includes(normCandLast.toLowerCase())) {
-      const userInputLastNorm = normalizeForOcr(last || '');
-      if (userInputLastNorm) {
-        const lastWords = userInputLastNorm.split(/\s+/).filter(w => w.length >= 2);
-        const matchesLast = lastWords.some(w => isSimilarWord(w, normCandLast) || isSimilarWord(normCandLast, w)) ||
-                            isSimilarWord(userInputLastNorm, normCandLast) ||
-                            isSimilarWord(normCandLast, userInputLastNorm) ||
-                            new RegExp('\\b' + normCandLast.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(userInputLastNorm);
-        if (!matchesLast) {
-          console.debug('[REVERSE LAST NAME CHECK FAILED] Document surname:', normCandLast, 'does not match user input last name:', last);
-          reverseLastOk = false;
-        }
-      }
-    }
-  }
-
-  // Reject stop words (e.g. "age", "years", "city") or pure numbers entered as input last name
+  const cleanInputLast = normalizeForOcr(last || '').trim();
   const nameNoiseWordsList = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines', 'this', 'that', 'years', 'age', 'college', 'course', 'degree', 'year', 'level', 'scholarship', 'discount', 'subject', 'assessed', 'fees', 'units', 'pay', 'type', 'section', 'bldg', 'room', 'faculty', 'days', 'time', 'first', 'second', 'semester', 'sem', 'ay', 'sy'];
-  let inputLastIsStopWord = false;
-  if (last) {
-    const cleanInputLast = normalizeForOcr(last).trim();
-    if (nameNoiseWordsList.includes(cleanInputLast) || /^\d+$/.test(cleanInputLast)) {
-      inputLastIsStopWord = true;
-    }
-  }
+  const inputLastIsStopWord = nameNoiseWordsList.includes(cleanInputLast) || /^\d+$/.test(cleanInputLast);
 
-  const finalFirstOk = firstOk && reverseFirstOk;
-  const finalLastOk = lastOk && reverseLastOk && !inputLastIsStopWord;
-  const success = finalFirstOk && finalLastOk;
+  const finalFirstOk = firstOk || sequenceOk;
+  const finalLastOk = (lastOk || sequenceOk) && !inputLastIsStopWord;
+  const success = sequenceOk || (finalFirstOk && finalLastOk);
 
-  console.debug('[NAME CHECK]', { first, last, normText: normText.slice(0,200), targetText: targetText.slice(0,200), sequenceOk, firstOk: finalFirstOk, lastOk: finalLastOk, reverseFirstOk, reverseLastOk, success });
+  console.debug('[NAME CHECK]', { first, last, sequenceOk, firstOk: finalFirstOk, lastOk: finalLastOk, success });
 
   return {
     success,
@@ -1378,7 +1294,7 @@ function studentNameMatchesText(text, first, middle, last) {
       first_ok: finalFirstOk,
       middle_ok: true,
       last_ok: finalLastOk,
-      sequence_ok: sequenceOk && reverseFirstOk && reverseLastOk
+      sequence_ok: sequenceOk
     }
   };
 }
@@ -5093,7 +5009,7 @@ const StudentInfo = () => {
         }
       }
 
-      let structuredSummary = formatExtractedRequirementsSummary(detectedText);
+      let structuredSummary = formatExtractedRequirementsSummary(detectedText, firstName, middleName, lastName);
       let combinedText = "";
       if (docType === 'SchoolID') {
         combinedText = `${structuredSummary ? structuredSummary + '\n\n' : ''}[DOCUMENT OCR TEXT]\n${detectedText || 'No text recognized.'}\n\n[FRONT ID VIDEO OCR LOGS]\n${frontVidCheck?.detectedText || 'No text logs.'}\n\n[BACK ID VIDEO OCR LOGS]\n${backVidCheck?.detectedText || 'No text logs.'}`;
