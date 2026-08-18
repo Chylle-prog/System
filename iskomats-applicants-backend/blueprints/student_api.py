@@ -1225,6 +1225,49 @@ def set_debug_flag():
         print(f"[DEBUG FLAGS] POST error: {e}", flush=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+def is_skip_alternate_check_active(cur=None):
+    """
+    Checks if alternate account verification should be bypassed.
+    Checks:
+    1. HTTP header X-Skip-Alternate-Check
+    2. Query param or form field 'skip_alternate_check' / 'skipVerification'
+    3. Global debug_flags table in database
+    """
+    try:
+        if request:
+            if str(request.headers.get('X-Skip-Alternate-Check', '')).lower() in ('true', '1'):
+                return True
+            if str(request.args.get('skip_alternate_check', '')).lower() in ('true', '1'):
+                return True
+            if request.form and str(request.form.get('skip_alternate_check', '')).lower() in ('true', '1'):
+                return True
+            if request.form and str(request.form.get('skipVerification', '')).lower() in ('true', '1'):
+                return True
+    except Exception:
+        pass
+
+    try:
+        if cur:
+            cur.execute("SELECT value FROM debug_flags WHERE key = 'skip_alternate_check'")
+            row = cur.fetchone()
+            if row:
+                val = row['value'] if isinstance(row, dict) else row[0]
+                return bool(val)
+        else:
+            with get_db() as conn:
+                with conn.cursor() as c:
+                    c.execute("SELECT value FROM debug_flags WHERE key = 'skip_alternate_check'")
+                    row = c.fetchone()
+                    if row:
+                        val = row['value'] if isinstance(row, dict) else row[0]
+                        return bool(val)
+    except Exception as e:
+        print(f"[DEBUG FLAGS] is_skip_alternate_check_active check error: {e}", flush=True)
+
+    return False
+
+
 ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
 if ENCRYPTION_KEY and isinstance(ENCRYPTION_KEY, str):
     ENCRYPTION_KEY = ENCRYPTION_KEY.encode()
@@ -2499,8 +2542,7 @@ def get_profile():
             if not applicant:
                 return jsonify({'message': 'Not found'}), 404
 
-            skip_alternate_check = request.headers.get('X-Skip-Alternate-Check') == 'true'
-            if skip_alternate_check:
+            if is_skip_alternate_check_active(cur):
                 applicant['duplicate_applicant_exists'] = False
                 applicant['portal_lock_message'] = None
             else:
@@ -3113,8 +3155,7 @@ def update_profile():
 
             # Preventive Duplicate Check BEFORE writing to database:
             # Check if incoming/updated first_name, middle_name, last_name matches another registered applicant.
-            skip_alternate_check = request.headers.get('X-Skip-Alternate-Check') == 'true'
-            if not skip_alternate_check:
+            if not is_skip_alternate_check_active(cur):
                 cur.execute("SELECT first_name, middle_name, last_name FROM applicants WHERE applicant_no = %s", (request.user_no,))
                 curr_applicant = cur.fetchone() or {}
 
@@ -3246,12 +3287,13 @@ def check_sibling_restriction():
             
             restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=source_data)
             restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
+            blocked = restriction['blocked'] and not is_skip_alternate_check_active(cur)
             
             return jsonify({
                 'success': True,
-                'blocked': restriction['blocked'],
-                'message': restriction['message'] if restriction['blocked'] else None,
-                'reason': restriction['reason'] if restriction['blocked'] else None
+                'blocked': blocked,
+                'message': restriction['message'] if blocked else None,
+                'reason': restriction['reason'] if blocked else None
             })
     except Exception as e:
         print(f"[RESTR-CHECK] Error: {str(e)}", flush=True)
@@ -3378,7 +3420,7 @@ def submit_application():
 
             restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=request_payload)
             restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
-            if restriction['blocked']:
+            if restriction['blocked'] and not is_skip_alternate_check_active(cur):
                 if restriction['auto_reject']:
                     cur.execute(
                         """

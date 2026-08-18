@@ -105,7 +105,8 @@ const FindScholarship = () => {
         setUserProfile(profile);
 
         if (profile) {
-          if (profile.duplicate_applicant_exists) {
+          const isSkipAlt = typeof window !== 'undefined' && (localStorage.getItem('debug_skip_alternate_check') === 'true' || sessionStorage.getItem('debug_skip_alternate_check') === 'true');
+          if (profile.duplicate_applicant_exists && !isSkipAlt) {
             const lockMsg = profile.portal_lock_message || 'This is a duplicate account. Please use your original login.';
             setPortalLocked(true);
             setPortalLockMessage(lockMsg);
@@ -287,7 +288,8 @@ const FindScholarship = () => {
 
       // Step 2: Alternate Account Pre-Flight Check (must trigger and verify before revealing scholarships)
       const refreshedProfile = await applicantAPI.getProfile();
-      if (refreshedProfile?.duplicate_applicant_exists) {
+      const isSkipAlt = typeof window !== 'undefined' && (localStorage.getItem('debug_skip_alternate_check') === 'true' || sessionStorage.getItem('debug_skip_alternate_check') === 'true');
+      if (refreshedProfile?.duplicate_applicant_exists && !isSkipAlt) {
         const lockMsg = refreshedProfile.portal_lock_message || 'Alternate account detected. Please use your original account.';
         setPortalLocked(true);
         setPortalLockMessage(lockMsg);

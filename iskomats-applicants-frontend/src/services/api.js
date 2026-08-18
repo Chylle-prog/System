@@ -238,7 +238,7 @@ const makeRequest = async (endpoint, options = {}) => {
     ...options.headers,
   };
 
-  if (localStorage.getItem('debug_skip_alternate_check') === 'true') {
+  if (typeof window !== 'undefined' && (localStorage.getItem('debug_skip_alternate_check') === 'true' || sessionStorage.getItem('debug_skip_alternate_check') === 'true')) {
     headers['X-Skip-Alternate-Check'] = 'true';
   }
 
@@ -699,7 +699,7 @@ export const applicantAPI = {
     const token = getAuthToken();
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    if (localStorage.getItem('debug_skip_alternate_check') === 'true') {
+    if (typeof window !== 'undefined' && (localStorage.getItem('debug_skip_alternate_check') === 'true' || sessionStorage.getItem('debug_skip_alternate_check') === 'true')) {
       headers['X-Skip-Alternate-Check'] = 'true';
     }
 
@@ -713,7 +713,7 @@ export const applicantAPI = {
     const token = getAuthToken();
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    if (localStorage.getItem('debug_skip_alternate_check') === 'true') {
+    if (typeof window !== 'undefined' && (localStorage.getItem('debug_skip_alternate_check') === 'true' || sessionStorage.getItem('debug_skip_alternate_check') === 'true')) {
       headers['X-Skip-Alternate-Check'] = 'true';
     }
 

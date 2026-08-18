@@ -1038,6 +1038,94 @@ def debug_env():
         'PROJECT_ROOT': str(os.getcwd())
     })
 
+
+@student_api_bp.route('/debug/flags', methods=['GET'])
+def get_debug_flags():
+    """Get current global debug bypass flags (shared across all deployments)."""
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT key, value FROM debug_flags")
+            rows = cur.fetchall()
+            cur.close()
+        flags = {}
+        for row in rows:
+            key = row['key'] if isinstance(row, dict) else row[0]
+            val = row['value'] if isinstance(row, dict) else row[1]
+            flags[key] = bool(val)
+        return jsonify({'success': True, 'flags': flags})
+    except Exception as e:
+        print(f"[DEBUG FLAGS] GET error: {e}", flush=True)
+        return jsonify({'success': False, 'flags': {}, 'error': str(e)}), 500
+
+
+@student_api_bp.route('/debug/flags', methods=['POST'])
+def set_debug_flag():
+    """Set a global debug bypass flag (persisted in DB, shared across all deployments)."""
+    try:
+        data = request.get_json() or {}
+        key = data.get('key')
+        value = bool(data.get('value', False))
+        if key not in ('skip_alternate_check',):
+            return jsonify({'success': False, 'error': 'Unknown flag key'}), 400
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO debug_flags (key, value, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, (key, value))
+            conn.commit()
+            cur.close()
+        print(f"[DEBUG FLAGS] Set {key} = {value}", flush=True)
+        return jsonify({'success': True, 'key': key, 'value': value})
+    except Exception as e:
+        print(f"[DEBUG FLAGS] POST error: {e}", flush=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def is_skip_alternate_check_active(cur=None):
+    """
+    Checks if alternate account verification should be bypassed.
+    Checks:
+    1. HTTP header X-Skip-Alternate-Check
+    2. Query param or form field 'skip_alternate_check' / 'skipVerification'
+    3. Global debug_flags table in database
+    """
+    try:
+        if request:
+            if str(request.headers.get('X-Skip-Alternate-Check', '')).lower() in ('true', '1'):
+                return True
+            if str(request.args.get('skip_alternate_check', '')).lower() in ('true', '1'):
+                return True
+            if request.form and str(request.form.get('skip_alternate_check', '')).lower() in ('true', '1'):
+                return True
+            if request.form and str(request.form.get('skipVerification', '')).lower() in ('true', '1'):
+                return True
+    except Exception:
+        pass
+
+    try:
+        if cur:
+            cur.execute("SELECT value FROM debug_flags WHERE key = 'skip_alternate_check'")
+            row = cur.fetchone()
+            if row:
+                val = row['value'] if isinstance(row, dict) else row[0]
+                return bool(val)
+        else:
+            with get_db() as conn:
+                with conn.cursor() as c:
+                    c.execute("SELECT value FROM debug_flags WHERE key = 'skip_alternate_check'")
+                    row = c.fetchone()
+                    if row:
+                        val = row['value'] if isinstance(row, dict) else row[0]
+                        return bool(val)
+    except Exception as e:
+        print(f"[DEBUG FLAGS] is_skip_alternate_check_active check error: {e}", flush=True)
+
+    return False
+
+
 ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
 if ENCRYPTION_KEY and isinstance(ENCRYPTION_KEY, str):
     ENCRYPTION_KEY = ENCRYPTION_KEY.encode()
@@ -2255,19 +2343,23 @@ def get_profile():
             if not applicant:
                 return jsonify({'message': 'Not found'}), 404
 
-            duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, applicant)
-            other_duplicate_ids = [aid for aid in duplicate_ids if aid != request.user_no]
-            is_duplicate = len(other_duplicate_ids) > 0 and request.user_no > min(duplicate_ids)
-            applicant['duplicate_applicant_exists'] = is_duplicate
-            if is_duplicate:
-                main_id = min(duplicate_ids)
-                app_email_table = get_applicant_email_table(cur)
-                cur.execute(f"SELECT email_address FROM {app_email_table} WHERE applicant_no = %s", (main_id,))
-                main_email_row = cur.fetchone()
-                main_email = main_email_row['email_address'] if main_email_row else "your original account"
-                applicant['portal_lock_message'] = f'This is a duplicate account. Please use your original login ({main_email}).'
-            else:
+            if is_skip_alternate_check_active(cur):
+                applicant['duplicate_applicant_exists'] = False
                 applicant['portal_lock_message'] = None
+            else:
+                duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, applicant)
+                other_duplicate_ids = [aid for aid in duplicate_ids if aid != request.user_no]
+                is_duplicate = len(other_duplicate_ids) > 0 and request.user_no > min(duplicate_ids)
+                applicant['duplicate_applicant_exists'] = is_duplicate
+                if is_duplicate:
+                    main_id = min(duplicate_ids)
+                    app_email_table = get_applicant_email_table(cur)
+                    cur.execute(f"SELECT email_address FROM {app_email_table} WHERE applicant_no = %s", (main_id,))
+                    main_email_row = cur.fetchone()
+                    main_email = main_email_row['email_address'] if main_email_row else "your original account"
+                    applicant['portal_lock_message'] = f'This is a duplicate account. Please use your original login ({main_email}).'
+                else:
+                    applicant['portal_lock_message'] = None
 
             # Calculate sibling-blocked scholarships for the portal view/audit
             sibling_blocked_ids = []
@@ -2639,24 +2731,25 @@ def update_profile():
                 'last_name': cand_last
             }
 
-            duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, simulated_applicant)
-            other_duplicate_ids = [aid for aid in duplicate_ids if aid != request.user_no]
-            if other_duplicate_ids:
-                main_id = min(other_duplicate_ids)
-                app_email_table = get_applicant_email_table(cur)
-                cur.execute(f"SELECT email_address FROM {app_email_table} WHERE applicant_no = %s", (main_id,))
-                main_email_row = cur.fetchone()
-                main_email = main_email_row['email_address'] if main_email_row else "your registered account"
+            if not is_skip_alternate_check_active(cur):
+                duplicate_ids, _, _ = get_matching_duplicate_applicant_ids(cur, simulated_applicant)
+                other_duplicate_ids = [aid for aid in duplicate_ids if aid != request.user_no]
+                if other_duplicate_ids:
+                    main_id = min(other_duplicate_ids)
+                    app_email_table = get_applicant_email_table(cur)
+                    cur.execute(f"SELECT email_address FROM {app_email_table} WHERE applicant_no = %s", (main_id,))
+                    main_email_row = cur.fetchone()
+                    main_email = main_email_row['email_address'] if main_email_row else "your registered account"
 
-                first_val = (cand_first or '').strip()
-                mid_val = (cand_middle or '').strip()
-                last_val = (cand_last or '').strip()
-                mid_part = f"{mid_val} " if mid_val and mid_val.lower() not in ['n/a', 'none', 'null', '.'] else ""
-                dup_name = f"{first_val} {mid_part}{last_val}".strip()
-                return jsonify({
-                    'message': f'Alternate Account detected: An applicant with the name "{dup_name}" already exists.',
-                    'error': f'Please use your existing account ({main_email}).'
-                }), 409
+                    first_val = (cand_first or '').strip()
+                    mid_val = (cand_middle or '').strip()
+                    last_val = (cand_last or '').strip()
+                    mid_part = f"{mid_val} " if mid_val and mid_val.lower() not in ['n/a', 'none', 'null', '.'] else ""
+                    dup_name = f"{first_val} {mid_part}{last_val}".strip()
+                    return jsonify({
+                        'message': f'Alternate Account detected: An applicant with the name "{dup_name}" already exists.',
+                        'error': f'Please use your existing account ({main_email}).'
+                    }), 409
 
             if updates:
                 params.append(request.user_no)
@@ -2704,12 +2797,13 @@ def check_sibling_restriction():
             
             restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=source_data)
             restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
+            blocked = restriction['blocked'] and not is_skip_alternate_check_active(cur)
             
             return jsonify({
                 'success': True,
-                'blocked': restriction['blocked'],
-                'message': restriction['message'] if restriction['blocked'] else None,
-                'reason': restriction['reason'] if restriction['blocked'] else None
+                'blocked': blocked,
+                'message': restriction['message'] if blocked else None,
+                'reason': restriction['reason'] if blocked else None
             })
     except Exception as e:
         print(f"[RESTR-CHECK] Error: {str(e)}", flush=True)
@@ -2809,7 +2903,7 @@ def submit_application():
 
         restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=request_payload)
         restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
-        if restriction['blocked']:
+        if restriction['blocked'] and not is_skip_alternate_check_active(cur):
             if restriction['auto_reject']:
                 cur.execute(
                     """
