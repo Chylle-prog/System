@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 import json
 from decimal import Decimal
 from flask import Blueprint, request, jsonify, send_file, url_for, session
@@ -1042,6 +1043,21 @@ def send_school_verification_dispatch(current_user_id, pro_no, role, applicant_n
                             ('school_id_front', front_id),
                             ('school_id_back', back_id),
                         ]
+
+                        # Fetch and attach Merit Document(s) for the applicant
+                        merit_proofs = []
+                        try:
+                            from services.merit_proof_service import fetch_merit_proofs_for_applicant
+                            merit_proofs = fetch_merit_proofs_for_applicant(bg_cursor, applicant_no)
+                        except Exception as m_err:
+                            print(f"[BG_DISPATCH] Error fetching merit proofs: {m_err}", flush=True)
+
+                        for idx, mp in enumerate(merit_proofs, 1):
+                            m_doc = mp.get('merit_document')
+                            if m_doc:
+                                m_title = mp.get('merit_title') or f"document_{idx}"
+                                clean_title = re.sub(r'[^a-zA-Z0-9_]', '_', m_title.strip().lower())
+                                attachment_specs.append((f"merit_{idx}_{clean_title}", m_doc))
                 
                         attachments = []
                         for label, raw_content in attachment_specs:
@@ -1058,6 +1074,19 @@ def send_school_verification_dispatch(current_user_id, pro_no, role, applicant_n
                                 )
                             )
 
+                        attached_doc_lines = [
+                            "- Enrollment certificate",
+                            "- Grades report",
+                            "- School ID front",
+                            "- School ID back"
+                        ]
+                        if merit_proofs:
+                            for idx, mp in enumerate(merit_proofs, 1):
+                                m_title = mp.get('merit_title') or f"Certificate #{idx}"
+                                attached_doc_lines.append(f"- Merit Document #{idx} ({m_title})")
+                        
+                        attached_docs_str = "\n".join(attached_doc_lines)
+
                         subject = f"School Verification Request - {applicant_name}"
                         body = f"""Hello,
 
@@ -1070,10 +1099,7 @@ School: {applicant_row.get('school') or 'N/A'}
 School ID Number: {applicant_row.get('school_id_no') or 'N/A'}
 
 Attached documents:
-- Enrollment certificate
-- Grades report
-- School ID front
-- School ID back
+{attached_docs_str}
 
 Please review the documents and respond to this email with your verification findings.
 

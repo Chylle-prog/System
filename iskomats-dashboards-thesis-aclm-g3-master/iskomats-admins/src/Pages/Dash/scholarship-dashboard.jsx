@@ -2761,7 +2761,7 @@ export default function ScholarshipDashboard({
       title: 'Dispatch School Verification',
       recipient: recipient,
       messageSummary: `Official request to verify student records for ${applicant.name || 'this applicant'}.`,
-      documents: ['Enrollment Certificate', 'Official Grades Report', docTypes.idLabel],
+      documents: ['Enrollment Certificate', 'Official Grades Report', docTypes.idLabel, 'Merit Document(s)'],
       onConfirm: async () => {
         showActionOverlay('Sending school verification', 'Preparing the applicant documents and emailing the school verification address.');
         try {
