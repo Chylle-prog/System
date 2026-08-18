@@ -185,22 +185,51 @@ def persist_applicant_document_values(cursor, applicant_no, values):
                 filtered_values[real_key] = value
 
         if filtered_values:
-            insert_columns = ['applicant_no', *filtered_values.keys()]
-            placeholders = ', '.join(['%s'] * len(insert_columns))
-            assignments = ', '.join(f'"{column}" = EXCLUDED."{column}"' for column in filtered_values.keys())
-            params = [applicant_no, *filtered_values.values()]
+            # Detect primary key identifier column (e.g. app_doc_no) that may lack default auto-increment
+            pk_col = None
+            for pk_name in ('app_doc_no', 'doc_no', 'document_no', 'id'):
+                if pk_name in doc_col_map and doc_col_map[pk_name] not in filtered_values and doc_col_map[pk_name] != 'applicant_no':
+                    pk_col = doc_col_map[pk_name]
+                    break
+
+            # 1. Try UPDATE first for existing row to avoid touching app_doc_no
+            update_assignments = ', '.join(f'"{col}" = %s' for col in filtered_values.keys())
+            update_params = [*filtered_values.values(), applicant_no]
             cursor.execute(
-                f'''
-                INSERT INTO {document_table} ({', '.join(insert_columns)})
-                VALUES ({placeholders})
-                ON CONFLICT (applicant_no)
-                DO UPDATE SET {assignments}
-                ''',
-                tuple(params),
+                f'UPDATE {document_table} SET {update_assignments} WHERE applicant_no = %s',
+                tuple(update_params),
             )
-            # If we persisted to the doc table, we don't necessarily want to duplicate in applicants?
-            # Actually, some columns like profile_picture might be in both.
-            # We'll continue to the fallback loop just for those.
+
+            # 2. If no existing row was updated, INSERT new record with generated app_doc_no
+            if cursor.rowcount == 0:
+                if pk_col:
+                    insert_columns = [f'"{pk_col}"', '"applicant_no"', *[f'"{col}"' for col in filtered_values.keys()]]
+                    val_exprs = [f'(SELECT COALESCE(MAX("{pk_col}"), 0) + 1 FROM {document_table})', '%s', *['%s'] * len(filtered_values)]
+                    insert_params = [applicant_no, *filtered_values.values()]
+                else:
+                    insert_columns = ['"applicant_no"', *[f'"{col}"' for col in filtered_values.keys()]]
+                    val_exprs = ['%s'] * len(insert_columns)
+                    insert_params = [applicant_no, *filtered_values.values()]
+
+                conflict_assignments = ', '.join(f'"{column}" = EXCLUDED."{column}"' for column in filtered_values.keys())
+                try:
+                    cursor.execute(
+                        f'''
+                        INSERT INTO {document_table} ({', '.join(insert_columns)})
+                        VALUES ({', '.join(val_exprs)})
+                        ON CONFLICT (applicant_no)
+                        DO UPDATE SET {conflict_assignments}
+                        ''',
+                        tuple(insert_params),
+                    )
+                except Exception:
+                    cursor.execute(
+                        f'''
+                        INSERT INTO {document_table} ({', '.join(insert_columns)})
+                        VALUES ({', '.join(val_exprs)})
+                        ''',
+                        tuple(insert_params),
+                    )
     
     applicant_columns = get_table_columns(cursor, 'applicants')
     applicant_col_map = {col.lower(): col for col in applicant_columns}
