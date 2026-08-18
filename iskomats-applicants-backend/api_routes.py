@@ -3474,6 +3474,7 @@ def get_activity_logs(current_user_id, pro_no, role):
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 @api_bp.route('/scholarships/<program>', methods=['GET'])
+@api_bp.route('/admin/scholarships/<program>', methods=['GET'])
 @token_required
 def get_scholarship_by_program(current_user_id, pro_no, role, program):
     """Get scholarship data for a program (provider) - returns metadata and base64-encoded images"""
@@ -3686,6 +3687,7 @@ def test_ai():
 
 
 @api_bp.route('/applicants/<program>', methods=['GET'])
+@api_bp.route('/admin/applicants/<program>', methods=['GET'])
 @token_required
 def get_applicants(current_user_id, pro_no, role, program):
     """Get applicants for a program"""

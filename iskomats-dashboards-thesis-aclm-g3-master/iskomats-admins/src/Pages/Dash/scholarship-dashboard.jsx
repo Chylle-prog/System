@@ -1219,12 +1219,14 @@ export default function ScholarshipDashboard({
     }
   };
 
-  // Load applicants and scholarships from backend API on component mount in parallel
+  // Load applicants, scholarships, and announcements from backend API concurrently on component mount
   useEffect(() => {
     warmBackendConnection();
-    loadApplicants();
-    loadScholarships(false);
-    loadAnnouncements();
+    Promise.allSettled([
+      loadApplicants(),
+      loadScholarships(false),
+      loadAnnouncements()
+    ]).catch(() => undefined);
   }, []);
 
   // Socket.IO Integration
@@ -1492,22 +1494,6 @@ export default function ScholarshipDashboard({
       }
     }).catch(err => console.warn('Failed to load REST messages:', err));
   }, [activeProviderNo]);
-
-  useEffect(() => {
-    const allKnown = [
-      ...(data.applicants || []),
-      ...(data.accepted || []),
-      ...(data.rejected || []),
-      ...(data.declined || []),
-      ...(data.cancelled || [])
-    ];
-    allKnown.forEach(a => {
-      const appNo = a.applicant_no || a.applicantNo || a.id;
-      if (appNo) {
-        socketService.loadHistory(`${appNo}+${activeProviderNo || 1}`);
-      }
-    });
-  }, [data.applicants.length, data.accepted.length, activeProviderNo]);
 
   // Filter applicants by month
   const getMonthlyApplicants = (applicants, monthFilter) => {

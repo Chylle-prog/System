@@ -846,12 +846,23 @@ def get_matching_duplicate_applicant_ids(cursor, applicant, source_data=None):
     if not identity:
         return [current_applicant_no], False, None
 
-    cursor.execute(
-        """
-        SELECT applicant_no, first_name, middle_name, last_name
-        FROM applicants
-        """
-    )
+    last_name = identity.get('last_name') or ''
+    if last_name:
+        cursor.execute(
+            """
+            SELECT applicant_no, first_name, middle_name, last_name
+            FROM applicants
+            WHERE LOWER(TRIM(last_name)) = LOWER(TRIM(%s))
+            """,
+            (last_name,)
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT applicant_no, first_name, middle_name, last_name
+            FROM applicants
+            """
+        )
     rows = cursor.fetchall()
 
     matching_ids = {current_applicant_no}

@@ -694,24 +694,7 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
             print(f"[STORAGE ERROR] Supabase client unavailable for {field_name}", flush=True)
             return None
 
-        # Clean up old file if updating
-        if is_update:
-            try:
-                from services.applicant_document_service import fetch_applicant_document_values
-                with get_db() as conn:
-                    with conn.cursor() as cur:
-                        existing_results = fetch_applicant_document_values(cur, applicant_no, [field_name])
-                        old_url = existing_results.get(field_name)
-                        
-                        if old_url and isinstance(old_url, str) and old_url.startswith('http'):
-                            if f"{bucket_name}/" in old_url:
-                                old_path = old_url.split(f"{bucket_name}/")[-1]
-                                print(f"[STORAGE] Cleanup: Removing old file {old_path}", flush=True)
-                                supabase.storage.from_(bucket_name).remove([old_path])
-            except Exception as clean_err:
-                print(f"[STORAGE WARNING] Cleanup failed for {field_name}: {clean_err}", flush=True)
-
-        # Generate unique path: {folder}/{applicant_no}-{field_name}.jpg
+        # Generate unique path: {folder}/{applicant_no}-{field_name}.jpg (upsert handles overwriting in-place)
         file_path = f"{folder}/{applicant_no}-{field_name}.jpg"
         mime_type = "image/jpeg"
         
@@ -983,12 +966,23 @@ def get_matching_duplicate_applicant_ids(cursor, applicant, source_data=None):
     if not identity:
         return [current_applicant_no], False, None
 
-    cursor.execute(
-        """
-        SELECT applicant_no, first_name, middle_name, last_name
-        FROM applicants
-        """
-    )
+    last_name = identity.get('last_name') or ''
+    if last_name:
+        cursor.execute(
+            """
+            SELECT applicant_no, first_name, middle_name, last_name
+            FROM applicants
+            WHERE LOWER(TRIM(last_name)) = LOWER(TRIM(%s))
+            """,
+            (last_name,)
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT applicant_no, first_name, middle_name, last_name
+            FROM applicants
+            """
+        )
     rows = cursor.fetchall()
 
     matching_ids = {current_applicant_no}

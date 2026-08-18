@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { applicantAPI } from '../services/api';
+import { compressImage } from '../utils/imageCompressor';
 import iskoLogo from '../assets/iskologo.png';
 
 const SCHOOL_OPTIONS = [
@@ -166,13 +167,15 @@ const Profile = () => {
     }
   }, [currentUser, userProfile]);
 
-  const handleProfilePictureUpload = (e) => {
+  const handleProfilePictureUpload = async (e) => {
     const file = e.target.files[0];
-    if (file && window.compressImage) {
-      window.compressImage(file, 400).then(compressedBase64 => {
-        setFormData(prev => ({ ...prev, profile_picture: compressedBase64 }));
-      });
-    } else if (file) {
+    if (!file) return;
+
+    try {
+      const compressed = await compressImage(file, 400, 0.75);
+      setFormData(prev => ({ ...prev, profile_picture: compressed }));
+    } catch (err) {
+      console.warn('Image compression fallback:', err);
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData(prev => ({ ...prev, profile_picture: reader.result }));
@@ -244,7 +247,7 @@ const Profile = () => {
         if (isNewProfile) {
           navigate('/portal');
         }
-      }, 1500);
+      }, 600);
     } catch (err) {
       setError(err.message || 'Failed to update profile');
       console.error('Error updating profile:', err);

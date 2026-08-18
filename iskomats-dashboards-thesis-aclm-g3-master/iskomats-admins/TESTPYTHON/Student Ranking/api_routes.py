@@ -2707,6 +2707,7 @@ def verify_email():
 # ===== ADMIN ENDPOINTS =====
 
 @api_bp.route('/accounts', methods=['GET'])
+@api_bp.route('/admin/accounts', methods=['GET'])
 @token_required
 def get_accounts(current_user_id, pro_no, role):
     """Get all user accounts"""
@@ -3219,6 +3220,7 @@ def toggle_account_lock(current_user_id, pro_no, role, account_id):
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 @api_bp.route('/statistics', methods=['GET'])
+@api_bp.route('/admin/statistics', methods=['GET'])
 @token_required
 def get_statistics(current_user_id, pro_no, role):
     """Get dashboard statistics"""
@@ -3310,6 +3312,7 @@ def get_statistics(current_user_id, pro_no, role):
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 @api_bp.route('/logs', methods=['GET'])
+@api_bp.route('/admin/logs', methods=['GET'])
 @token_required
 def get_activity_logs(current_user_id, pro_no, role):
     """Get admin audit activity logs from the dedicated audit table."""
@@ -3398,6 +3401,7 @@ def get_activity_logs(current_user_id, pro_no, role):
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 @api_bp.route('/scholarships/<program>', methods=['GET'])
+@api_bp.route('/admin/scholarships/<program>', methods=['GET'])
 @token_required
 def get_scholarship_by_program(current_user_id, pro_no, role, program):
     """Get scholarship data for a program (provider) - returns metadata and base64-encoded images"""
@@ -3593,6 +3597,7 @@ def test_ai():
     })
 
 @api_bp.route('/applicants/<program>', methods=['GET'])
+@api_bp.route('/admin/applicants/<program>', methods=['GET'])
 @token_required
 def get_applicants(current_user_id, pro_no, role, program):
     """Get applicants for a program"""

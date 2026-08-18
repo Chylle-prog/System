@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { authAPI, applicantAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { GoogleLogin } from '@react-oauth/google';
+import { compressImage } from '../utils/imageCompressor';
 import lipaBg from '../assets/lipa.jpg';
 import Navbar from './Navbar';
 
@@ -291,11 +292,11 @@ const Login = () => {
       // Show success modal
       setShowSuccessModal(true);
 
-      // Redirect to portal after delay
+      // Redirect to portal promptly
       setTimeout(() => {
         setShowLoadingOverlay(false);
         navigate('/portal');
-      }, 2000);
+      }, 600);
     } catch (error) {
       setErrorMessage(error.message || 'Profile creation failed. Please try again.');
       setShowError(true);
@@ -303,15 +304,21 @@ const Login = () => {
     }
   };
 
-  const handleProfilePictureUpload = (e) => {
+  const handleProfilePictureUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setProfilePicture(ev.target.result);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImage(file, 400, 0.75);
+      setProfilePicture(compressed);
+    } catch (err) {
+      console.warn('Image compression fallback:', err);
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setProfilePicture(ev.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const closeRegistrationModal = () => {
