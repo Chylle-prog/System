@@ -686,6 +686,182 @@ function normalizeForOcr(str) {
  * e.g. "Course : BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY" -> course = "BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY"
  * e.g. "School Year Sem : AY 2025-2026 - 2nd Semester" -> schoolYearSem = "AY 2025-2026 - 2nd Semester"
  */
+const DOC_NOISE_PHRASES = new Set([
+  'true copy', 'review your assessment', 'refunds and other charges', 'official certificate',
+  'certificate of registration', 'office of the college registrar', 'students final grades',
+  'student final grades', "student's final grades", 'assessed fees', 'schedule of payments',
+  'tuition fee', 'guidance fee', 'library fee', 'processing fee', 'registration fee',
+  'technology services fee', 'energy fee', 'athletic fee', 'athletes development',
+  'publications', 'student government', 'accident insurance', 'cultural fee',
+  'total units', 'total assessment', 'downpayment', 'discount', 'outstanding balance',
+  'above-named person', 'above named person', 'to whom it may concern', 'specimen signature',
+  'academic status', 'scholarship discount', 'scholarship/discount', 'pay type',
+  'year level', 'student no', 'student name', 'school year sem', 'reg no', 'tran date',
+  'college', 'course', 'subject', 'section', 'bldg/room', 'faculty', 'days', 'time',
+  'capstone project', 'elective', 'social and professional issues', 'the life and works',
+  'punong barangay', 'barangay inosluban', 'city of lipa', 'province of batangas',
+  'republic of the philippines', 'de la salle lipa', 'office of the punong barangay',
+  'certificate of indigency', 'certificate of residency', 'grading system',
+  'grades in-charge', 'college registrar', 'printed by', 'user', 'run date',
+  'bachelor of science', 'information technology', 'plan b colleges', 'plan b- colleges',
+  'this is to certify', 'office of the registrar', 'accountabilities', 'notes',
+  'f-cro-024.rev.0(04.06.2026)', 'f-cro-024'
+]);
+
+function isDocNoise(text) {
+  if (!text) return true;
+  const clean = String(text).toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+  if (DOC_NOISE_PHRASES.has(clean)) return true;
+  for (const np of DOC_NOISE_PHRASES) {
+    if (np.length >= 8 && (clean === np || clean.startsWith(np + ' ') || clean.endsWith(' ' + np))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function extractStudentNameFromOcr(rawText) {
+  if (!rawText) return "Not detected";
+  const lines = String(rawText).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+  // 1. Explicit labeled lines: "Name : <val>", "Student Name : <val>", "Pangalan : <val>"
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    let m = line.match(/(?:student\s*name|name\s*of\s*student|pangalan)\s*[:=\+\-]\s*(.+)/i);
+    if (!m && !/\b(?:printed|user|father|mother|guardian)\b/i.test(line)) {
+      m = line.match(/\bname\s*[:=\+\-]\s*(.+)/i);
+    }
+    if (m) {
+      let val = m[1].trim();
+      val = val.replace(/\s+(?:Reg\s*No|Tran\s*Date|College|Course|Pay\s*Type|User|Run\s*Date|Scholarship|Discount|Total|Section|Bldg).*$/i, '').trim();
+      val = val.replace(/^[:=\+\-\|\s]+/, '').trim();
+      if (val && !isDocNoise(val) && !/\b(?:AY\s*\d|Semester|School\s*Year|1st|2nd|3rd)\b/i.test(val)) {
+        return val;
+      }
+    }
+  }
+
+  // 2. Indigency / Residency anchor pattern
+  for (const line of lines) {
+    const mCert = line.match(/(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|pinatutunayan\s+na\s+si|katibayan\s+na\s+si)\s+([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years?|yrs?|yo|anyos)|,\s*(?:single|married|widow|filipino|citizen|a\s+resident)|whose\s+specimen|$)/i);
+    if (mCert && mCert[1]) {
+      let cand = mCert[1].trim().replace(/^(?:mr\.?|ms\.?|mrs\.?|miss)\s+/i, '').trim();
+      if (cand.length >= 3 && !isDocNoise(cand)) {
+        return cand;
+      }
+    }
+  }
+
+  // 3. Disconnected Label -> Value block matcher (when label "Name" / "Student Name" is standalone)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^(?:Name|Student\s*Name|Pangalan)\s*[:=\+\-]?$/i.test(line)) {
+      for (let j = i + 1; j < Math.min(i + 15, lines.length); j++) {
+        const candLine = lines[j];
+        const cleanCand = candLine.replace(/^[:=\+\-\|\s]+/, '').trim();
+        if (/^(?:School\s*Year|Student\s*No|Reg\s*No|Tran\s*Date|College|Course|Year\s*Level|Scholarship|Pay\s*Type|Subject|Units|Section|Total)\b/i.test(cleanCand)) {
+          continue;
+        }
+        if (/\b(?:AY\s*\d|Semester|Sem\b|\d{4}[\-\/]\d{4}|\d{7,12}|^\d+$|^\d+[\/\-]\d+[\/\-]\d+$|^\d+(?:st|nd|rd|th)\s*Year)\b/i.test(cleanCand)) {
+          continue;
+        }
+        if (isDocNoise(cleanCand)) continue;
+        if (/^[A-Za-z\s,\.\-]{4,60}$/.test(cleanCand) && cleanCand.split(/\s+/).length >= 2) {
+          return cleanCand;
+        }
+      }
+    }
+  }
+
+  // 4. Multi-token Name search in Header section (first 30 lines)
+  for (let i = 0; i < Math.min(30, lines.length); i++) {
+    const cleanLine = lines[i].replace(/^[:=\+\-\|\s]+/, '').trim();
+    if (isDocNoise(cleanLine)) continue;
+    // Format: "LANTAFE, MIKAELA YSABEL LINATOC"
+    if (/^[A-Z]{2,25},\s+[A-Z\s\.\-]{3,40}$/.test(cleanLine)) {
+      return cleanLine;
+    }
+    // Format: "ANA FRANCZESCA M. ARRIOLA"
+    const words = cleanLine.split(/\s+/);
+    if (words.length >= 2 && words.length <= 5 && /^[A-Za-z\s\.\-]{5,50}$/.test(cleanLine)) {
+      if (!/\b(?:OFFICIAL|CERTIFICATE|REGISTRATION|OFFICE|COLLEGE|REGISTRAR|BACHELOR|SCIENCE|INFORMATION|TECHNOLOGY|DEPARTMENT|HIGHWAY|BATANGAS|PHILIPPINES|SEMESTER|YEAR|FINAL|GRADES|UNITS|SECTION|PROJECT|ELECTIVE|ISSUES|WORKS)\b/i.test(cleanLine)) {
+        if (words.every(w => w.length >= 1 && (w === w.toUpperCase() || /^[A-Z][a-z]+$/.test(w) || /^[A-Z]\.?$/.test(w)))) {
+          return cleanLine;
+        }
+      }
+    }
+  }
+
+  return "Not detected";
+}
+
+function parseStudentNameComponents(fullName) {
+  if (!fullName || fullName === "Not detected") {
+    return { first: "Not detected", middle: "Not detected", last: "Not detected" };
+  }
+
+  let clean = String(fullName).trim();
+  clean = clean.replace(/^(?:(?:mr|ms|mrs|miss|g|gng|bb)[\.\/\s]*)+\s*/i, '');
+  clean = clean.replace(/^(?:complete\s*name|full\s*name|name\s*of\s*student|student\s*name|pangalan)\s*[:\-]?\s*/i, '');
+
+  if (clean.includes(',')) {
+    const parts = clean.split(',').map(s => s.trim());
+    const last = parts[0] || "Not detected";
+    const rest = (parts[1] || '').split(/\s+/).filter(Boolean);
+    let first = "Not detected";
+    let middle = "Not detected";
+    if (rest.length >= 2) {
+      const lastTok = rest[rest.length - 1];
+      if (/^[A-Za-z]\.?$/.test(lastTok)) {
+        middle = lastTok.replace('.', '');
+        first = rest.slice(0, rest.length - 1).join(' ');
+      } else {
+        middle = lastTok;
+        first = rest.slice(0, rest.length - 1).join(' ');
+      }
+    } else if (rest.length === 1) {
+      first = rest[0];
+      middle = "N/A";
+    }
+    return { first, middle, last };
+  } else {
+    const words = clean.split(/\s+/).filter(Boolean);
+    if (words.length >= 4) {
+      let midIdx = -1;
+      for (let idx = 1; idx < words.length - 1; idx++) {
+        if (/^[A-Za-z]\.?$/.test(words[idx])) {
+          midIdx = idx;
+          break;
+        }
+      }
+      if (midIdx !== -1) {
+        return {
+          first: words.slice(0, midIdx).join(' '),
+          middle: words[midIdx].replace('.', ''),
+          last: words.slice(midIdx + 1).join(' ')
+        };
+      } else {
+        return {
+          first: words.slice(0, words.length - 2).join(' '),
+          middle: words[words.length - 2],
+          last: words[words.length - 1]
+        };
+      }
+    } else if (words.length === 3) {
+      if (/^[A-Za-z]\.?$/.test(words[1])) {
+        return { first: words[0], middle: words[1].replace('.', ''), last: words[2] };
+      } else {
+        return { first: `${words[0]} ${words[1]}`, middle: "N/A", last: words[2] };
+      }
+    } else if (words.length === 2) {
+      return { first: words[0], middle: "N/A", last: words[1] };
+    } else if (words.length === 1) {
+      return { first: words[0], middle: "N/A", last: "Not detected" };
+    }
+  }
+  return { first: "Not detected", middle: "Not detected", last: "Not detected" };
+}
+
 function extractOcrKeyValues(rawText) {
   if (!rawText) return {};
   const lines = String(rawText).split(/\r?\n/);
@@ -707,7 +883,7 @@ function extractOcrKeyValues(rawText) {
       /(?<!printed\s+|above[\-\s]+|^printed\s+)\bname\s*[:\-]\s*([^\r\n]+)/i
     ],
     studentId: [
-      /(?:student\s*(?:no|number|id|num)|st(?:u|o|a|e)d(?:e|a|o)nt\s*(?:no|number|id)|id\s*(?:no|number)|sr\s*code|reg\s*no)\s*[:\-]\s*([^\r\n]+)/i
+      /(?:student\s*(?:no|number|id|num)|st(?:u|o|a|e)d(?:e|a|o)nt\s*(?:no|number|id)|id\s*(?:no|number)|sr\s*code|\breg\s*no)\s*[:\-]\s*([^\r\n]+)/i
     ],
     yearLevel: [/(?:year\s*level|yr\s*level|grade\s*level)\s*[:\-]\s*([^\r\n]+)/i],
     course: [/(?:course|program|degree|strand)\s*[:\-]\s*([^\r\n]+)/i],
@@ -725,8 +901,8 @@ function extractOcrKeyValues(rawText) {
           let val = match[1].trim();
           val = val.replace(/\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref|Total\s*Units|Total)[\s\S]*/i, '').trim();
           if (val.length > 0) {
-            // Reject false matches that contain digits or academic year / semester header keywords
-            if (key === 'name' && (/\d/.test(val) || /AY\s*\d|School\s*Year|Semester|1st|2nd|3rd|Official|Certificate|Registration|Born|October|Single|Married|Resident/i.test(val))) {
+            // Reject false matches for name
+            if (key === 'name' && (isDocNoise(val) || /\d/.test(val) || /AY\s*\d|School\s*Year|Semester|1st|2nd|3rd|Official|Certificate|Registration/i.test(val))) {
               continue;
             }
             fields[key] = val;
@@ -737,72 +913,15 @@ function extractOcrKeyValues(rawText) {
     }
   }
 
-  // Indigency / Residency Certificate Candidate Name Anchor
-  if (!fields.name) {
-    const certAnchorPatterns = [
-      /(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|ito\s+ay\s+pagpapatunay\s+na\s+si|pinatutunayan\s+na\s+si|katibayan\s+na\s+si|certify\s+that|certifies\s+that|certify\s+hereby\s+that|hereby\s+certify\s+that)[\s\S]*?(?:that\s+|na\s+si\s+|i\s+personally\s+known?\s+|personally\s+known?\s*(?:to\s+me\s+)?|hereby\s+certify\s+that\s+|mr\.?\s*\/?\s*ms\.?\s*\/?\s*mrs\.?\s*|mr\.?\s+|ms\.?\s+|mrs\.?\s+|miss\s+|g\.?\s+|gng\.?\s+|bb\.?\s+)*([A-Za-z][A-Za-z\s,\.\-']{2,80}?)(?=[,\.\s]*(?:\d+\s*(?:years?|yrs?|yo|anyos|taong)|of\s*legal\s*age|born\s+on|single|married|widow|widower|separated|divorced|filipino|pilipino|citizen|is\s+a\s+(?:bonafide\s+)?resident|is\s+an?\s+indigent|belongs\s+to|resident|residing|whose\s+specimen|whose\s+signature|whose\s+photo|with\s+postal\s+address|\n|$))/i
-    ];
-    for (const pat of certAnchorPatterns) {
-      const m = rawText.match(pat);
-      if (m && m[1]) {
-        let cand = m[1].trim()
-          .replace(/^(?:this\s+is\s+to\s+|sto\s+)?(?:certify|certifies|patunay|katibayan|pinatutunayan)\s*(?:that|na\s+si)?\s*/i, '')
-          .replace(/^(?:i\s+personally\s+known?|personally\s+known?\s*(?:to\s+me)?|i\s+hereby\s+certify\s+that|the\s+undersigned)\s*/i, '')
-          .replace(/^(?:(?:mr|ms|mrs|miss|g|gng|bb)[\.\/\s]*)+\s*/i, '')
-          .replace(/^(?:complete\s*name|full\s*name|pangalan|name)\s*[:\-]?\s*/i, '')
-          .replace(/^[^a-zA-Z]+/, '')
-          .replace(/\s*(?:\(?complete\s*name\)?|\(?age\)?|\(?civil\s*status\)?|\(?birthday\)?).*$/i, '')
-          .replace(/\s*(?:\d+\s*)?(?:years?\s*(?:of\s*age|old)?|yrs?\s*old|yo|anyos|taong\s*gulang|of\s*legal\s*age|age)\b.*$/i, '')
-          .replace(/\s*(?:single(?:\/married(?:\/widow(?:\/separated)?)?)?|married|widow(?:er)?|separated|divorced|filipino(?:\s*citizen)?|pilipino(?:\s*citizen)?|citizen)\b.*$/i, '')
-          .replace(/\s*(?:born\s+(?:on\s+)?\d.*|born\s+on.*)$/i, '')
-          .replace(/\s*(?:whose\s+specimen\s+signature|whose\s+signature|whose\s+photo|is\s+a\s+(?:bonafide\s+)?resident|is\s+an?\s+indigent|belongs\s+to|resident\s+of|residing\s+at|residing\s+in|resident|bonafide)\b.*$/i, '')
-          .replace(/,\s*$/, '')
-          .trim();
-        if (cand.length >= 3 && !/certify|certificate|barangay|office|republic|philippines|punong|batangas|lipa|nangkaan|mataasnakahoy|inosluban|inosloban|purok|residency|indigency|sangguniang|kagawad|chairperson|secretary|treasurer|clearance|valid|municipal/i.test(cand)) {
-          fields.name = cand;
-          break;
-        }
-      }
-    }
-  }
-
-  // Fallbacks for column-separated OCR text layouts & National ID / PhilSys multi-line formats
-  if (!fields.name) {
-    const philsysFirstMatch = rawText.match(/(?:mga\s*pangalan\s*[\/\-]\s*given\s*names?|given\s*names?|mga\s*pangalan|first\s*name)\s*[:\-\/]*\s*([A-Za-z\s]{2,50})/i);
-    const philsysLastMatch = rawText.match(/(?:apelido\s*[\/\-]\s*last\s*name|last\s*name|surname|apelido)\s*[:\-\/]*\s*([A-Za-z\s]{2,50})/i);
-    if (philsysFirstMatch && philsysLastMatch && philsysFirstMatch[1] && philsysLastMatch[1]) {
-      let firstVal = philsysFirstMatch[1].replace(/^(?:mga\s*pangalan|given\s*names?|[\/\-\:\s])+/i, '').replace(/(?:gitnang|middle|apelido|last|name|sex|date|birth)[\s\S]*/i, '').trim();
-      let lastVal = philsysLastMatch[1].replace(/^(?:apelido|last\s*name|surname|[\/\-\:\s])+/i, '').replace(/(?:mga|pangalan|given|middle|gitnang|sex|date|birth)[\s\S]*/i, '').trim();
-      if (firstVal && lastVal) {
-        fields.name = `${lastVal}, ${firstVal}`;
-      }
-    }
-  }
-
-  // DLSL/School-ID format: LASTNAME on its own all-caps line, then "First Middle." on the next line
-  if (!fields.name) {
-    const nameLines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    for (let i = 0; i < nameLines.length - 1; i++) {
-      const upper = nameLines[i];
-      const next  = nameLines[i + 1];
-      const isSchoolHeader = /(?:DE\s*LA\s*SALLE|LIPA|DLSL|COLLEGE|UNIVERSITY|BACHELOR|NATIONAL|OFFICIAL|CERTIFICATE|REGISTRATION|DEPARTMENT|HIGHWAY|STREET|BRGY|INC|ISSESO)/i.test(upper);
-      const isFooterOrNotice = /(?:Signature|Chancellor|Registrar|This|In\s*case|Dr\.|SY|Valid|Races|Emergency|Notify|Non-transferable|\d{4,})/i.test(next);
-
-      if (
-        /^[A-Z][A-Z\s\.\-]{1,24}$/.test(upper) &&
-        !isSchoolHeader &&
-        /[a-z]/.test(next) &&
-        /^[A-Za-z][A-Za-z\s\.\-]{2,39}$/.test(next) &&
-        !isFooterOrNotice
-      ) {
-        fields.name = `${upper.trim()}, ${next.trim()}`;
-        break;
-      }
+  // Fallback name extraction using robust multi-pass extractor
+  if (!fields.name || isDocNoise(fields.name)) {
+    const extractedName = extractStudentNameFromOcr(rawText);
+    if (extractedName && extractedName !== "Not detected") {
+      fields.name = extractedName;
     }
   }
 
   if (!fields.studentId) {
-    // Match common DLSL/PH student ID formats: 20xxxxxxxx (10 digits) or 15xxxxxxxx etc.
     const idMatch = rawText.match(/\b(20\d{8}|15\d{8}|19\d{8}|18\d{8}|\d{9,10})\b/);
     if (idMatch) {
       let candidate = idMatch[1];
@@ -823,7 +942,7 @@ function extractOcrKeyValues(rawText) {
 function formatExtractedRequirementsSummary(rawText) {
   if (!rawText) return "";
 
-  // --- Use only the FRONT ID section for name extraction (avoid back-ID noise like "please notify emergency") ---
+  // --- Use only the FRONT ID section for name extraction if available ---
   let nameSearchText = rawText;
   const frontIdSectionMatch = rawText.match(/\[(?:FRONT ID TEXT|NATIONAL ID FRONT TEXT)\]\s*([\s\S]*?)(?=\n\n\[|$)/i);
   if (frontIdSectionMatch && frontIdSectionMatch[1]) {
@@ -832,65 +951,12 @@ function formatExtractedRequirementsSummary(rawText) {
 
   const kv = extractOcrKeyValues(nameSearchText);
 
-  // 1. Full Name Extraction
-  let fullName = kv.name;
-
-  // --- Indigency / Residency Certificate Semantic Anchor ---
-  if (!fullName) {
-    const indigencyAnchorPatterns = [
-      /(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|ito\s+ay\s+pagpapatunay\s+na\s+si|pinatutunayan\s+na\s+si|katibayan\s+na\s+si|certify\s+that|certifies\s+that|certify\s+hereby\s+that|hereby\s+certify\s+that)[\s\S]*?(?:that\s+|na\s+si\s+|i\s+personally\s+known?\s+|personally\s+known?\s*(?:to\s+me\s+)?|hereby\s+certify\s+that\s+|mr\.?\s*\/?\s*ms\.?\s*\/?\s*mrs\.?\s*|mr\.?\s+|ms\.?\s+|mrs\.?\s+|miss\s+|g\.?\s+|gng\.?\s+|bb\.?\s+)*([A-Za-z][A-Za-z\s,\.\-']{2,80}?)(?=[,\.\s]*(?:\d+\s*(?:years?|yrs?|yo|anyos|taong)|of\s*legal\s*age|born\s+on|single|married|widow|widower|separated|divorced|filipino|pilipino|citizen|is\s+a\s+(?:bonafide\s+)?resident|is\s+an?\s+indigent|belongs\s+to|resident|residing|whose\s+specimen|whose\s+signature|whose\s+photo|with\s+postal\s+address|\n|$))/i
-    ];
-    for (const pat of indigencyAnchorPatterns) {
-      const m = nameSearchText.match(pat);
-      if (m && m[1]) {
-        let raw = m[1].trim()
-          .replace(/^(?:this\s+is\s+to\s+|sto\s+)?(?:certify|certifies|patunay|katibayan|pinatutunayan)\s*(?:that|na\s+si)?\s*/i, '')
-          .replace(/^(?:i\s+personally\s+known?|personally\s+known?\s*(?:to\s+me)?|i\s+hereby\s+certify\s+that|the\s+undersigned)\s*/i, '')
-          .replace(/^(?:(?:mr|ms|mrs|miss|g|gng|bb)[\.\/\s]*)+\s*/i, '')
-          .replace(/^(?:complete\s*name|full\s*name|pangalan|name)\s*[:\-]?\s*/i, '')
-          .replace(/^[^a-zA-Z]+/, '')
-          .replace(/\s*(?:\(?complete\s*name\)?|\(?age\)?|\(?civil\s*status\)?|\(?birthday\)?).*$/i, '')
-          .replace(/\s*(?:\d+\s*)?(?:years?\s*(?:of\s*age|old)?|yrs?\s*old|yo|anyos|taong\s*gulang|of\s*legal\s*age|age)\b.*$/i, '')
-          .replace(/\s*(?:single(?:\/married(?:\/widow(?:\/separated)?)?)?|married|widow(?:er)?|separated|divorced|filipino(?:\s*citizen)?|pilipino(?:\s*citizen)?|citizen)\b.*$/i, '')
-          .replace(/\s*(?:born\s+(?:on\s+)?\d.*|born\s+on.*)$/i, '')
-          .replace(/\s*(?:whose\s+specimen\s+signature|whose\s+signature|whose\s+photo|is\s+a\s+(?:bonafide\s+)?resident|is\s+an?\s+indigent|belongs\s+to|resident\s+of|residing\s+at|residing\s+in|resident|bonafide)\b.*$/i, '')
-          .replace(/,\s*$/, '')
-          .trim();
-        if (raw.length >= 3 && !/certify|certificate|barangay|office|republic|philippines|punong|batangas|lipa|nangkaan|mataasnakahoy|inosluban|inosloban|purok|residency|indigency|sangguniang|kagawad|chairperson|secretary|treasurer|clearance|valid|municipal/i.test(raw)) {
-          fullName = raw;
-          break;
-        }
-      }
-    }
-  }
-
-  // DLSL/School-ID format: LASTNAME on its own all-caps line, then "First Middle." on the next line
-  if (!fullName) {
-    const nameLines = nameSearchText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    for (let i = 0; i < nameLines.length - 1; i++) {
-      const upper = nameLines[i];
-      const next  = nameLines[i + 1];
-      const isSchoolHeader = /(?:DE\s*LA\s*SALLE|LIPA|DLSL|COLLEGE|UNIVERSITY|BACHELOR|NATIONAL|OFFICIAL|CERTIFICATE|REGISTRATION|DEPARTMENT|HIGHWAY|STREET|BRGY|INC|ISSESO)/i.test(upper);
-      const isFooterOrNotice = /(?:Signature|Chancellor|Registrar|This|In\s*case|Dr\.|SY|Valid|Races|Emergency|Notify|Non-transferable|\d{4,})/i.test(next);
-
-      if (
-        /^[A-Z][A-Z\s\.\-]{1,24}$/.test(upper) &&
-        !isSchoolHeader &&
-        /[a-z]/.test(next) &&
-        /^[A-Za-z][A-Za-z\s\.\-]{2,39}$/.test(next) &&
-        !isFooterOrNotice
-      ) {
-        fullName = `${upper.trim()}, ${next.trim()}`;
-        break;
-      }
-    }
-  }
-
-  if (!fullName) {
-    const inlineMatch = nameSearchText.match(/(?:name|student\s*name|pangalan)\s*[:\-]\s*(.+)/i);
-    if (inlineMatch && inlineMatch[1]) fullName = inlineMatch[1].trim();
-  }
-  fullName = fullName || "Not detected";
+  // 1. Full Name Extraction & Parsing
+  const fullName = extractStudentNameFromOcr(nameSearchText) || kv.name || "Not detected";
+  const nameParts = parseStudentNameComponents(fullName);
+  const firstName = nameParts.first;
+  const middleName = nameParts.middle;
+  const lastName = nameParts.last;
 
   // 2. Student No Extraction
   let studentNo = kv.studentId;
@@ -904,18 +970,24 @@ function formatExtractedRequirementsSummary(rawText) {
       studentNo = candidate;
     }
   }
-  if (!studentNo || studentNo === 'No') studentNo = "Not detected";
+  if (!studentNo || studentNo === 'No' || isDocNoise(studentNo)) studentNo = "Not detected";
 
   // 3. Course Extraction
   let course = kv.course;
   if (!course) {
     const courseMatch = rawText.match(/(?:BACHELOR\s+(?:OF\s+SCIENCE|OF\s+ARTS|IN)|BS|BA|BEED|BSED)\s+[A-Z\s]{4,60}/i);
-    if (courseMatch) course = courseMatch[0].trim();
+    if (courseMatch) course = courseMatch[0].trim().replace(/\s+(?:Pay|Year|College|Tran|Reg|Scholarship).*$/i, '');
+  }
+  if (course && course.includes('\n')) {
+    course = course.split(/\n/)[0].trim();
   }
   course = course || "Not detected";
 
   // 4. Year Level Extraction
-  const yearLevel = extractYearLevelFromText(rawText) || kv.yearLevel || "Not detected";
+  let yearLevel = extractYearLevelFromText(rawText) || kv.yearLevel || "Not detected";
+  if (yearLevel && /^1[1-5]th\s*Year/i.test(yearLevel)) {
+    yearLevel = yearLevel.slice(1);
+  }
 
   // 5. Academic Year & Semester Extraction
   let academicYrSem = kv.schoolYearSem;
@@ -930,11 +1002,9 @@ function formatExtractedRequirementsSummary(rawText) {
   const subjectRows = [];
   const lines = String(rawText).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
-  // Blacklist: lines that look like subject codes but actually come from Indigency/Residency certificate text
   const certLineBlacklist = /^(?:issued?|isssued?|certif|barangay|brgy|punong|office|republic|province|city|municipality|purok|zone|sitio|signature|specimen|concern|request|fulfillment|requirement|april|january|february|march|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday|hon\.?|atty\.?|dr\.?|this|clearance|valid|invalid|control|applicant)/i;
 
   if (!isCertificateOnly) {
-    // Strategy A: Row-based subject matcher
     for (const line of lines) {
       if (/assessed\s*fees|schedule\s*of\s*pay|total\s*assessment|tuition\s*fee/i.test(line)) break;
       if (certLineBlacklist.test(line.trim())) continue;
@@ -947,29 +1017,6 @@ function formatExtractedRequirementsSummary(rawText) {
         const units = subMatch[3].trim();
         if (!/total|official|certificate|registration|enrolled|run\s*date|user|student|assessed|fees|clearance|valid/i.test(code) && !certLineBlacklist.test(code)) {
           subjectRows.push({ code, desc, units });
-        }
-      }
-    }
-
-    // Strategy B: Column-separated fallback (DLSL column block format)
-    if (subjectRows.length === 0) {
-      const knownCodes = [];
-      const knownDescs = [];
-      
-      for (const l of lines) {
-        if (/assessed\s*fees|schedule\s*of/i.test(l)) break;
-        if (/^(?:ITCaproj2|Itelect4|Itsopri|Liferiz|IT\w+|CS\w+|IS\w+|CPE\w+|ENG\w+|MATH\w+|PHYS\w+)/i.test(l)) {
-          knownCodes.push(l);
-        } else if (/^(?:Capstone\s*Project|IT\s*Elective|IT\s*Social|The\s*Life\s*and\s*Works|General\s*Psychology|Calculus|Physics|Chemistry)/i.test(l)) {
-          knownDescs.push(l);
-        }
-      }
-
-      if (knownCodes.length > 0) {
-        for (let i = 0; i < knownCodes.length; i++) {
-          const code = knownCodes[i];
-          const desc = knownDescs[i] || "Enrolled Subject";
-          subjectRows.push({ code, desc, units: "3" });
         }
       }
     }
@@ -987,120 +1034,6 @@ function formatExtractedRequirementsSummary(rawText) {
   const downpayment = downpaymentMatch ? downpaymentMatch[1] : null;
   const discount = discountMatch ? discountMatch[1] : "0.00";
   const schoolName = schoolMatch ? schoolMatch[0] : "De La Salle Lipa";
-
-  // Parse name into First Name, Middle Name, Last Name
-  let firstName = "Not detected";
-  let middleName = "Not detected";
-  let lastName = "Not detected";
-
-  if (fullName && fullName !== "Not detected") {
-    let clean = fullName.trim();
-    // Strip leading honorifics / non-name prefixes
-    clean = clean.replace(/^(?:(?:mr|ms|mrs|miss|g|gng|bb)[\.\/\s]*)+\s*/i, '');
-    clean = clean.replace(/^(?:complete\s*name|full\s*name|name\s*of\s*student|student\s*name|pangalan)\s*[:\-]?\s*/i, '');
-
-    if (clean.includes(',')) {
-      // Format: "MAGBUHAT, Alexie Chyle O." or "LANTAFE, MIKAELA YSABEL L"
-      const parts = clean.split(',').map(s => s.trim());
-      lastName = parts[0] || "Not detected";
-      const rest = (parts[1] || '').split(/\s+/).filter(Boolean);
-      if (rest.length >= 2) {
-        const lastToken = rest[rest.length - 1];
-        if (/^[A-Za-z]\.?$/.test(lastToken)) {
-          middleName = lastToken.replace('.', '');
-          firstName = rest.slice(0, rest.length - 1).join(' ');
-        } else {
-          middleName = lastToken;
-          firstName = rest.slice(0, rest.length - 1).join(' ');
-        }
-      } else if (rest.length === 1) {
-        firstName = rest[0];
-        middleName = "N/A";
-      }
-    } else {
-      let words = clean.split(/\s+/).filter(Boolean);
-
-      const leadingNoise = [
-        'this', 'is', 'to', 'certify', 'that', 'sto', 'certifies', 'patunay',
-        'katibayan', 'pinatutunayan', 'na', 'si', 'the', 'a', 'and', 'i',
-        'personally', 'known', 'know', 'hereby', 'mr', 'ms', 'mrs', 'miss',
-        'complete', 'name', 'full', 'pangalan'
-      ];
-
-      while (words.length > 0) {
-        const firstW = words[0].toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (!firstW || leadingNoise.includes(firstW)) {
-          words.shift();
-        } else {
-          break;
-        }
-      }
-
-      const trailingNoise = [
-        'age', 'years', 'year', 'yr', 'yo', 'old', 'anyos', 'of', 'legal', 'taong', 'gulang',
-        'single', 'married', 'widow', 'widower', 'separated', 'divorced',
-        'filipino', 'pilipino', 'citizen', 'resident', 'bonafide', 'residing',
-        'indigent', 'whose', 'specimen', 'signature', 'appears', 'below', 'photo',
-        'complete', 'name', 'birthday', 'birth', 'civil', 'status'
-      ];
-
-      while (words.length > 0) {
-        const lastW = words[words.length - 1].toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (!lastW || trailingNoise.includes(lastW) || /^\d+$/.test(lastW)) {
-          words.pop();
-        } else {
-          break;
-        }
-      }
-
-      // Check for middle initial anywhere between index 1 and words.length - 2
-      let middleIdx = -1;
-      for (let i = 1; i < words.length - 1; i++) {
-        if (/^[A-Za-z]\.?$/.test(words[i])) {
-          middleIdx = i;
-          break;
-        }
-      }
-
-      if (middleIdx !== -1) {
-        middleName = words[middleIdx].replace('.', '');
-        firstName = words.slice(0, middleIdx).join(' ');
-        lastName = words.slice(middleIdx + 1).join(' ');
-      } else if (words.length >= 4) {
-        // e.g. "Alexie Chyle Ortega Magbuhat" -> First: "Alexie Chyle", Middle: "Ortega", Last: "Magbuhat"
-        lastName = words[words.length - 1];
-        middleName = words[words.length - 2];
-        firstName = words.slice(0, words.length - 2).join(' ');
-      } else if (words.length === 3) {
-        // e.g. "Alexie Chyle Magbuhat" -> First: "Alexie Chyle", Middle: "N/A", Last: "Magbuhat"
-        lastName = words[2];
-        firstName = `${words[0]} ${words[1]}`;
-        middleName = "N/A";
-      } else if (words.length === 2) {
-        firstName = words[0];
-        lastName = words[1];
-        middleName = "N/A";
-      } else if (words.length === 1) {
-        firstName = words[0];
-        middleName = "N/A";
-      }
-    }
-
-    // Safety check: Ensure lastName is not a residual noise word (e.g. "age", "years") or purely digits
-    const nameNoiseWordsList = [
-      'age', 'years', 'year', 'yr', 'yo', 'of', 'legal', 'taong', 'gulang',
-      'single', 'married', 'widow', 'widower', 'separated', 'divorced',
-      'filipino', 'pilipino', 'citizen', 'resident', 'bonafide', 'residing',
-      'this', 'is', 'to', 'certify', 'that', 'sto', 'certifies', 'patunay',
-      'katibayan', 'pinatutunayan', 'na', 'si', 'the', 'a', 'and'
-    ];
-    if (lastName && lastName !== "Not detected") {
-      const cleanLast = lastName.toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (nameNoiseWordsList.includes(cleanLast) || /^\d+$/.test(cleanLast)) {
-        lastName = "Not detected";
-      }
-    }
-  }
 
   const divider = "============================================================";
   const subDivider = "----------------+------------------------------+-------";

@@ -2225,6 +2225,95 @@ def extract_total_units_from_text(raw_text, azure_kvp=None):
 
     return printed_line_units
 
+DOC_NOISE_PHRASES = {
+    'true copy', 'review your assessment', 'refunds and other charges', 'official certificate',
+    'certificate of registration', 'office of the college registrar', 'students final grades',
+    'student final grades', "student's final grades", 'assessed fees', 'schedule of payments',
+    'tuition fee', 'guidance fee', 'library fee', 'processing fee', 'registration fee',
+    'technology services fee', 'energy fee', 'athletic fee', 'athletes development',
+    'publications', 'student government', 'accident insurance', 'cultural fee',
+    'total units', 'total assessment', 'downpayment', 'discount', 'outstanding balance',
+    'above-named person', 'above named person', 'to whom it may concern', 'specimen signature',
+    'academic status', 'scholarship discount', 'scholarship/discount', 'pay type',
+    'year level', 'student no', 'student name', 'school year sem', 'reg no', 'tran date',
+    'college', 'course', 'subject', 'section', 'bldg/room', 'faculty', 'days', 'time',
+    'capstone project', 'elective', 'social and professional issues', 'the life and works',
+    'punong barangay', 'barangay inosluban', 'city of lipa', 'province of batangas',
+    'republic of the philippines', 'de la salle lipa', 'office of the punong barangay',
+    'certificate of indigency', 'certificate of residency', 'grading system',
+    'grades in-charge', 'college registrar', 'printed by', 'user', 'run date',
+    'bachelor of science', 'information technology', 'plan b colleges', 'plan b- colleges',
+    'this is to certify', 'office of the registrar', 'accountabilities', 'notes',
+    'f-cro-024.rev.0(04.06.2026)', 'f-cro-024'
+}
+
+def is_doc_noise(text):
+    if not text:
+        return True
+    clean = re.sub(r'[^a-z0-9\s]', '', str(text).lower()).strip()
+    if clean in DOC_NOISE_PHRASES:
+        return True
+    for np in DOC_NOISE_PHRASES:
+        if len(np) >= 8 and (clean == np or clean.startswith(np + ' ') or clean.endswith(' ' + np)):
+            return True
+    return False
+
+def extract_student_name_from_ocr(raw_text):
+    if not raw_text:
+        return ""
+    lines = [l.strip() for l in str(raw_text).splitlines() if l.strip()]
+
+    # 1. Labeled lines: "Name : <val>", "Student Name : <val>", "Pangalan : <val>"
+    for idx, line in enumerate(lines):
+        m = re.search(r'(?:student\s*name|name\s*of\s*student|pangalan)\s*[:=\+\-]\s*(.+)', line, re.IGNORECASE)
+        if not m and not re.search(r'\b(?:printed|user|father|mother|guardian)\b', line, re.IGNORECASE):
+            m = re.search(r'\bname\s*[:=\+\-]\s*(.+)', line, re.IGNORECASE)
+        if m:
+            val = m.group(1).strip()
+            val = re.sub(r'\s+(?:Reg\s*No|Tran\s*Date|College|Course|Pay\s*Type|User|Run\s*Date|Scholarship|Discount|Total|Section|Bldg).*$', '', val, flags=re.IGNORECASE).strip()
+            val = re.sub(r'^[:=\+\-\|\s]+', '', val).strip()
+            if val and not is_doc_noise(val) and not re.search(r'\b(AY\s*\d|Semester|School\s*Year|1st|2nd|3rd)\b', val, re.IGNORECASE):
+                return val
+
+    # 2. Indigency / Residency anchor pattern
+    for line in lines:
+        m_cert = re.search(r'(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|pinatutunayan\s+na\s+si|katibayan\s+na\s+si)\s+([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years?|yrs?|yo|anyos)|,\s*(?:single|married|widow|filipino|citizen|a\s+resident)|whose\s+specimen|$)', line, re.IGNORECASE)
+        if m_cert:
+            cand = m_cert.group(1).strip()
+            cand = re.sub(r'^(?:mr\.?|ms\.?|mrs\.?|miss)\s+', '', cand, flags=re.IGNORECASE).strip()
+            if len(cand) >= 3 and not is_doc_noise(cand):
+                return cand
+
+    # 3. Disconnected Label -> Value block matcher
+    for idx, line in enumerate(lines):
+        if re.match(r'^(?:Name|Student\s*Name|Pangalan)\s*[:=\+\-]?$', line, re.IGNORECASE):
+            for j in range(idx + 1, min(idx + 15, len(lines))):
+                cand_line = lines[j]
+                clean_cand = re.sub(r'^[:=\+\-\|\s]+', '', cand_line).strip()
+                if re.match(r'^(?:School\s*Year|Student\s*No|Reg\s*No|Tran\s*Date|College|Course|Year\s*Level|Scholarship|Pay\s*Type|Subject|Units|Section|Total)\b', clean_cand, re.IGNORECASE):
+                    continue
+                if re.search(r'\b(AY\s*\d|Semester|Sem\b|\d{4}[\-\/]\d{4}|\d{7,12}|^\d+$|^\d+[\/\-]\d+[\/\-]\d+$|^\d+(?:st|nd|rd|th)\s*Year)\b', clean_cand, re.IGNORECASE):
+                    continue
+                if is_doc_noise(clean_cand):
+                    continue
+                if re.match(r'^[A-Za-z\s,\.\-]{4,60}$', clean_cand) and len(clean_cand.split()) >= 2:
+                    return clean_cand
+
+    # 4. Multi-token Name search in Header section (first 30 lines)
+    for line in lines[:30]:
+        clean_line = re.sub(r'^[:=\+\-\|\s]+', '', line).strip()
+        if is_doc_noise(clean_line):
+            continue
+        if re.match(r'^[A-Z]{2,25},\s+[A-Z\s\.\-]{3,40}$', clean_line):
+            return clean_line
+        words = clean_line.split()
+        if 2 <= len(words) <= 5 and re.match(r'^[A-Za-z\s\.\-]{5,50}$', clean_line):
+            if not re.search(r'\b(?:OFFICIAL|CERTIFICATE|REGISTRATION|OFFICE|COLLEGE|REGISTRAR|BACHELOR|SCIENCE|INFORMATION|TECHNOLOGY|DEPARTMENT|HIGHWAY|BATANGAS|PHILIPPINES|SEMESTER|YEAR|FINAL|GRADES|UNITS|SECTION|PROJECT|ELECTIVE|ISSUES|WORKS)\b', clean_line, re.IGNORECASE):
+                if all(len(w) >= 1 and (w.isupper() or w.istitle() or re.match(r'^[A-Z]\.?$', w)) for w in words):
+                    return clean_line
+
+    return ""
+
 def parse_cor_document(raw_text, azure_kvp=None):
     """
     Structured parser for Official Certificate of Registration (COR).
@@ -2234,36 +2323,27 @@ def parse_cor_document(raw_text, azure_kvp=None):
     lines = preprocess_cor_lines(sanitized_raw_text)
     fields = {}
 
-
     label_patterns = {
         'name': [
-            # Fix 1: Support Latin-1 Unicode accented characters (ñ, Ñ, é, etc.) for Filipino/Spanish names
             r'name\s*[:=\+\-1l\|\]\}\)\~]\s*([A-Za-z\u00C0-\u017E\s,\.\-]+)',
             r'student\s*name\s*[:=\+\-1l\|\]\}\)\~]\s*([A-Za-z\u00C0-\u017E\s,\.\-]+)',
-            r'pangalan\s*[:=\+\-1l\|\]\}\)\~]\s*([A-Za-z\u00C0-\u017E\s,\.\-]+)',
-            r'name\s+([A-Za-z\u00C0-\u017E\s,\.\-]+)'
+            r'pangalan\s*[:=\+\-1l\|\]\}\)\~]\s*([A-Za-z\u00C0-\u017E\s,\.\-]+)'
         ],
         'student_id': [
             r'student\s*(?:no|number|id)\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})',
             r'id\s*(?:no|number)\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})',
-            r'reg\s*no\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})',
-            r'rug\s*no\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})',
-            r'rek\s*no\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})',
-            r'ref\s*no\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})',
-            r'sr\s*code\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})'
+            r'\breg\s*no\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})',
+            r'\bsr\s*code\s*[:=\+\-1l\|\]\}\)\~]?\s*([A-Za-z0-9\-]{4,20})'
         ],
         'school_year_sem': [
             r'school\s*year\s*(?:sem)?\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
             r'academic\s*year\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
             r'a\.?y\.?\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
-            r's\.?y\.?\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)',
-            r'\$ch00!\s*yaa[^\n]*'
+            r's\.?y\.?\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s\-\.\/]+)'
         ],
         'year_level': [
             r'year\s*level\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)',
             r'yr\s*level\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)',
-            r'your\s*loved\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)',
-            r'your\s*loved\s+pa\s+([A-Za-z0-9\s]+)',
             r'grade\s*level\s*[:=\+\-1l\|\]\}\)]\s*([A-Za-z0-9\s]+)'
         ],
         'course': [
@@ -2276,7 +2356,6 @@ def parse_cor_document(raw_text, azure_kvp=None):
         ]
     }
 
-    # Prioritize explicit Student No / Student ID over Reg No
     student_no_val = None
     reg_no_val = None
 
@@ -2284,9 +2363,12 @@ def parse_cor_document(raw_text, azure_kvp=None):
         if not student_no_val:
             m_stud = re.search(r'student\s*(?:no|number|id)\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})', line, re.IGNORECASE)
             if m_stud:
-                student_no_val = m_stud.group(1).strip()
+                s_cand = m_stud.group(1).strip()
+                if len(s_cand) == 11 and s_cand.startswith(('120', '115', '119', '118')):
+                    s_cand = s_cand[1:]
+                student_no_val = s_cand
         if not reg_no_val:
-            m_reg = re.search(r'(?:reg|ref|rug|rek|sr)\s*(?:no|code)?\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})', line, re.IGNORECASE)
+            m_reg = re.search(r'\breg\s*no\s*[:=\+\-1l\|\]\}\)]?\s*([A-Za-z0-9\-]{4,20})', line, re.IGNORECASE)
             if m_reg:
                 reg_no_val = m_reg.group(1).strip()
 
@@ -2297,17 +2379,31 @@ def parse_cor_document(raw_text, azure_kvp=None):
                 match = re.search(regex, line, re.IGNORECASE)
                 if match:
                     val = match.group(1 if len(match.groups()) >= 1 else 0).strip()
-                    # Fix 2: Strip right-column label bleed (Student No, Student ID, Gender, Sex, Yr Level, Course, Program, Term)
                     val = re.sub(r'\s+(?:Student\s*(?:No|ID|Number)|Gender|Sex|Yr\s*Level|Year\s*Level|Course|Program|Term|Reg|Tran|College|Pay|User|Scholarship|Discount|Ref)\s*[:=\+\-].*', '', val, flags=re.IGNORECASE)
                     val = val.strip()
+                    if field_name == 'name' and is_doc_noise(val):
+                        continue
                     if len(val) > 0:
                         fields[field_name] = val
                         break
+
+    if not fields.get('name') or is_doc_noise(fields.get('name')):
+        name_ext = extract_student_name_from_ocr(raw_text)
+        if name_ext:
+            fields['name'] = name_ext
 
     if student_no_val:
         fields['student_id'] = student_no_val
     elif reg_no_val:
         fields['student_id'] = reg_no_val
+    else:
+        id_m = re.search(r'\b(20\d{8}|15\d{8}|19\d{8}|18\d{8}|\d{9,10})\b', raw_text)
+        if id_m:
+            fields['student_id'] = id_m.group(1)
+        else:
+            id_m11 = re.search(r'\b(1(?:20|15|19|18)\d{8})\b', raw_text)
+            if id_m11:
+                fields['student_id'] = id_m11.group(1)[1:]
 
     raw_upper = str(raw_text).upper()
     if any(k in raw_upper for k in ['DE LA SALLE LIPA', 'DE LY SALLE', 'DLSL', 'SALLE LIPA', 'SALLE PA', 'LIPA']):
@@ -2317,7 +2413,7 @@ def parse_cor_document(raw_text, azure_kvp=None):
     elif any(k in raw_upper for k in ['UNIVERSITY OF THE PHILIPPINES', 'UP']):
         fields['school_name'] = 'University of the Philippines'
 
-    # Total Units extraction from COR/COE (checking Azure KVP first, then multi-line sanitizer)
+    # Total Units extraction from COR/COE
     units_val = extract_total_units_from_text(raw_text, azure_kvp=azure_kvp)
     if units_val is not None:
         fields['units'] = units_val
@@ -2893,6 +2989,11 @@ def parse_grades_document(raw_text):
                     if len(val) > 0:
                         fields[field_name] = val
                         break
+
+    if not fields.get('name') or is_doc_noise(fields.get('name')):
+        name_ext = extract_student_name_from_ocr(raw_text)
+        if name_ext:
+            fields['name'] = name_ext
 
     # --- Step 1: Extract True Overall GPA from dedicated summary headers ONLY ---
     # Priority: GPA:/GWA:/Cumulative GPA:/General Weighted Average: headers
