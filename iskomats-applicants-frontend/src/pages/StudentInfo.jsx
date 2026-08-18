@@ -2388,6 +2388,34 @@ export function name_matches_merit_cert(detectedText, firstName, lastName, middl
   };
 }
 
+export function extractNameFromMeritCert(ocrText) {
+  if (!ocrText || !ocrText.trim()) return "Not detected";
+  
+  // Try standard OCR name extractor first
+  const generalName = extractStudentNameFromOcr(ocrText);
+  if (generalName && generalName !== "Not detected" && !isDocNoise(generalName)) {
+    return generalName;
+  }
+
+  // Certificate specific anchor patterns
+  const certAwardPatterns = [
+    /(?:presented\s+to|awarded\s+to|conferred\s+(?:to|upon)|given\s+to|certifies\s+that|pinagkakaloob\s+kay|iginagawad\s+kay|ibinibigay\s+kay|ipinagkakaloob\s+kay)\s*[:\-]?\s*([A-Za-z\s,\.\-]{3,60}?)(?=\s+(?:for|in\s+recognition|as|having|on\s+this|this\s+\d|given|signed|dated|\n\n|$))/i,
+    /(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that)\s*[:\-]?\s*([A-Za-z\s,\.\-]{3,60}?)(?=\s+(?:has|is|for|in\s+recognition|having|\n|$))/i
+  ];
+
+  for (const pat of certAwardPatterns) {
+    const m = ocrText.match(pat);
+    if (m && m[1]) {
+      let cand = m[1].trim().replace(/^(?:mr\.?|ms\.?|mrs\.?|miss)\s+/i, '').trim();
+      if (cand.length >= 3 && !isDocNoise(cand) && !/certificate|recognition|appreciation|achievement|merit|award/i.test(cand)) {
+        return cand;
+      }
+    }
+  }
+
+  return "Not detected";
+}
+
 export function merit_matches_text(detectedText, meritTitle) {
   if (!meritTitle || !meritTitle.trim()) return { isMatch: true, matchedKeywords: [], score: 100 };
   if (!detectedText || !detectedText.trim()) return { isMatch: false, matchedKeywords: [], reason: "No text extracted from certificate" };
@@ -5856,7 +5884,6 @@ const StudentInfo = () => {
           clearInterval(scanProgressTimer);
           return;
         }
-        combinedDetectedText += `\n[MERIT #${i + 1}: ${item.title}]\n${ocrText || 'No text extracted.'}\n`;
 
         // Check 1: Name verification (First Name and Last Name matching)
         const nameCheck = name_matches_merit_cert(ocrText, firstName, lastName, middleName);
@@ -5865,6 +5892,22 @@ const StudentInfo = () => {
         // Check 2: Merit Keyword verification
         const meritCheck = merit_matches_text(ocrText, item.title);
         const meritPassed = Boolean(meritCheck && meritCheck.isMatch);
+
+        // Extract what it recognized as the First and Last Name for this document
+        const extractedCertName = extractNameFromMeritCert(ocrText);
+        const nameParts = parseStudentNameComponents(extractedCertName);
+        const detectedFirstName = nameParts.first !== "Not detected" ? nameParts.first : (namePassed ? (firstName || 'Not detected') : 'Not detected');
+        const detectedLastName = nameParts.last !== "Not detected" ? nameParts.last : (namePassed ? (lastName || 'Not detected') : 'Not detected');
+
+        const meritDivider = "============================================================";
+        let meritDocSummary = `${meritDivider}\n📜 EXTRACTED STUDENT INFORMATION [MERIT #${i + 1}: ${item.title.toUpperCase()}]\n${meritDivider}\n`;
+        meritDocSummary += `• First Name    : ${detectedFirstName}\n`;
+        meritDocSummary += `• Last Name     : ${detectedLastName}\n`;
+        meritDocSummary += `• Merit Title   : ${item.title}\n`;
+        meritDocSummary += `• Name Match    : ${namePassed ? 'MATCHED' : 'MISMATCH'}\n`;
+        meritDocSummary += `• Keyword Match : ${meritPassed ? 'MATCHED' : 'MISMATCH'}\n\n`;
+
+        combinedDetectedText += `${meritDocSummary}[MERIT #${i + 1} RAW OCR TEXT: ${item.title}]\n${ocrText || 'No text extracted.'}\n\n`;
 
         const certPassed = namePassed && meritPassed;
         item.verified = certPassed ? 'success' : 'failed';
