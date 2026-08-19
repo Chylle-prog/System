@@ -813,9 +813,38 @@ def create_email_attachment(filename, content_bytes, mime_type):
     return attachment
 
 
+def is_test_or_dummy_email(email):
+    """Detects dummy, placeholder, or seeded test email addresses to prevent sending and avoid mailer-daemon bouncebacks."""
+    if not email or not isinstance(email, str):
+        return True
+    email_clean = email.strip().lower()
+    
+    test_patterns = [
+        r'^dlsl\.applicant\d*@',       # dlsl.applicant1@gmail.com, dlsl.applicant16@gmail.com, etc.
+        r'^applicant\d*@',            # applicant1@gmail.com, applicant2@gmail.com
+        r'^test_?applicant\d*@',      # test_applicant1@gmail.com
+        r'@example\.com$',            # @example.com
+        r'@test\.com$',               # @test.com
+        r'@sample\.com$',             # @sample.com
+        r'@invalid$',                 # @invalid
+        r'@localhost$',               # @localhost
+        r'^dummy',                    # dummy*@...
+        r'^fake',                     # fake*@...
+        r'^mock',                     # mock*@...
+    ]
+    for pattern in test_patterns:
+        if re.search(pattern, email_clean):
+            return True
+    return False
+
+
 def send_gmail_message(receiver_email, subject, body, attachments=None):
     if not GMAIL_SENDER_EMAIL:
         raise RuntimeError('Gmail sender email is not configured.')
+
+    if is_test_or_dummy_email(receiver_email):
+        print(f"[EMAIL SKIP] Suppressed email to test/dummy address '{receiver_email}' to prevent bounce emails.", flush=True)
+        return {'status': 'skipped', 'recipient': receiver_email, 'reason': 'test_address_suppressed'}
 
     message = MIMEMultipart()
     message['Subject'] = subject
@@ -1268,6 +1297,9 @@ def send_announcement_emails(
             def send_single_email(applicant):
                 try:
                     email_address = applicant['email_address']
+                    if is_test_or_dummy_email(email_address):
+                        print(f"[EMAIL SKIP] Suppressed announcement to test recipient: {email_address}", flush=True)
+                        return True
                     first_name = applicant['first_name'] or 'Applicant'
                 
                     body = f"""Hello {first_name},

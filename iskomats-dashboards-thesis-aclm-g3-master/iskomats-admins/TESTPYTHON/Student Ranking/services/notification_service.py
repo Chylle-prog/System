@@ -86,6 +86,11 @@ def fetch_google_access_token():
 
 def send_verification_email(receiver_email, code, is_admin=False):
     """Unified helper to send verification codes via Gmail API."""
+    import re
+    if not receiver_email or re.search(r'^(dlsl\.applicant|applicant\d*|test_?applicant\d*|dummy|fake|mock)@|@(example\.com|test\.com|sample\.com|invalid|localhost)$', receiver_email.strip().lower()):
+        print(f"[EMAIL SKIP] Suppressed verification email to test address '{receiver_email}'.", flush=True)
+        return True
+
     GMAIL_SENDER_EMAIL = os.environ.get('GMAIL_SENDER_EMAIL', '').strip()
     if not GMAIL_SENDER_EMAIL:
         raise RuntimeError('GMAIL_SENDER_EMAIL is not configured.')
