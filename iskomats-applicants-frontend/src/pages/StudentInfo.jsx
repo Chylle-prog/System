@@ -1252,10 +1252,6 @@ function studentNameMatchesText(text, first, middle, last) {
     return { success: false, details: { first_ok: false, middle_ok: false, last_ok: false, sequence_ok: false } };
   }
 
-  const kv = extractOcrKeyValues(text);
-  const isInvalidKvName = !kv.name || /born|october|january|february|march|april|may|june|july|august|september|november|december|single|married|resident|certify|clearance|valid/i.test(kv.name);
-  const targetKvName = !isInvalidKvName ? normalizeForOcr(kv.name) : "";
-
   // Noise words that can appear near names on IDs/documents but are not part of names
   const noiseTokens = new Set([
     'mr', 'ms', 'mrs', 'student', 'name', 'pangalan', 'certify', 'resident', 'bonafide',
@@ -1297,8 +1293,6 @@ function studentNameMatchesText(text, first, middle, last) {
 
   // Tokenize candidate sources (targetKvName, extractStudentNameFromOcr, and raw lines)
   const candidateTexts = [];
-  if (targetKvName) candidateTexts.push(targetKvName);
-
   const extractedDocName = extractStudentNameFromOcr(text);
   if (extractedDocName && extractedDocName !== "Not detected") {
     candidateTexts.push(normalizeForOcr(extractedDocName));
@@ -1314,6 +1308,37 @@ function studentNameMatchesText(text, first, middle, last) {
   }
   // Also push the entire normalized text as continuous tokens
   candidateTexts.push(normText);
+
+  // Evaluate Middle Name Verification:
+  // Must match either the full middle name OR the first letter (initial) of the middle name
+  let middleOk = true;
+  if (expMiddleWords.length > 0) {
+    middleOk = false;
+    const expMidWord = expMiddleWords[0];
+    const expInitial = expMidWord[0];
+
+    if (extractedDocName && extractedDocName !== "Not detected") {
+      const parsedDoc = parseStudentNameComponents(extractedDocName);
+      if (parsedDoc.middle && parsedDoc.middle !== "Not detected" && parsedDoc.middle !== "N/A") {
+        const docMidNorm = normalizeForOcr(parsedDoc.middle);
+        const docMidInitial = docMidNorm[0];
+
+        if (wordsMatchStrict(expMidWord, docMidNorm)) {
+          middleOk = true;
+        } else if (docMidInitial === expInitial) {
+          middleOk = true;
+        }
+      }
+    }
+
+    if (!middleOk) {
+      if (candidateTexts.some(ct => new RegExp('\\b' + expMidWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(ct))) {
+        middleOk = true;
+      } else if (new RegExp('\\b' + expInitial + '\\.?(?=[\\s,;\\-\\)]|$)', 'i').test(text)) {
+        middleOk = true;
+      }
+    }
+  }
 
   let firstOk = false;
   let lastOk = false;
@@ -1422,13 +1447,13 @@ function studentNameMatchesText(text, first, middle, last) {
     if (sequenceOk) break;
   }
 
-  const success = sequenceOk || (firstOk && lastOk);
+  const success = (sequenceOk || (firstOk && lastOk)) && (expMiddleWords.length > 0 ? middleOk : true);
 
   return {
     success,
     details: {
       first_ok: firstOk,
-      middle_ok: true,
+      middle_ok: middleOk,
       last_ok: lastOk,
       sequence_ok: sequenceOk
     }
@@ -4918,6 +4943,7 @@ const StudentInfo = () => {
         const nameMatchVid = (frontVidCheck?.detectedText) ? studentNameMatchesText(frontVidCheck.detectedText, firstName, middleName, lastName) : { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
 
         const firstOk = nameMatchFront.details.first_ok || nameMatchBack.details.first_ok || nameMatchVid.details.first_ok;
+        const middleOk = middleName ? (nameMatchFront.details.middle_ok || nameMatchBack.details.middle_ok || nameMatchVid.details.middle_ok) : true;
         const lastOk = nameMatchFront.details.last_ok || nameMatchBack.details.last_ok || nameMatchVid.details.last_ok;
         const nameOk = nameMatchFront.success || nameMatchBack.success || nameMatchVid.success;
 
@@ -4951,11 +4977,13 @@ const StudentInfo = () => {
 
         scoreDetails = isNationalId ? {
           "First Name": firstOk,
+          "Middle Name": middleName ? middleOk : null,
           "Last Name": lastOk,
           "Barangay Address": targetBarangay ? addrOk : null,
           "Video Proof": videoOk
         } : {
           "First Name": firstOk,
+          "Middle Name": middleName ? middleOk : null,
           "Last Name": lastOk,
           "ID Number": idNumber ? idOk : null,
           "School Name": schoolName ? schoolOk : null,
@@ -5048,6 +5076,7 @@ const StudentInfo = () => {
           isSuccess = nameCheck.success && schoolOk && courseOk && ayOk && semOk && idOk && yrOk && effectiveVideoOk && coeTypeOk && unitsOk;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
+            "Middle Name": middleName ? nameCheck.details.middle_ok : null,
             "Last Name": nameCheck.details.last_ok,
             "School Name": schoolName ? schoolOk : null,
             "Course / Track": course ? courseOk : null,
@@ -5106,6 +5135,7 @@ const StudentInfo = () => {
           isSuccess = nameCheck.success && gpaOk && ayOk && semOk && schoolOk && courseOk && idOk && effectiveVideoOk && gradesTypeOk;
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
+            "Middle Name": middleName ? nameCheck.details.middle_ok : null,
             "Last Name": nameCheck.details.last_ok,
             "Document Type": gradesTypeOk,
             "GPA (Document)": detectedDocGpa ? (gpaOk ? true : false) : (gpa ? false : null),
@@ -5136,7 +5166,7 @@ const StudentInfo = () => {
           // because it can contain unrelated content that causes false positives)
           const docOnlyText = (detectedText || "").toLowerCase();
           const combinedText = (detectedText + " " + (videoCheck?.detectedText || "")).toLowerCase();
-          const nameCheck = studentNameMatchesText(docOnlyText, firstName, "", lastName);
+          const nameCheck = studentNameMatchesText(docOnlyText, firstName, middleName, lastName);
           const addrOk = targetBarangay ? addressMatchesText(docOnlyText, targetBarangay) : true;
           const townCityOk = townCity ? addressMatchesText(docOnlyText, townCity) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
@@ -5223,6 +5253,7 @@ const StudentInfo = () => {
 
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
+            "Middle Name": middleName ? nameCheck.details.middle_ok : null,
             "Last Name": nameCheck.details.last_ok,
             "Barangay Address": targetBarangay ? addrOk : null,
             "Town / City": townCity ? townCityOk : null,
