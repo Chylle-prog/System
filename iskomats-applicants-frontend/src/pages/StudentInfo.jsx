@@ -4979,13 +4979,13 @@ const StudentInfo = () => {
         const allIdText = combinedFrontText + " " + combinedBackText;
 
         const nameMatchFront = studentNameMatchesText(frontText, firstName, middleName, lastName);
-        const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: true, last_ok: false } } : studentNameMatchesText(backText, firstName, middleName, lastName);
+        const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } } : studentNameMatchesText(backText, firstName, middleName, lastName);
         const nameMatchVid = (frontVidCheck?.detectedText) ? studentNameMatchesText(frontVidCheck.detectedText, firstName, middleName, lastName) : { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
 
-        const firstOk = nameMatchFront.details.first_ok || nameMatchBack.details.first_ok || nameMatchVid.details.first_ok;
-        const middleOk = middleName ? (nameMatchFront.details.middle_ok || nameMatchBack.details.middle_ok || nameMatchVid.details.middle_ok) : true;
-        const lastOk = nameMatchFront.details.last_ok || nameMatchBack.details.last_ok || nameMatchVid.details.last_ok;
-        const nameOk = nameMatchFront.success || nameMatchBack.success || nameMatchVid.success;
+        const firstOk = isNationalId ? nameMatchFront.details.first_ok : (nameMatchFront.details.first_ok || nameMatchBack.details.first_ok || nameMatchVid.details.first_ok);
+        const middleOk = middleName ? (isNationalId ? nameMatchFront.details.middle_ok : (nameMatchFront.details.middle_ok || nameMatchBack.details.middle_ok || nameMatchVid.details.middle_ok)) : true;
+        const lastOk = isNationalId ? nameMatchFront.details.last_ok : (nameMatchFront.details.last_ok || nameMatchBack.details.last_ok || nameMatchVid.details.last_ok);
+        const nameOk = isNationalId ? nameMatchFront.success : (nameMatchFront.success || nameMatchBack.success || nameMatchVid.success);
 
         const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, combinedFrontText, true) || studentIdNoMatchesText(idNumber, combinedBackText, true)) : true);
         const schoolOk = schoolName ? (schoolNameMatchesText(allIdText, schoolName)) : true;
