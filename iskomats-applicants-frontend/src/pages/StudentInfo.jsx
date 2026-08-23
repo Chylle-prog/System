@@ -892,15 +892,19 @@ function extractOcrKeyValues(rawText) {
       /(?:student\s*(?:no|number|id|num)|st(?:u|o|a|e)d(?:e|a|o)nt\s*(?:no|number|id)|id\s*(?:no|number)|sr\s*code|\breg\s*no)\s*[:\-]\s*([^\r\n]+)/i
     ],
     yearLevel: [/(?:year\s*level|yr\s*level|grade\s*level)\s*[:\-]\s*([^\r\n]+)/i],
-    course: [/(?:course|program|degree|strand)\s*[:\-]\s*([^\r\n]+)/i],
+    course: [
+      /(?:course|program|strand)\s*[:\-]\s*([^\r\n]+)/i,
+      /(?:degree)\s*[:\-]\s*([^\r\n]+)/i
+    ],
     schoolYearSem: [/(?:school\s*year\s*(?:sem)?|academic\s*year|a\.?y\.?|s\.?y\.?)\s*[:\-]\s*([^\r\n]+)/i],
     semester: [/(?:semester|sem|term)\s*[:\-]\s*([^\r\n]+)/i],
     barangay: [/(?:barangay|brgy|resident\s*of\s*(?:brgy|barangay)?)\s*[:\-]\s*([^\r\n]+)/i]
   };
 
-  for (const line of splitLines) {
+  for (let idx = 0; idx < splitLines.length; idx++) {
+    const line = splitLines[idx];
     for (const [key, regexes] of Object.entries(labelMap)) {
-      if (fields[key]) continue;
+      if (fields[key] && (key !== 'course' || fields[key].length > 3)) continue;
       for (const regex of regexes) {
         const match = line.match(regex);
         if (match && match[1] && match[1].trim().length > 0) {
@@ -911,6 +915,23 @@ function extractOcrKeyValues(rawText) {
             if (key === 'name' && (isDocNoise(val) || /\d/.test(val) || /AY\s*\d|School\s*Year|Semester|1st|2nd|3rd|Official|Certificate|Registration/i.test(val))) {
               continue;
             }
+
+            // Multi-line wrapped course continuation support:
+            // e.g. "Course : BACHELOR OF SCIENCE IN INFORMATION"
+            //      "TECHNOLOGY"
+            if (key === 'course' && idx + 1 < splitLines.length) {
+              const nextLine = splitLines[idx + 1].trim();
+              const nextLineHasLabel = Object.values(labelMap).some(rList => rList.some(r => r.test(nextLine))) ||
+                                       /^(?:pay\s*type|block\s*no|subject|units|section|bldg|room|faculty|days|time|status|total)\b/i.test(nextLine) ||
+                                       /:/.test(nextLine);
+              if (!nextLineHasLabel && nextLine.length > 0 && nextLine.length < 50) {
+                if (/(?:technology|engineering|science|administration|management|education|studies|systems|communication|accountancy|nursing|criminology|hospitality|tourism)\b/i.test(nextLine) ||
+                    /^[A-Z\s]{3,35}$/.test(nextLine)) {
+                  val = `${val} ${nextLine}`.trim();
+                }
+              }
+            }
+
             fields[key] = val;
             break;
           }
@@ -938,8 +959,10 @@ function extractOcrKeyValues(rawText) {
     }
   }
   if (!fields.course) {
-    const crsMatch = rawText.match(/(BACHELOR\s+(?:OF\s+SCIENCE|OF\s+ARTS|IN)\s+[A-Z\s]{4,50}|BS[A-Z]{2,6})/i);
-    if (crsMatch) fields.course = crsMatch[1].trim();
+    const crsMatch = rawText.match(/(?:BACHELOR\s+(?:OF\s+SCIENCE|OF\s+ARTS|IN)\s+[A-Z\s\n]{4,80}|BS[A-Z\s\n]{2,30})/i);
+    if (crsMatch) {
+      fields.course = crsMatch[0].replace(/\r?\n\s*/g, ' ').replace(/\s+(?:Reg|Tran|College|Pay|User|Scholarship|Discount|Ref|Total\s*Units|Total)[\s\S]*/i, '').trim();
+    }
   }
 
   return fields;
@@ -955,7 +978,20 @@ function formatExtractedRequirementsSummary(rawText, expectedFirst = '', expecte
     nameSearchText = frontIdSectionMatch[1];
   }
 
-  const kv = extractOcrKeyValues(nameSearchText);
+  const kv = extractOcrKeyValues(rawText);
+
+  // 1. Student Name Extraction (Layout-Aware)
+  let studentName = kv.name;
+  if (!studentName || isDocNoise(studentName)) {
+    studentName = extractStudentNameFromOcr(nameSearchText) || extractStudentNameFromOcr(rawText);
+  }
+  if (expectedFirst && expectedLast) {
+    const strictCheck = studentNameMatchesText(nameSearchText || rawText, expectedFirst, expectedMiddle, expectedLast);
+    if (strictCheck.success) {
+      studentName = `${expectedFirst} ${expectedMiddle ? expectedMiddle + ' ' : ''}${expectedLast}`.trim().toUpperCase();
+    }
+  }
+  studentName = studentName || "Not detected";
 
   // 1. Full Name Extraction & Parsing
   let firstName = "Not detected";
@@ -996,11 +1032,11 @@ function formatExtractedRequirementsSummary(rawText, expectedFirst = '', expecte
   // 3. Course Extraction
   let course = kv.course;
   if (!course) {
-    const courseMatch = rawText.match(/(?:BACHELOR\s+(?:OF\s+SCIENCE|OF\s+ARTS|IN)|BS|BA|BEED|BSED)\s+[A-Z\s]{4,60}/i);
+    const courseMatch = rawText.match(/(?:BACHELOR\s+(?:OF\s+SCIENCE|OF\s+ARTS|IN)|BS|BA|BEED|BSED)\s+[A-Z\s\n]{4,80}/i);
     if (courseMatch) course = courseMatch[0].trim().replace(/\s+(?:Pay|Year|College|Tran|Reg|Scholarship).*$/i, '');
   }
-  if (course && course.includes('\n')) {
-    course = course.split(/\n/)[0].trim();
+  if (course) {
+    course = course.replace(/\r?\n\s*/g, ' ').replace(/\s+/g, ' ').trim();
   }
   course = course || "Not detected";
 
