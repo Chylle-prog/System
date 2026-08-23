@@ -1145,155 +1145,197 @@ function isSimilarWord(expected, actual) {
 }
 
 function studentNameMatchesText(text, first, middle, last) {
-  const normText = normalizeForOcr(text);
-  if (!normText) return { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
+  const normText = normalizeForOcr(text || '');
+  if (!normText || !first || !last) {
+    return { success: false, details: { first_ok: false, middle_ok: false, last_ok: false, sequence_ok: false } };
+  }
+
+  const rawFirst = String(first).trim();
+  const rawLast = String(last).trim();
+  const rawMiddle = String(middle || '').trim();
+
+  const expFirstWords = normalizeForOcr(rawFirst).split(/\s+/).filter(w => w.length >= 1);
+  const expLastWords = normalizeForOcr(rawLast).split(/\s+/).filter(w => w.length >= 1);
+  const expMiddleWords = normalizeForOcr(rawMiddle).split(/\s+/).filter(w => w.length >= 1);
+
+  if (expFirstWords.length === 0 || expLastWords.length === 0) {
+    return { success: false, details: { first_ok: false, middle_ok: false, last_ok: false, sequence_ok: false } };
+  }
 
   const kv = extractOcrKeyValues(text);
   const isInvalidKvName = !kv.name || /born|october|january|february|march|april|may|june|july|august|september|november|december|single|married|resident|certify|clearance|valid/i.test(kv.name);
-  const targetText = !isInvalidKvName ? normalizeForOcr(kv.name) : "";
+  const targetKvName = !isInvalidKvName ? normalizeForOcr(kv.name) : "";
 
-  const normFirst = normalizeForOcr(first || '');
-  const normLast = normalizeForOcr(last || '');
+  // Noise words that can appear near names on IDs/documents but are not part of names
+  const noiseTokens = new Set([
+    'mr', 'ms', 'mrs', 'student', 'name', 'pangalan', 'certify', 'resident', 'bonafide',
+    'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines',
+    'this', 'that', 'years', 'age', 'college', 'course', 'degree', 'year', 'level',
+    'scholarship', 'discount', 'subject', 'assessed', 'fees', 'units', 'pay', 'type',
+    'section', 'bldg', 'room', 'faculty', 'days', 'time', 'first', 'second', 'semester',
+    'sem', 'ay', 'sy', 'grade', 'grades', 'gpa', 'final', 'printed', 'above', 'signature',
+    'holder', 'de', 'la', 'salle', 'lipa', 'dlsl', 'official', 'date', 'user'
+  ]);
 
-  // --- Helper: build a regex that matches a name phrase allowing up to ~3 chars of OCR noise between words ---
-  const buildNameRegex = (nameStr) => {
-    const words = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 2);
-    if (words.length === 0) return null;
-    const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    const pattern = escaped.join('[^a-z0-9]{0,3}(?:[a-z]{1,8}[^a-z0-9]{0,3}){0,2}');
-    return new RegExp('\\b' + pattern + '\\b');
+  // Helper to compare words with OCR glyph similarity (e.g. '0' vs 'o', '1' vs 'l'/'i')
+  const wordsMatchStrict = (expected, actual) => {
+    if (!expected || !actual) return false;
+    const eNorm = normalizeForOcr(expected);
+    const aNorm = normalizeForOcr(actual);
+    if (eNorm === aNorm) return true;
+    if (isSimilarWord(eNorm, aNorm)) return true;
+    const eConf = normalizeNameConfusions(eNorm);
+    const aConf = normalizeNameConfusions(aNorm);
+    return eConf.length >= 2 && eConf === aConf;
   };
-  let sequencesToCheck = [
-    `${normFirst} ${normLast}`,
-    `${normLast} ${normFirst}`
-  ];
-  if (middle) {
-    const normMiddle = normalizeForOcr(middle);
-    sequencesToCheck.push(
-      `${normFirst} ${normMiddle} ${normLast}`,
-      `${normLast} ${normFirst} ${normMiddle}`,
-      `${normLast} ${normMiddle} ${normFirst}`
-    );
-    const middleInitial = normMiddle[0];
-    if (middleInitial) {
-      sequencesToCheck.push(`${normFirst} ${middleInitial} ${normLast}`);
-      sequencesToCheck.push(`${normLast} ${normFirst} ${middleInitial}`);
-      sequencesToCheck.push(`${normLast} ${middleInitial} ${normFirst}`);
+
+  // Helper: check if token is a middle name word or initial
+  const isMiddleMatch = (token) => {
+    if (!token) return false;
+    if (expMiddleWords.length > 0) {
+      if (expMiddleWords.some(mw => wordsMatchStrict(mw, token))) return true;
+      if (token.length === 1 && expMiddleWords.some(mw => mw[0] === token[0])) return true;
     }
-  }
-
-  const checkWordSequenceFuzzy = (nameStr, searchText) => {
-    const expectedWords = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= 1);
-    if (expectedWords.length === 0) return false;
-    const targetWords = searchText.split(/\s+/).filter(w => w.length >= 1);
-
-    let expectedIdx = 0;
-    let lastFoundIdx = -1;
-
-    for (let i = 0; i < targetWords.length; i++) {
-      const tWord = targetWords[i];
-      const eWord = expectedWords[expectedIdx];
-
-      const isExactOrConf = isSimilarWord(eWord, tWord) || (normalizeNameConfusions(eWord).length >= 3 && normalizeNameConfusions(eWord) === normalizeNameConfusions(tWord));
-      // 1-letter initial must match explicit initial format "X." or exact single letter token directly adjacent to name
-      const isInitialMatch = (eWord.length === 1 && (tWord === eWord || tWord === eWord + '.'));
-
-      if (isExactOrConf || isInitialMatch) {
-        // Tight word gap restriction: Max 2 words gap between consecutive name components
-        if (lastFoundIdx !== -1 && (i - lastFoundIdx) > 2) {
-          expectedIdx = 0;
-          lastFoundIdx = -1;
-          const isFirstMatch = isSimilarWord(expectedWords[0], tWord) || (expectedWords[0].length === 1 && tWord === expectedWords[0]);
-          if (isFirstMatch) {
-            expectedIdx = 1;
-            lastFoundIdx = i;
-          }
-          continue;
-        }
-        expectedIdx++;
-        lastFoundIdx = i;
-        if (expectedIdx >= expectedWords.length) {
-          return true;
-        }
-      }
-    }
+    // Any single-letter token like 'o', 'm', 'c' or 'o.' can be a middle initial
+    if (token.length === 1 && /^[a-z]$/i.test(token)) return true;
     return false;
   };
 
+  // Tokenize candidate sources (targetKvName, extractStudentNameFromOcr, and raw lines)
+  const candidateTexts = [];
+  if (targetKvName) candidateTexts.push(targetKvName);
+
+  const extractedDocName = extractStudentNameFromOcr(text);
+  if (extractedDocName && extractedDocName !== "Not detected") {
+    candidateTexts.push(normalizeForOcr(extractedDocName));
+  }
+
+  // Also include lines from OCR text that contain any first or last name word
+  const allLines = String(text).split(/[\r\n]+/);
+  for (const line of allLines) {
+    const normLine = normalizeForOcr(line);
+    if (normLine && (expLastWords.some(lw => normLine.includes(lw)) || expFirstWords.some(fw => normLine.includes(fw)))) {
+      candidateTexts.push(normLine);
+    }
+  }
+  // Also push the entire normalized text as continuous tokens
+  candidateTexts.push(normText);
+
+  let firstOk = false;
+  let lastOk = false;
   let sequenceOk = false;
 
-  // Check fuzzy word sequences in targetText or normText (strict word-by-word matching only)
-  for (const seq of sequencesToCheck) {
-    if (checkWordSequenceFuzzy(seq, targetText) || checkWordSequenceFuzzy(seq, normText)) {
+  for (const candText of candidateTexts) {
+    const tokens = candText.split(/\s+/).filter(w => w.length >= 1);
+    if (tokens.length < expFirstWords.length + expLastWords.length) continue;
+
+    // Search for sequence match:
+    // Format A: [FIRST WORDS...] [OPTIONAL MIDDLE] [LAST WORDS...]
+    // Format B: [LAST WORDS...] [,] [FIRST WORDS...] [OPTIONAL MIDDLE]
+    
+    // Check Format A:
+    for (let i = 0; i <= tokens.length - (expFirstWords.length + expLastWords.length); i++) {
+      // Check if tokens starting at i match ALL expFirstWords in exact contiguous order
+      let firstMatches = true;
+      for (let f = 0; f < expFirstWords.length; f++) {
+        if (!wordsMatchStrict(expFirstWords[f], tokens[i + f])) {
+          firstMatches = false;
+          break;
+        }
+      }
+      if (!firstMatches) continue;
+
+      // Token before the first name must NOT be another personal name word (preventing partial match like "Mark" before "Alexie")
+      if (i > 0) {
+        const prevTok = tokens[i - 1];
+        if (!noiseTokens.has(prevTok) && !expLastWords.some(lw => wordsMatchStrict(lw, prevTok))) {
+          // If the token before is not noise and not last name, it might be a preceding un-entered first name word
+          const isDocLabelPrefix = /^(?:name|student|mr|ms|mrs|pangalan|certify|resident|attend|to|of)$/i.test(prevTok);
+          if (!isDocLabelPrefix && prevTok.length >= 3) {
+            // Preceding word belongs to name -> reject partial first name
+            continue;
+          }
+        }
+      }
+
+      // Check what follows the first name words:
+      let nextIdx = i + expFirstWords.length;
+
+      // Skip optional middle name / initial token(s)
+      let middleCount = 0;
+      while (nextIdx < tokens.length && middleCount < 2 && isMiddleMatch(tokens[nextIdx])) {
+        nextIdx++;
+        middleCount++;
+      }
+
+      // Now nextIdx must match ALL expLastWords in exact contiguous order
+      let lastMatches = true;
+      for (let l = 0; l < expLastWords.length; l++) {
+        if (nextIdx + l >= tokens.length || !wordsMatchStrict(expLastWords[l], tokens[nextIdx + l])) {
+          lastMatches = false;
+          break;
+        }
+      }
+
+      if (lastMatches) {
+        firstOk = true;
+        lastOk = true;
+        sequenceOk = true;
+        break;
+      }
+    }
+
+    if (sequenceOk) break;
+
+    // Check Format B: [LAST WORDS...] [FIRST WORDS...] [OPTIONAL MIDDLE]
+    for (let i = 0; i <= tokens.length - (expLastWords.length + expFirstWords.length); i++) {
+      let lastMatches = true;
+      for (let l = 0; l < expLastWords.length; l++) {
+        if (!wordsMatchStrict(expLastWords[l], tokens[i + l])) {
+          lastMatches = false;
+          break;
+        }
+      }
+      if (!lastMatches) continue;
+
+      let nextIdx = i + expLastWords.length;
+      // In Format B, FIRST WORDS immediately follow last name
+      let firstMatches = true;
+      for (let f = 0; f < expFirstWords.length; f++) {
+        if (nextIdx + f >= tokens.length || !wordsMatchStrict(expFirstWords[f], tokens[nextIdx + f])) {
+          firstMatches = false;
+          break;
+        }
+      }
+      if (!firstMatches) continue;
+
+      // Token after the last first name word must be either middle initial/name, noise, or end of name
+      const afterFirstIdx = nextIdx + expFirstWords.length;
+      if (afterFirstIdx < tokens.length) {
+        const afterTok = tokens[afterFirstIdx];
+        if (!isMiddleMatch(afterTok) && !noiseTokens.has(afterTok) && afterTok.length >= 3) {
+          // Extra un-entered first name word follows -> reject partial first name
+          continue;
+        }
+      }
+
+      firstOk = true;
+      lastOk = true;
       sequenceOk = true;
       break;
     }
+
+    if (sequenceOk) break;
   }
 
-  const checkNameWordGroup = (nameStr, searchText) => {
-    if (!nameStr) return true;
-    const isMiddle = nameStr === middle;
-    const isFirst = nameStr === first;
-    const words = normalizeForOcr(nameStr).split(' ').filter(w => w.length >= (isMiddle ? 1 : 2));
-    if (words.length === 0) return true;
-    const ocrWords = searchText.split(/\s+/).filter(w => w.length >= 1);
-
-    const matchResults = words.map(word => {
-      const normW = normalizeForOcr(word);
-      const confW = normalizeNameConfusions(word);
-      if (!normW) return true;
-
-      // 1. Direct whole-word match in search text (prevent matching random single letters inside unrelated words)
-      if (new RegExp('\\b' + normW.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(searchText)) return true;
-
-      // 2. Fuzzy / OCR confusion word match (for full words length >= 2)
-      const foundFullWord = ocrWords.some(ocrW => {
-        const normOcr = normalizeForOcr(ocrW);
-        if (!normOcr || normOcr.length < 2) return false;
-        if (isSimilarWord(normW, normOcr)) return true;
-        if (confW.length >= 3 && normalizeNameConfusions(ocrW) === confW) return true;
-        return false;
-      });
-      if (foundFullWord) return true;
-
-      // 3. Middle Initial fallback: Only if explicit initial format "X." or standalone token "X" appears in key-value extracted name field
-      if (isMiddle && normW.length >= 1) {
-        const initial = normW[0].toUpperCase();
-        const targetTextNorm = normalizeForOcr(targetText);
-        const nameTokens = targetTextNorm.split(/\s+/);
-        
-        // Standalone initial with period in text (e.g. "L.")
-        if (new RegExp('\\b' + initial + '\\.', 'i').test(searchText)) return true;
-
-        // Standalone initial token strictly in key-value extracted name field (e.g. "LANTAFE MIKAELA YSABEL L")
-        if (kv.name && nameTokens.includes(initial.toLowerCase())) return true;
-      }
-
-      return false;
-    });
-
-    return matchResults.every(Boolean);
-  };
-
-  const firstOk = checkNameWordGroup(first, targetText) || checkNameWordGroup(first, normText);
-  const lastOk = checkNameWordGroup(last, targetText) || checkNameWordGroup(last, normText);
-
-  const cleanInputLast = normalizeForOcr(last || '').trim();
-  const nameNoiseWordsList = ['mr', 'ms', 'mrs', 'student', 'name', 'certify', 'resident', 'bonafide', 'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines', 'this', 'that', 'years', 'age', 'college', 'course', 'degree', 'year', 'level', 'scholarship', 'discount', 'subject', 'assessed', 'fees', 'units', 'pay', 'type', 'section', 'bldg', 'room', 'faculty', 'days', 'time', 'first', 'second', 'semester', 'sem', 'ay', 'sy'];
-  const inputLastIsStopWord = nameNoiseWordsList.includes(cleanInputLast) || /^\d+$/.test(cleanInputLast);
-
-  const finalFirstOk = firstOk || sequenceOk;
-  const finalLastOk = (lastOk || sequenceOk) && !inputLastIsStopWord;
-  const success = sequenceOk || (finalFirstOk && finalLastOk);
-
-  console.debug('[NAME CHECK]', { first, last, sequenceOk, firstOk: finalFirstOk, lastOk: finalLastOk, success });
+  const success = sequenceOk || (firstOk && lastOk);
 
   return {
     success,
     details: {
-      first_ok: finalFirstOk,
+      first_ok: firstOk,
       middle_ok: true,
-      last_ok: finalLastOk,
+      last_ok: lastOk,
       sequence_ok: sequenceOk
     }
   };
