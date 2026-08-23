@@ -1367,25 +1367,93 @@ function studentNameMatchesText(text, first, middle, last) {
   // 1. Direct check against structured extracted document name
   if (extractedDocName && extractedDocName !== "Not detected") {
     const parsedDoc = parseStudentNameComponents(extractedDocName);
-    if (parsedDoc.first && parsedDoc.first !== "Not detected" && parsedDoc.last && parsedDoc.last !== "Not detected") {
+    if (parsedDoc.first && parsedDoc.first !== "Not detected") {
       const docFirstWords = normalizeForOcr(parsedDoc.first).split(/\s+/).filter(Boolean);
-      const docLastWords = normalizeForOcr(parsedDoc.last).split(/\s+/).filter(Boolean);
-
-      const firstMatchesExact = docFirstWords.length === expFirstWords.length &&
-        expFirstWords.every((ew, idx) => wordsMatchStrict(ew, docFirstWords[idx]));
-      const lastMatchesExact = docLastWords.length === expLastWords.length &&
-        expLastWords.every((ew, idx) => wordsMatchStrict(ew, docLastWords[idx]));
-
-      if (firstMatchesExact && lastMatchesExact) {
+      if (docFirstWords.length === expFirstWords.length && expFirstWords.every((ew, idx) => wordsMatchStrict(ew, docFirstWords[idx]))) {
         firstOk = true;
-        lastOk = true;
-        sequenceOk = true;
       }
+    }
+    if (parsedDoc.last && parsedDoc.last !== "Not detected") {
+      const docLastWords = normalizeForOcr(parsedDoc.last).split(/\s+/).filter(Boolean);
+      if (docLastWords.length === expLastWords.length && expLastWords.every((ew, idx) => wordsMatchStrict(ew, docLastWords[idx]))) {
+        lastOk = true;
+      }
+    }
+    if (firstOk && lastOk) {
+      sequenceOk = true;
     }
   }
 
-  // 2. Token sequence scan across raw document text if not yet matched
-  if (!sequenceOk) {
+  // 2. Independent scan for FIRST NAME if not yet matched
+  if (!firstOk) {
+    for (const candText of candidateTexts) {
+      const tokens = candText.split(/\s+/).filter(w => w.length >= 1);
+      if (tokens.length < expFirstWords.length) continue;
+
+      for (let i = 0; i <= tokens.length - expFirstWords.length; i++) {
+        let matches = true;
+        for (let f = 0; f < expFirstWords.length; f++) {
+          if (!wordsMatchStrict(expFirstWords[f], tokens[i + f])) {
+            matches = false;
+            break;
+          }
+        }
+        if (!matches) continue;
+
+        // Check preceding token (must not be part of un-entered first name)
+        if (i > 0) {
+          const prevTok = tokens[i - 1];
+          if (!noiseTokens.has(prevTok) && !expLastWords.some(lw => wordsMatchStrict(lw, prevTok))) {
+            const isDocLabelPrefix = /^(?:name|student|mr|ms|mrs|pangalan|certify|resident|attend|to|of)$/i.test(prevTok);
+            if (!isDocLabelPrefix && prevTok.length >= 3) {
+              continue;
+            }
+          }
+        }
+
+        // Check following token if not end of sequence
+        const nextIdx = i + expFirstWords.length;
+        if (nextIdx < tokens.length) {
+          const nextTok = tokens[nextIdx];
+          if (!isMiddleMatch(nextTok) && !noiseTokens.has(nextTok) && !expLastWords.some(lw => wordsMatchStrict(lw, nextTok))) {
+            if (nextTok.length >= 3) {
+              continue;
+            }
+          }
+        }
+
+        firstOk = true;
+        break;
+      }
+      if (firstOk) break;
+    }
+  }
+
+  // 3. Independent scan for LAST NAME if not yet matched
+  if (!lastOk) {
+    for (const candText of candidateTexts) {
+      const tokens = candText.split(/\s+/).filter(w => w.length >= 1);
+      if (tokens.length < expLastWords.length) continue;
+
+      for (let i = 0; i <= tokens.length - expLastWords.length; i++) {
+        let matches = true;
+        for (let l = 0; l < expLastWords.length; l++) {
+          if (!wordsMatchStrict(expLastWords[l], tokens[i + l])) {
+            matches = false;
+            break;
+          }
+        }
+        if (!matches) continue;
+
+        lastOk = true;
+        break;
+      }
+      if (lastOk) break;
+    }
+  }
+
+  // 4. Token sequence scan across raw document text to verify both appear together in valid document sequence
+  if (!sequenceOk && firstOk && lastOk) {
     for (const candText of candidateTexts) {
       const tokens = candText.split(/\s+/).filter(w => w.length >= 1);
       if (tokens.length < expFirstWords.length + expLastWords.length) continue;
@@ -1400,16 +1468,6 @@ function studentNameMatchesText(text, first, middle, last) {
           }
         }
         if (!firstMatches) continue;
-
-        if (i > 0) {
-          const prevTok = tokens[i - 1];
-          if (!noiseTokens.has(prevTok) && !expLastWords.some(lw => wordsMatchStrict(lw, prevTok))) {
-            const isDocLabelPrefix = /^(?:name|student|mr|ms|mrs|pangalan|certify|resident|attend|to|of)$/i.test(prevTok);
-            if (!isDocLabelPrefix && prevTok.length >= 3) {
-              continue;
-            }
-          }
-        }
 
         let nextIdx = i + expFirstWords.length;
         let skipCount = 0;
@@ -1427,8 +1485,6 @@ function studentNameMatchesText(text, first, middle, last) {
         }
 
         if (lastMatches) {
-          firstOk = true;
-          lastOk = true;
           sequenceOk = true;
           break;
         }
@@ -1463,18 +1519,6 @@ function studentNameMatchesText(text, first, middle, last) {
         }
         if (!firstMatches) continue;
 
-        const afterFirstIdx = nextIdx + expFirstWords.length;
-        if (afterFirstIdx < tokens.length) {
-          const afterTok = tokens[afterFirstIdx];
-          const isFollowedByNoiseOrMiddle = isMiddleMatch(afterTok) || noiseTokens.has(afterTok) ||
-            (afterFirstIdx === tokens.length - 1);
-          if (!isFollowedByNoiseOrMiddle && afterTok.length >= 3) {
-            continue;
-          }
-        }
-
-        firstOk = true;
-        lastOk = true;
         sequenceOk = true;
         break;
       }
@@ -3640,7 +3684,6 @@ const StudentInfo = () => {
         message: 'Indigency Certificate verified successfully! (Debug Bypass)',
         score_details: {
           "First Name": true,
-          "Middle Name": formData.middleName ? true : null,
           "Last Name": true,
           "Barangay Address": true
         }
@@ -3683,7 +3726,6 @@ const StudentInfo = () => {
         message: 'School ID verified successfully! (Debug Bypass)',
         score_details: {
           "First Name": true,
-          "Middle Name": formData.middleName ? true : null,
           "Last Name": true,
           "ID Number": true,
           "School Name": true,
@@ -4978,12 +5020,11 @@ const StudentInfo = () => {
         const combinedBackText = backText + " " + (backVidCheck?.detectedText || "");
         const allIdText = combinedFrontText + " " + combinedBackText;
 
-        const nameMatchFront = studentNameMatchesText(frontText, firstName, middleName, lastName);
-        const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } } : studentNameMatchesText(backText, firstName, middleName, lastName);
-        const nameMatchVid = (frontVidCheck?.detectedText) ? studentNameMatchesText(frontVidCheck.detectedText, firstName, middleName, lastName) : { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
+        const nameMatchFront = studentNameMatchesText(frontText, firstName, "", lastName);
+        const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } } : studentNameMatchesText(backText, firstName, "", lastName);
+        const nameMatchVid = (frontVidCheck?.detectedText) ? studentNameMatchesText(frontVidCheck.detectedText, firstName, "", lastName) : { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
 
         const firstOk = isNationalId ? nameMatchFront.details.first_ok : (nameMatchFront.details.first_ok || nameMatchBack.details.first_ok || nameMatchVid.details.first_ok);
-        const middleOk = middleName ? (isNationalId ? nameMatchFront.details.middle_ok : (nameMatchFront.details.middle_ok || nameMatchBack.details.middle_ok || nameMatchVid.details.middle_ok)) : true;
         const lastOk = isNationalId ? nameMatchFront.details.last_ok : (nameMatchFront.details.last_ok || nameMatchBack.details.last_ok || nameMatchVid.details.last_ok);
         const nameOk = isNationalId ? nameMatchFront.success : (nameMatchFront.success || nameMatchBack.success || nameMatchVid.success);
 
@@ -5017,13 +5058,11 @@ const StudentInfo = () => {
 
         scoreDetails = isNationalId ? {
           "First Name": firstOk,
-          "Middle Name": middleName ? middleOk : null,
           "Last Name": lastOk,
           "Barangay Address": targetBarangay ? addrOk : null,
           "Video Proof": videoOk
         } : {
           "First Name": firstOk,
-          "Middle Name": middleName ? middleOk : null,
           "Last Name": lastOk,
           "ID Number": idNumber ? idOk : null,
           "School Name": schoolName ? schoolOk : null,
@@ -5206,7 +5245,7 @@ const StudentInfo = () => {
           // because it can contain unrelated content that causes false positives)
           const docOnlyText = (detectedText || "").toLowerCase();
           const combinedText = (detectedText + " " + (videoCheck?.detectedText || "")).toLowerCase();
-          const nameCheck = studentNameMatchesText(docOnlyText, firstName, middleName, lastName);
+          const nameCheck = studentNameMatchesText(docOnlyText, firstName, "", lastName);
           const addrOk = targetBarangay ? addressMatchesText(docOnlyText, targetBarangay) : true;
           const townCityOk = townCity ? addressMatchesText(docOnlyText, townCity) : true;
           const videoOk = videoCheck ? videoCheck.valid : (videoUrl ? true : false);
@@ -5293,7 +5332,6 @@ const StudentInfo = () => {
 
           scoreDetails = {
             "First Name": nameCheck.details.first_ok,
-            "Middle Name": middleName ? nameCheck.details.middle_ok : null,
             "Last Name": nameCheck.details.last_ok,
             "Barangay Address": targetBarangay ? addrOk : null,
             "Town / City": townCity ? townCityOk : null,
@@ -5333,13 +5371,11 @@ const StudentInfo = () => {
         }
         debugRequirements = isNationalId ? {
           "First Name": firstName || 'N/A',
-          "Middle Name": middleName || 'N/A',
           "Last Name": lastName || 'N/A',
           "Barangay Address": targetBarangay || 'N/A',
           "Video Proof": videoReason
         } : {
           "First Name": firstName || 'N/A',
-          "Middle Name": middleName || 'N/A',
           "Last Name": lastName || 'N/A',
           "ID Number": idNumber || 'N/A',
           "School Name": schoolName || 'N/A',
@@ -5394,7 +5430,6 @@ const StudentInfo = () => {
 
         debugRequirements = {
           "First Name": firstName || 'N/A',
-          "Middle Name": middleName || 'N/A',
           "Last Name": lastName || 'N/A',
           "Barangay Address": targetBarangay || 'N/A',
           "Town / City": townCity || 'N/A',
@@ -6366,7 +6401,7 @@ const StudentInfo = () => {
         if (profile.indigency_verified && profile.indigency_vid_url && profile.has_mayorIndigency_photo) {
           setOcrVerified('success');
           setOcrStatus('Indigency verified successfully client-side!');
-          setIndigencyResults([{ doc: 'Indigency', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Middle Name": targetMiddleName ? true : null, "Last Name": true, "Barangay Address": true } }]);
+          setIndigencyResults([{ doc: 'Indigency', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true, "Barangay Address": true } }]);
         }
 
         if (profile.enrollment_verified && profile.enrollment_certificate_vid_url && profile.has_mayorCOE_photo) {
@@ -6391,7 +6426,7 @@ const StudentInfo = () => {
             doc: 'SchoolID',
             verified: true,
             message: 'Verified from database records.',
-            score_details: isRestoredNationalId ? { "First Name": true, "Middle Name": targetMiddleName ? true : null, "Last Name": true, "Barangay Address": true, "Video Proof": true } : { "First Name": true, "Middle Name": targetMiddleName ? true : null, "Last Name": true, "Video Proof": true }
+            score_details: isRestoredNationalId ? { "First Name": true, "Last Name": true, "Barangay Address": true, "Video Proof": true } : { "First Name": true, "Last Name": true, "Video Proof": true }
           }]);
         }
 
