@@ -675,12 +675,16 @@ const DOC_NOISE_PHRASES = new Set([
   'college', 'course', 'subject', 'section', 'bldg/room', 'faculty', 'days', 'time',
   'capstone project', 'elective', 'social and professional issues', 'the life and works',
   'punong barangay', 'barangay inosluban', 'city of lipa', 'province of batangas',
-  'republic of the philippines', 'de la salle lipa', 'office of the punong barangay',
+  'republic of the philippines', 'republika ng pilipinas', 'pambansang pagkakakilanlan',
+  'philippine identification card', 'philsys', 'philid', 'de la salle lipa', 'office of the punong barangay',
   'certificate of indigency', 'certificate of residency', 'grading system',
   'grades in-charge', 'college registrar', 'printed by', 'user', 'run date',
   'bachelor of science', 'information technology', 'plan b colleges', 'plan b- colleges',
   'this is to certify', 'office of the registrar', 'accountabilities', 'notes',
-  'f-cro-024.rev.0(04.06.2026)', 'f-cro-024'
+  'f-cro-024.rev.0(04.06.2026)', 'f-cro-024', 'apelyido', 'mga pangalan', 'gitnang apelyido',
+  'petsa ng kapanganakan', 'kasarian', 'pook ng kapanganakan', 'tirahan',
+  'given names', 'given name', 'last name', 'middle name', 'first name',
+  'date of birth', 'place of birth', 'blood type', 'sex', 'address'
 ]);
 
 function isDocNoise(text) {
@@ -688,7 +692,7 @@ function isDocNoise(text) {
   const clean = String(text).toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
   if (DOC_NOISE_PHRASES.has(clean)) return true;
   for (const np of DOC_NOISE_PHRASES) {
-    if (np.length >= 8 && (clean === np || clean.startsWith(np + ' ') || clean.endsWith(' ' + np))) {
+    if (np.length >= 6 && (clean === np || clean.startsWith(np + ' ') || clean.endsWith(' ' + np))) {
       return true;
     }
   }
@@ -703,6 +707,56 @@ const isOfficerOrSignatory = (str) => {
 function extractStudentNameFromOcr(rawText) {
   if (!rawText) return "Not detected";
   const lines = String(rawText).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+  // 0. National ID / PhilID explicit structured name block:
+  // Apelyido / Last Name, Mga Pangalan / Given Names, Gitnang Apelyido / Middle Name
+  let natLast = "";
+  let natFirst = "";
+  let natMiddle = "";
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Last Name / Apelyido
+    if (/^(?:apelyido|last\s*name)\b/i.test(line)) {
+      const inline = line.replace(/^(?:apelyido|last\s*name)[\s\/\:\-]+/i, '').trim();
+      if (inline && !isDocNoise(inline) && !/^(?:given|mga|first|middle|gitnang)\b/i.test(inline)) {
+        natLast = inline;
+      } else if (i + 1 < lines.length) {
+        const nextL = lines[i + 1].trim();
+        if (nextL && !isDocNoise(nextL) && !/^(?:given|mga|first|middle|gitnang|petsa|date|kasarian|sex)\b/i.test(nextL)) {
+          natLast = nextL;
+        }
+      }
+    }
+    // Given Names / Mga Pangalan
+    if (/^(?:mga\s*pangalan|given\s*names?|first\s*name)\b/i.test(line)) {
+      const inline = line.replace(/^(?:mga\s*pangalan|given\s*names?|first\s*name)[\s\/\:\-]+/i, '').trim();
+      if (inline && !isDocNoise(inline) && !/^(?:last|apelyido|middle|gitnang)\b/i.test(inline)) {
+        natFirst = inline;
+      } else if (i + 1 < lines.length) {
+        const nextL = lines[i + 1].trim();
+        if (nextL && !isDocNoise(nextL) && !/^(?:last|apelyido|middle|gitnang|petsa|date|kasarian|sex)\b/i.test(nextL)) {
+          natFirst = nextL;
+        }
+      }
+    }
+    // Middle Name / Gitnang Apelyido
+    if (/^(?:gitnang\s*apelyido|middle\s*name)\b/i.test(line)) {
+      const inline = line.replace(/^(?:gitnang\s*apelyido|middle\s*name)[\s\/\:\-]+/i, '').trim();
+      if (inline && !isDocNoise(inline) && !/^(?:last|apelyido|first|mga|given)\b/i.test(inline)) {
+        natMiddle = inline;
+      } else if (i + 1 < lines.length) {
+        const nextL = lines[i + 1].trim();
+        if (nextL && !isDocNoise(nextL) && !/^(?:last|apelyido|first|mga|given|petsa|date|kasarian|sex)\b/i.test(nextL)) {
+          natMiddle = nextL;
+        }
+      }
+    }
+  }
+
+  if (natFirst && natLast) {
+    return `${natLast}, ${natFirst}${natMiddle ? ' ' + natMiddle : ''}`;
+  }
 
   // 1. Explicit labeled lines: "Name : <val>", "Student Name : <val>", "Pangalan : <val>"
   for (let i = 0; i < lines.length; i++) {
@@ -1206,6 +1260,10 @@ function studentNameMatchesText(text, first, middle, last) {
   const noiseTokens = new Set([
     'mr', 'ms', 'mrs', 'student', 'name', 'pangalan', 'certify', 'resident', 'bonafide',
     'officer', 'barangay', 'office', 'reg', 'no', 'tran', 'republic', 'philippines',
+    'republika', 'pilipinas', 'pambansang', 'pagkakakilanlan', 'philsys', 'philid',
+    'apelyido', 'mga', 'given', 'names', 'gitnang', 'middle', 'last', 'first',
+    'petsa', 'ng', 'kapanganakan', 'kasarian', 'sex', 'pook', 'tirahan', 'address',
+    'birth', 'place', 'blood', 'type', 'date', 'of',
     'this', 'that', 'years', 'age', 'college', 'course', 'degree', 'year', 'level',
     'scholarship', 'discount', 'subject', 'assessed', 'fees', 'units', 'pay', 'type',
     'section', 'bldg', 'room', 'faculty', 'days', 'time', 'first', 'second', 'semester',
