@@ -5020,13 +5020,14 @@ const StudentInfo = () => {
         const combinedBackText = backText + " " + (backVidCheck?.detectedText || "");
         const allIdText = combinedFrontText + " " + combinedBackText;
 
-        const nameMatchFront = studentNameMatchesText(frontText, firstName, "", lastName);
+        const nameMatchFront = studentNameMatchesText(frontText, firstName, isNationalId ? middleName : "", lastName);
         const nameMatchBack = isNationalId ? { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } } : studentNameMatchesText(backText, firstName, "", lastName);
-        const nameMatchVid = (frontVidCheck?.detectedText) ? studentNameMatchesText(frontVidCheck.detectedText, firstName, "", lastName) : { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
+        const nameMatchVid = (frontVidCheck?.detectedText) ? studentNameMatchesText(frontVidCheck.detectedText, firstName, isNationalId ? middleName : "", lastName) : { success: false, details: { first_ok: false, middle_ok: false, last_ok: false } };
 
         const firstOk = isNationalId ? nameMatchFront.details.first_ok : (nameMatchFront.details.first_ok || nameMatchBack.details.first_ok || nameMatchVid.details.first_ok);
+        const middleOk = isNationalId && middleName ? nameMatchFront.details.middle_ok : true;
         const lastOk = isNationalId ? nameMatchFront.details.last_ok : (nameMatchFront.details.last_ok || nameMatchBack.details.last_ok || nameMatchVid.details.last_ok);
-        const nameOk = isNationalId ? nameMatchFront.success : (nameMatchFront.success || nameMatchBack.success || nameMatchVid.success);
+        const nameOk = isNationalId ? (firstOk && lastOk && (middleName ? middleOk : true)) : (nameMatchFront.success || nameMatchBack.success || nameMatchVid.success);
 
         const idOk = isNationalId ? true : (idNumber ? (studentIdNoMatchesText(idNumber, combinedFrontText, true) || studentIdNoMatchesText(idNumber, combinedBackText, true)) : true);
         const schoolOk = schoolName ? (schoolNameMatchesText(allIdText, schoolName)) : true;
@@ -5058,6 +5059,7 @@ const StudentInfo = () => {
 
         scoreDetails = isNationalId ? {
           "First Name": firstOk,
+          "Middle Name": middleName ? middleOk : null,
           "Last Name": lastOk,
           "Barangay Address": targetBarangay ? addrOk : null,
           "Video Proof": videoOk
@@ -5371,6 +5373,7 @@ const StudentInfo = () => {
         }
         debugRequirements = isNationalId ? {
           "First Name": firstName || 'N/A',
+          "Middle Name": middleName || 'N/A',
           "Last Name": lastName || 'N/A',
           "Barangay Address": targetBarangay || 'N/A',
           "Video Proof": videoReason
@@ -6426,7 +6429,7 @@ const StudentInfo = () => {
             doc: 'SchoolID',
             verified: true,
             message: 'Verified from database records.',
-            score_details: isRestoredNationalId ? { "First Name": true, "Last Name": true, "Barangay Address": true, "Video Proof": true } : { "First Name": true, "Last Name": true, "Video Proof": true }
+            score_details: isRestoredNationalId ? { "First Name": true, "Middle Name": targetMiddleName ? true : null, "Last Name": true, "Barangay Address": true, "Video Proof": true } : { "First Name": true, "Last Name": true, "Video Proof": true }
           }]);
         }
 
