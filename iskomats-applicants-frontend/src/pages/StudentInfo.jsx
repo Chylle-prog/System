@@ -1392,7 +1392,8 @@ function sanitizeStudentIdCandidate(rawToken, targetId) {
 }
 
 function studentIdNoMatchesText(targetId, text, strict = false) {
-  if (!targetId || !text) return true;
+  if (!targetId) return true;
+  if (!text || !String(text).trim()) return false;
 
   const digitsOnly = (s) => String(s || '').replace(/[^0-9]/g, '');
 
@@ -1412,7 +1413,7 @@ function studentIdNoMatchesText(targetId, text, strict = false) {
   };
 
   const tDigits = digitsOnly(targetId);
-  if (!tDigits || tDigits.length < 4) return true; // too short to verify
+  if (!tDigits) return true;
 
   // 1. Key-value extracted student ID field
   const kv = extractOcrKeyValues(text);
@@ -1481,7 +1482,8 @@ function studentIdNoMatchesText(targetId, text, strict = false) {
 
 
 function schoolNameMatchesText(text, targetSchool) {
-  if (!targetSchool || !text) return true;
+  if (!targetSchool) return true;
+  if (!text || !String(text).trim()) return false;
   const normText = normalizeForOcr(text);
   const lowerRaw = String(text).toLowerCase();
 
@@ -1549,7 +1551,8 @@ function getScholarshipConfiguredAcademicYear(scholarshipDetails, fallbackYear =
 }
 
 function academic_year_matches_expected(text, expectedYear) {
-  if (!expectedYear || !text) return true;
+  if (!expectedYear) return true;
+  if (!text || !String(text).trim()) return false;
 
   // 1. Normalize OCR text and year characters
   const recoverYears = (str) => {
@@ -1727,7 +1730,8 @@ function extractSemesterFromText(text) {
 
 function semesterMatchesText(text, expectedSemester, reqSemester) {
   const semToCheck = expectedSemester || reqSemester;
-  if (!semToCheck || !text) return true;
+  if (!semToCheck) return true;
+  if (!text || !String(text).trim()) return false;
 
   const expNum = normalizeSemesterInt(semToCheck);
   if (expNum === null) return true;
@@ -1739,59 +1743,151 @@ function semesterMatchesText(text, expectedSemester, reqSemester) {
     return expNum === foundNum;
   }
 
-  return true;
+  const normText = normalizeForOcr(text);
+  if (expNum === 1 && (/\b(?:1st|first)\s*(?:sem|semester|serstr)\b/i.test(normText) || /\bsem\s*1\b/i.test(normText))) return true;
+  if (expNum === 2 && (/\b(?:2nd|second)\s*(?:sem|semester|serstr)\b/i.test(normText) || /\bsem\s*2\b/i.test(normText))) return true;
+  if (expNum === 3 && (/\b(?:3rd|third|summer|midyear)\s*(?:sem|semester|serstr)?\b/i.test(normText) || /\bsem\s*3\b/i.test(normText))) return true;
+
+  return false;
 }
 
 function courseMatchesText(expectedCourse, text) {
-  if (!expectedCourse || !text) return true;
-  const normText = normalizeForOcr(text);
-  const lowerRaw = String(text).toLowerCase();
+  if (!expectedCourse) return true;
+  if (!text || !String(text).trim()) return false;
 
-  // Fix digit-letter OCR confusions (e.g. b5it -> bsit)
-  const fixedText = lowerRaw.replace(/b5it/g, 'bsit').replace(/5/g, 's');
-  const normCourse = normalizeForOcr(expectedCourse);
+  const rawStr = String(text);
+  const lowerRaw = rawStr.toLowerCase();
+
+  // Strip department / college organization headers so administrative headings do not trigger false positives
+  // e.g. "College of Information Technology and Engineering (CITE)" or "College of Computer Studies"
+  const strippedText = lowerRaw
+    .replace(/\b(?:college|department|faculty|school|division|institute)\s+of\s+[^\r\n,;]+/gi, ' ')
+    .replace(/\b(?:cite|ccs|coe|cba|ceas|cas|con|cit)\b/gi, ' ');
+
+  const normStripped = normalizeForOcr(strippedText);
+  const fixedText = strippedText.replace(/b5it/g, 'bsit').replace(/5/g, 's');
 
   const kv = extractOcrKeyValues(text);
-  const targetText = kv.course ? normalizeForOcr(kv.course) : normText;
+  const targetKv = kv.course ? normalizeForOcr(kv.course) : "";
+  const expLower = String(expectedCourse).toLowerCase().trim();
 
-  if (targetText.includes(normCourse) || normText.includes(normCourse) || fixedText.includes(normCourse)) return true;
+  // Canonical Major / Program Definitions
+  const CANONICAL_COURSES = [
+    {
+      id: 'cpe',
+      check: (exp) => /\b(?:computer\s*eng\w*|bs\s*cpe|cpe)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bscpe|cpe|bs-cpe|bs\s*cpe)\b/i.test(s) || /\b(?:bscpe|cpe|bs-cpe|bs\s*cpe)\b/i.test(kvText) || /\bcomputer\s+engineering\b/i.test(s) || /\bcomputer\s+engineering\b/i.test(kvText)
+    },
+    {
+      id: 'cs',
+      check: (exp) => /\b(?:computer\s*sci\w*|bs\s*cs|comp\s*sci)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bscs|bs-cs|bs\s*cs)\b/i.test(s) || /\b(?:bscs|bs-cs|bs\s*cs)\b/i.test(kvText) || /\bcomputer\s+science\b/i.test(s) || /\bcomputer\s+science\b/i.test(kvText)
+    },
+    {
+      id: 'it',
+      check: (exp) => /\b(?:information\s*tech\w*|bs\s*it|info\s*tech\w*|b5it)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bsit|bs-it|b5it|bs\s*it)\b/i.test(s) || /\b(?:bsit|bs-it|b5it|bs\s*it)\b/i.test(kvText) || /\binformation\s+technology\b/i.test(s) || /\binfo\s*tech\b/i.test(s) || /\binformation\s+technology\b/i.test(kvText)
+    },
+    {
+      id: 'ce',
+      check: (exp) => /\b(?:civil\s*eng\w*|bs\s*ce)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bsce|bs-ce|bs\s*ce)\b/i.test(s) || /\b(?:bsce|bs-ce|bs\s*ce)\b/i.test(kvText) || /\bcivil\s+engineering\b/i.test(s) || /\bcivil\s+engineering\b/i.test(kvText)
+    },
+    {
+      id: 'ee',
+      check: (exp) => /\b(?:electrical\s*eng\w*|bs\s*ee)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bsee|bs-ee|bs\s*ee)\b/i.test(s) || /\b(?:bsee|bs-ee|bs\s*ee)\b/i.test(kvText) || /\belectrical\s+engineering\b/i.test(s) || /\belectrical\s+engineering\b/i.test(kvText)
+    },
+    {
+      id: 'ece',
+      check: (exp) => /\b(?:electronics\s*(?:and\s*comm\w*)?\s*eng\w*|bs\s*ece|ece)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bsece|bs-ece|bs\s*ece)\b/i.test(s) || /\b(?:bsece|bs-ece|bs\s*ece)\b/i.test(kvText) || /\belectronics\s+(?:and\s+communications\s+)?engineering\b/i.test(s) || /\belectronics\s+(?:and\s+communications\s+)?engineering\b/i.test(kvText)
+    },
+    {
+      id: 'me',
+      check: (exp) => /\b(?:mechanical\s*eng\w*|bs\s*me)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bsme|bs-me|bs\s*me)\b/i.test(s) || /\b(?:bsme|bs-me|bs\s*me)\b/i.test(kvText) || /\bmechanical\s+engineering\b/i.test(s) || /\bmechanical\s+engineering\b/i.test(kvText)
+    },
+    {
+      id: 'ie',
+      check: (exp) => /\b(?:industrial\s*eng\w*|bs\s*ie)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bsie|bs-ie|bs\s*ie)\b/i.test(s) || /\b(?:bsie|bs-ie|bs\s*ie)\b/i.test(kvText) || /\bindustrial\s+engineering\b/i.test(s) || /\bindustrial\s+engineering\b/i.test(kvText)
+    },
+    {
+      id: 'ba',
+      check: (exp) => /\b(?:business\s*admin\w*|bs\s*ba|marketing\s*mgmt|financial\s*mgmt|business\s*management)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bsba|bs-ba|bs\s*ba)\b/i.test(s) || /\b(?:bsba|bs-ba|bs\s*ba)\b/i.test(kvText) || /\bbusiness\s+administration\b/i.test(s) || /\bbusiness\s+administration\b/i.test(kvText)
+    },
+    {
+      id: 'accountancy',
+      check: (exp) => /\b(?:accountancy|accounting|bs\s*a)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bsa|bs-a|bs\s*a)\b/i.test(s) || /\b(?:bsa|bs-a|bs\s*a)\b/i.test(kvText) || /\baccountancy\b|\baccounting\b/i.test(s) || /\baccountancy\b|\baccounting\b/i.test(kvText)
+    },
+    {
+      id: 'nursing',
+      check: (exp) => /\b(?:nursing|bs\s*n)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bsn|bs-n|bs\s*n)\b/i.test(s) || /\b(?:bsn|bs-n|bs\s*n)\b/i.test(kvText) || /\bnursing\b/i.test(s) || /\bnursing\b/i.test(kvText)
+    },
+    {
+      id: 'criminology',
+      check: (exp) => /\b(?:criminology|bs\s*crim)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bscrim|bs-crim|bs\s*crim)\b/i.test(s) || /\b(?:bscrim|bs-crim|bs\s*crim)\b/i.test(kvText) || /\bcriminology\b/i.test(s) || /\bcriminology\b/i.test(kvText)
+    },
+    {
+      id: 'hm',
+      check: (exp) => /\b(?:hospitality\s*mgmt|hospitality\s*management|hotel\s*and\s*rest|bs\s*hm|bs\s*hrm)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bshm|bshrm|bs\s*hm)\b/i.test(s) || /\b(?:bshm|bshrm|bs\s*hm)\b/i.test(kvText) || /\bhospitality\s+management\b|\bhotel\s+and\s+restaurant\b/i.test(s) || /\bhospitality\s+management\b|\bhotel\s+and\s+restaurant\b/i.test(kvText)
+    },
+    {
+      id: 'tm',
+      check: (exp) => /\b(?:tourism\s*mgmt|tourism\s*management|tourism|bs\s*tm)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bstm|bs\s*tm)\b/i.test(s) || /\b(?:bstm|bs\s*tm)\b/i.test(kvText) || /\btourism\s+management\b|\btourism\b/i.test(s) || /\btourism\s+management\b|\btourism\b/i.test(kvText)
+    },
+    {
+      id: 'educ',
+      check: (exp) => /\b(?:secondary\s*educ\w*|elementary\s*educ\w*|bs\s*ed|be\s*ed|teacher\s*educ\w*|education)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bsed|beed|bs\s*ed)\b/i.test(s) || /\b(?:bsed|beed|bs\s*ed)\b/i.test(kvText) || /\bsecondary\s+education\b|\belementary\s+education\b|\bteacher\s+education\b/i.test(s) || /\bsecondary\s+education\b|\belementary\s+education\b/i.test(kvText)
+    },
+    {
+      id: 'psychology',
+      check: (exp) => /\b(?:psychology|bs\s*psych|ab\s*psych)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bspsych|abpsych|bs\s*psych)\b/i.test(s) || /\b(?:bspsych|abpsych|bs\s*psych)\b/i.test(kvText) || /\bpsychology\b/i.test(s) || /\bpsychology\b/i.test(kvText)
+    }
+  ];
 
-  // Course Synonym & Acronym Dictionary
-  const courseMap = {
-    'bsit': ['information technology', 'info tech', 'it', 'b5it'],
-    'bscs': ['computer science', 'comp sci', 'cs'],
-    'bsba': ['business administration', 'business', 'management'],
-    'bscpe': ['computer engineering', 'cpe'],
-    'bsee': ['electrical engineering', 'ee'],
-    'bsece': ['electronics engineering', 'ece'],
-    'bsme': ['mechanical engineering', 'me'],
-    'bsn': ['nursing']
-  };
-
-  const expUpper = String(expectedCourse).toLowerCase().trim();
-  for (const [code, synonyms] of Object.entries(courseMap)) {
-    if (expUpper.includes(code) || synonyms.some(s => expUpper.includes(s))) {
-      if (fixedText.includes(code) || synonyms.some(s => fixedText.includes(s) || normText.includes(s))) {
-        return true;
-      }
+  // 1. If user inputs a recognized canonical program (e.g. BSIT, BSCpE, BSCS, etc.)
+  for (const canon of CANONICAL_COURSES) {
+    if (canon.check(expLower)) {
+      return canon.docHasProgram(fixedText, targetKv);
     }
   }
 
-  const words = String(expectedCourse).trim().split(/\s+/);
-  const acronym = words.map(w => w[0] ? w[0].toLowerCase() : '').join('');
-  if (acronym.length >= 2) {
-    const acronymRegex = new RegExp(`\\b${acronym.replace('bs', 'b[s5]\\s*')}\\b`, 'i');
-    if (acronymRegex.test(targetText) || acronymRegex.test(fixedText)) return true;
+  // 2. If the document itself contains a recognized canonical program (e.g. document is BSIT)
+  // but the user's input did NOT match canon.check (e.g. user entered truncated "BS Information", "BS Computer", etc.)
+  for (const canon of CANONICAL_COURSES) {
+    if (canon.docHasProgram(fixedText, targetKv)) {
+      // The document is an accredited canonical program; user input must strictly match the full program
+      return false;
+    }
   }
 
-  const genericWords = ['bachelor', 'master', 'doctor', 'science', 'arts', 'degree', 'major', 'in', 'of', 'and', 'bs', 'ba', 'ms', 'ma'];
-  const sigWords = words.map(normalizeForOcr).filter(w => w.length > 2 && !genericWords.includes(w));
+  // 3. Fallback for custom / non-canonical courses:
+  // Must match all significant words (length >= 3, excluding filler words) strictly in word boundaries
+  const words = String(expectedCourse).trim().split(/\s+/);
+  const genericWords = ['bachelor', 'master', 'doctor', 'science', 'arts', 'degree', 'major', 'in', 'of', 'and', 'bs', 'ba', 'ms', 'ma', 'college', 'department', 'school'];
+  const sigWords = words.map(normalizeForOcr).filter(w => w.length >= 3 && !genericWords.includes(w));
 
-  if (sigWords.length > 0) {
-    const searchArea = targetText || fixedText;
-    const matchedCount = sigWords.filter(w => new RegExp('\\b' + w + '\\b').test(searchArea) || searchArea.includes(w)).length;
-    const requiredRatio = sigWords.length <= 2 ? 1.0 : 0.6;
-    if ((matchedCount / sigWords.length) >= requiredRatio) return true;
+  // Single word inputs like "Information", "Engineering", "Technology", "Science" are too ambiguous and must be rejected
+  if (sigWords.length <= 1) {
+    const normCourse = normalizeForOcr(expectedCourse);
+    if (targetKv && targetKv === normCourse) return true;
+    return false;
+  }
+
+  if (sigWords.length > 1) {
+    const searchArea = targetKv || fixedText;
+    const allMatched = sigWords.every(w => new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(searchArea));
+    if (allMatched) return true;
   }
 
   return false;
@@ -2172,7 +2268,8 @@ function extractYearLevelFromText(text) {
 }
 
 function yearLevelMatchesText(text, expectedYearLevel) {
-  if (!expectedYearLevel || !text) return true;
+  if (!expectedYearLevel) return true;
+  if (!text || !String(text).trim()) return false;
 
   const expNum = parseInt(String(expectedYearLevel).replace(/\D/g, ''), 10);
   if (isNaN(expNum)) return true;
@@ -2216,7 +2313,7 @@ function yearLevelMatchesText(text, expectedYearLevel) {
     return foundNum === expNum;
   }
 
-  return true;
+  return false;
 }
 
 export function name_matches_merit_cert(detectedText, firstName, lastName, middleName = '') {
@@ -4794,7 +4891,7 @@ const StudentInfo = () => {
             effectiveVideoOk = false;
             videoTypeErrorMessage = 'Video proof mismatch: uploaded video is a Barangay Indigency/Residency document, but scholarship requires Certificate of Registration / Enrollment.';
           } else {
-            effectiveVideoOk = videoUrl ? (videoCheck ? (videoCheck.valid && videoCheck.isMatched) : true) : true;
+            effectiveVideoOk = videoUrl ? Boolean(videoCheck && videoCheck.valid && videoCheck.isMatched) : true;
           }
 
           const coeTypeOk = coe_type_matches_text(detectedText);
@@ -4857,7 +4954,7 @@ const StudentInfo = () => {
             effectiveVideoOk = false;
             videoTypeErrorMessage = 'Video proof mismatch: uploaded video is a Barangay Indigency/Residency document, but scholarship requires Grades / Transcript of Record.';
           } else {
-            effectiveVideoOk = videoUrl ? (videoCheck ? (videoCheck.valid && videoCheck.isMatched) : true) : true;
+            effectiveVideoOk = videoUrl ? Boolean(videoCheck && videoCheck.valid && videoCheck.isMatched) : true;
           }
 
           const nameCheck = studentNameMatchesText(detectedText, firstName, middleName, lastName);
@@ -4981,7 +5078,7 @@ const StudentInfo = () => {
             }
           }
 
-          effectiveVideoOk = videoUrl ? (videoOk && videoHasKeyword && !videoTypeErrorMessage && (!videoCheck || videoCheck.valid)) : true;
+          effectiveVideoOk = videoUrl ? Boolean(videoCheck && videoCheck.valid && videoCheck.isMatched && videoHasKeyword && !videoTypeErrorMessage) : true;
           const nameOk = nameCheck.success;
 
           // Document photo OCR is primary: if image has Name, Barangay, Town/City, and Document Header, mark as success
