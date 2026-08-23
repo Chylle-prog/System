@@ -1279,12 +1279,31 @@ function studentNameMatchesText(text, first, middle, last) {
     return eConf.length >= 2 && eConf === aConf;
   };
 
+  // Helper: check if a candidate middle name token matches expected middle name
+  const middleNamesMatch = (expMidWord, docMidWord) => {
+    if (!expMidWord || !docMidWord) return false;
+    const expNorm = normalizeForOcr(expMidWord);
+    const docNorm = normalizeForOcr(docMidWord);
+    if (!expNorm || !docNorm) return false;
+
+    // 1. Both are full words (length > 1) -> must match strictly (reject misspellings like Linato / Linatocc vs Linatoc)
+    if (expNorm.length > 1 && docNorm.length > 1) {
+      return wordsMatchStrict(expNorm, docNorm);
+    }
+
+    // 2. Either user input is an initial (length 1) or document is an initial (length 1)
+    if (expNorm.length === 1 || docNorm.length === 1) {
+      return expNorm[0] === docNorm[0];
+    }
+
+    return false;
+  };
+
   // Helper: check if token is a middle name word or initial
   const isMiddleMatch = (token) => {
     if (!token) return false;
     if (expMiddleWords.length > 0) {
-      if (expMiddleWords.some(mw => wordsMatchStrict(mw, token))) return true;
-      if (token.length === 1 && expMiddleWords.some(mw => mw[0] === token[0])) return true;
+      if (middleNamesMatch(expMiddleWords[0], token)) return true;
     }
     // Any single-letter token like 'o', 'm', 'c' or 'o.' can be a middle initial
     if (token.length === 1 && /^[a-z]$/i.test(token)) return true;
@@ -1316,7 +1335,6 @@ function studentNameMatchesText(text, first, middle, last) {
   let middleOk = true;
   if (expMiddleWords.length > 0) {
     const expMidWord = expMiddleWords[0];
-    const expInitial = expMidWord[0];
 
     let docHasMiddleName = false;
     let docMiddleMatched = false;
@@ -1325,10 +1343,7 @@ function studentNameMatchesText(text, first, middle, last) {
       const parsedDoc = parseStudentNameComponents(extractedDocName);
       if (parsedDoc.middle && parsedDoc.middle !== "Not detected" && parsedDoc.middle !== "N/A") {
         docHasMiddleName = true;
-        const docMidNorm = normalizeForOcr(parsedDoc.middle);
-        const docMidInitial = docMidNorm[0];
-
-        if (wordsMatchStrict(expMidWord, docMidNorm) || docMidInitial === expInitial) {
+        if (middleNamesMatch(expMidWord, parsedDoc.middle)) {
           docMiddleMatched = true;
         }
       }
@@ -1344,7 +1359,7 @@ function studentNameMatchesText(text, first, middle, last) {
           const betweenTok = tokens[Math.min(fIdx, lIdx) + 1];
           if (!noiseTokens.has(betweenTok)) {
             docHasMiddleName = true;
-            if (wordsMatchStrict(expMidWord, betweenTok) || betweenTok[0] === expInitial) {
+            if (middleNamesMatch(expMidWord, betweenTok)) {
               docMiddleMatched = true;
             }
           }
