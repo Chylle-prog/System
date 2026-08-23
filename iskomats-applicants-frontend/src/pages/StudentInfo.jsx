@@ -778,15 +778,15 @@ function extractStudentNameFromOcr(rawText) {
   // 2. Indigency / Residency / Merit anchor pattern
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const mCert = line.match(/(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|pinatutunayan\s+na\s+si|katibayan\s+na\s+si|personally\s+known|hereby\s+acknowledges\s+that|hereby\s+certifies\s+that|presented\s+to|awarded\s+to|conferred\s+upon|given\s+to)\s+(?:that\s+)?[_\W]*(?:(?:mr|ms|mrs|miss)[\.\/\s]*)*([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years?|yrs?|yo|anyos)|,\s*(?:single|married|widow|filipino|citizen|a\s+resident)|whose\s+specimen|has\s+graduated|for\s+|in\s+recognition|who\s+|on\s+this|$)/i);
+    const mCert = line.match(/(?:this\s+is\s+to\s+certify\s+that|sto\s+certify\s+that|pinatutunayan\s+na\s+si|katibayan\s+na\s+si|personally\s+known|hereby\s+acknowledges\s+that|hereby\s+certifies\s+that|presented\s+to|awarded\s+to|conferred\s+upon|given\s+to)\s+(?:that\s+)?[_\W]*(?:i\s+personally\s+known\s+)?(?:(?:mr|ms|mrs|miss)[\.\/\s]*)*([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years?|yrs?|yo|anyos)|,\s*(?:single|married|widow|filipino|citizen|a\s+resident)|whose\s+specimen|has\s+graduated|for\s+|in\s+recognition|who\s+|on\s+this|$)/i);
     if (mCert && mCert[1]) {
-      let cand = mCert[1].trim().replace(/^(?:mr\.?|ms\.?|mrs\.?|miss)\s+/i, '').trim();
-      if (cand.length >= 3 && !isDocNoise(cand) && !isOfficerOrSignatory(cand)) {
+      let cand = mCert[1].trim().replace(/^(?:i\s+personally\s+known\s+)?(?:mr\.?|ms\.?|mrs\.?|miss)\s+/i, '').trim();
+      if (cand.length >= 3 && !isDocNoise(cand) && !isOfficerOrSignatory(cand) && !/^(?:i\s+personally|personally\s+known)/i.test(cand)) {
         return cand;
       }
     }
 
-    if (/(?:this\s+is\s+to\s+certify\s+that|personally\s+known|hereby\s+acknowledges\s+that|hereby\s+certifies\s+that|presented\s+to|awarded\s+to|conferred\s+upon|given\s+to)\s*[:=\+\-]?(?:\s*(?:that|Mr\.?\/Ms\.?\/Mrs\.?|Mr\.?|Ms\.?|Mrs\.?))?$/i.test(line)) {
+    if (/(?:this\s+is\s+to\s+certify\s+that|personally\s+known|hereby\s+acknowledges\s+that|hereby\s+certifies\s+that|presented\s+to|awarded\s+to|conferred\s+upon|given\s+to)\s*[:=\+\-]?(?:\s*(?:that|i\s+personally\s+known\s+(?:mr\.?\/ms\.?|mr\.?|ms\.?|mrs\.?)?|mr\.?\/ms\.?\/mrs\.?|mr\.?|ms\.?|mrs\.?))?$/i.test(line)) {
       if (i + 1 < lines.length) {
         const nextLine = lines[i + 1].replace(/^[:=\+\-\|\s]+/, '').trim();
         const mNext = nextLine.match(/^(?:(?:mr|ms|mrs|miss)[\.\/\s]*)*([A-Za-z\s,\.\-]+?)(?=\s+\d+\s*(?:years?|yrs?|yo|anyos)|,\s*(?:single|married|widow|filipino|citizen|a\s+resident)|whose\s+specimen|has\s+graduated|for\s+|in\s+recognition|who\s+|on\s+this|$)/i);
@@ -844,7 +844,7 @@ function extractStudentNameFromOcr(rawText) {
     // Format: "ANA FRANCZESCA M. ARRIOLA" or "Alexie Chyle Magbuhat"
     const words = cleanLine.split(/\s+/);
     if (words.length >= 2 && words.length <= 5 && /^[A-Za-z\s\.\-]{5,50}$/.test(cleanLine)) {
-      if (!/\b(?:OFFICIAL|CERTIFICATE|REGISTRATION|OFFICE|COLLEGE|REGISTRAR|BACHELOR|SCIENCE|INFORMATION|TECHNOLOGY|DEPARTMENT|HIGHWAY|BATANGAS|PHILIPPINES|SEMESTER|YEAR|FINAL|GRADES|UNITS|SECTION|PROJECT|ELECTIVE|ISSUES|WORKS)\b/i.test(cleanLine)) {
+      if (!/\b(?:OFFICIAL|CERTIFICATE|REGISTRATION|OFFICE|COLLEGE|REGISTRAR|BACHELOR|SCIENCE|INFORMATION|TECHNOLOGY|DEPARTMENT|HIGHWAY|BATANGAS|PHILIPPINES|SEMESTER|YEAR|FINAL|GRADES|UNITS|SECTION|PROJECT|ELECTIVE|ISSUES|WORKS|BARANGAY|BRGY|MUNICIPALITY|CITY|PROVINCE|REPUBLIKA|PILIPINAS|PAMBANSANG|PUNONG)\b/i.test(cleanLine)) {
         if (words.every(w => w.length >= 1 && (w === w.toUpperCase() || /^[A-Z][a-z]+$/.test(w) || /^[A-Z]\.?$/.test(w)))) {
           return cleanLine;
         }
@@ -1310,33 +1310,53 @@ function studentNameMatchesText(text, first, middle, last) {
   candidateTexts.push(normText);
 
   // Evaluate Middle Name Verification:
-  // Must match either the full middle name OR the first letter (initial) of the middle name
+  // Must match either the full middle name OR the first letter (initial) of the middle name.
+  // If the document omits the middle name completely (e.g. "Alexie Chyle Magbuhat"), accept it.
+  // If the document CONTAINS a middle name or initial (e.g. "O." or "LINATOC"), it MUST match!
   let middleOk = true;
   if (expMiddleWords.length > 0) {
-    middleOk = false;
     const expMidWord = expMiddleWords[0];
     const expInitial = expMidWord[0];
+
+    let docHasMiddleName = false;
+    let docMiddleMatched = false;
 
     if (extractedDocName && extractedDocName !== "Not detected") {
       const parsedDoc = parseStudentNameComponents(extractedDocName);
       if (parsedDoc.middle && parsedDoc.middle !== "Not detected" && parsedDoc.middle !== "N/A") {
+        docHasMiddleName = true;
         const docMidNorm = normalizeForOcr(parsedDoc.middle);
         const docMidInitial = docMidNorm[0];
 
-        if (wordsMatchStrict(expMidWord, docMidNorm)) {
-          middleOk = true;
-        } else if (docMidInitial === expInitial) {
-          middleOk = true;
+        if (wordsMatchStrict(expMidWord, docMidNorm) || docMidInitial === expInitial) {
+          docMiddleMatched = true;
         }
       }
     }
 
-    if (!middleOk) {
-      if (candidateTexts.some(ct => new RegExp('\\b' + expMidWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(ct))) {
-        middleOk = true;
-      } else if (new RegExp('\\b' + expInitial + '\\.?(?=[\\s,;\\-\\)]|$)', 'i').test(text)) {
-        middleOk = true;
+    if (!docHasMiddleName) {
+      // Check candidate texts / lines to see if a middle initial or middle word exists between first and last
+      for (const candText of candidateTexts) {
+        const tokens = candText.split(/\s+/).filter(Boolean);
+        const fIdx = tokens.findIndex(t => wordsMatchStrict(expFirstWords[expFirstWords.length - 1], t));
+        const lIdx = tokens.findIndex(t => wordsMatchStrict(expLastWords[0], t));
+        if (fIdx !== -1 && lIdx !== -1 && Math.abs(lIdx - fIdx) === 2) {
+          const betweenTok = tokens[Math.min(fIdx, lIdx) + 1];
+          if (!noiseTokens.has(betweenTok)) {
+            docHasMiddleName = true;
+            if (wordsMatchStrict(expMidWord, betweenTok) || betweenTok[0] === expInitial) {
+              docMiddleMatched = true;
+            }
+          }
+        }
       }
+    }
+
+    if (docHasMiddleName) {
+      middleOk = docMiddleMatched;
+    } else {
+      // Document does not contain any middle token (standard First Last layout) -> accept
+      middleOk = true;
     }
   }
 
@@ -1344,110 +1364,126 @@ function studentNameMatchesText(text, first, middle, last) {
   let lastOk = false;
   let sequenceOk = false;
 
-  for (const candText of candidateTexts) {
-    const tokens = candText.split(/\s+/).filter(w => w.length >= 1);
-    if (tokens.length < expFirstWords.length + expLastWords.length) continue;
+  // 1. Direct check against structured extracted document name
+  if (extractedDocName && extractedDocName !== "Not detected") {
+    const parsedDoc = parseStudentNameComponents(extractedDocName);
+    if (parsedDoc.first && parsedDoc.first !== "Not detected" && parsedDoc.last && parsedDoc.last !== "Not detected") {
+      const docFirstWords = normalizeForOcr(parsedDoc.first).split(/\s+/).filter(Boolean);
+      const docLastWords = normalizeForOcr(parsedDoc.last).split(/\s+/).filter(Boolean);
 
-    // Search for sequence match:
-    // Format A: [FIRST WORDS...] [OPTIONAL MIDDLE] [LAST WORDS...]
-    // Format B: [LAST WORDS...] [,] [FIRST WORDS...] [OPTIONAL MIDDLE]
-    
-    // Check Format A:
-    for (let i = 0; i <= tokens.length - (expFirstWords.length + expLastWords.length); i++) {
-      // Check if tokens starting at i match ALL expFirstWords in exact contiguous order
-      let firstMatches = true;
-      for (let f = 0; f < expFirstWords.length; f++) {
-        if (!wordsMatchStrict(expFirstWords[f], tokens[i + f])) {
-          firstMatches = false;
+      const firstMatchesExact = docFirstWords.length === expFirstWords.length &&
+        expFirstWords.every((ew, idx) => wordsMatchStrict(ew, docFirstWords[idx]));
+      const lastMatchesExact = docLastWords.length === expLastWords.length &&
+        expLastWords.every((ew, idx) => wordsMatchStrict(ew, docLastWords[idx]));
+
+      if (firstMatchesExact && lastMatchesExact) {
+        firstOk = true;
+        lastOk = true;
+        sequenceOk = true;
+      }
+    }
+  }
+
+  // 2. Token sequence scan across raw document text if not yet matched
+  if (!sequenceOk) {
+    for (const candText of candidateTexts) {
+      const tokens = candText.split(/\s+/).filter(w => w.length >= 1);
+      if (tokens.length < expFirstWords.length + expLastWords.length) continue;
+
+      // Check Format A: [FIRST WORDS...] [intervening middle/noise...] [LAST WORDS...]
+      for (let i = 0; i <= tokens.length - (expFirstWords.length + expLastWords.length); i++) {
+        let firstMatches = true;
+        for (let f = 0; f < expFirstWords.length; f++) {
+          if (!wordsMatchStrict(expFirstWords[f], tokens[i + f])) {
+            firstMatches = false;
+            break;
+          }
+        }
+        if (!firstMatches) continue;
+
+        if (i > 0) {
+          const prevTok = tokens[i - 1];
+          if (!noiseTokens.has(prevTok) && !expLastWords.some(lw => wordsMatchStrict(lw, prevTok))) {
+            const isDocLabelPrefix = /^(?:name|student|mr|ms|mrs|pangalan|certify|resident|attend|to|of)$/i.test(prevTok);
+            if (!isDocLabelPrefix && prevTok.length >= 3) {
+              continue;
+            }
+          }
+        }
+
+        let nextIdx = i + expFirstWords.length;
+        let skipCount = 0;
+        while (nextIdx < tokens.length && skipCount < 5 && (isMiddleMatch(tokens[nextIdx]) || noiseTokens.has(tokens[nextIdx]))) {
+          nextIdx++;
+          skipCount++;
+        }
+
+        let lastMatches = true;
+        for (let l = 0; l < expLastWords.length; l++) {
+          if (nextIdx + l >= tokens.length || !wordsMatchStrict(expLastWords[l], tokens[nextIdx + l])) {
+            lastMatches = false;
+            break;
+          }
+        }
+
+        if (lastMatches) {
+          firstOk = true;
+          lastOk = true;
+          sequenceOk = true;
           break;
         }
       }
-      if (!firstMatches) continue;
 
-      // Token before the first name must NOT be another personal name word (preventing partial match like "Mark" before "Alexie")
-      if (i > 0) {
-        const prevTok = tokens[i - 1];
-        if (!noiseTokens.has(prevTok) && !expLastWords.some(lw => wordsMatchStrict(lw, prevTok))) {
-          // If the token before is not noise and not last name, it might be a preceding un-entered first name word
-          const isDocLabelPrefix = /^(?:name|student|mr|ms|mrs|pangalan|certify|resident|attend|to|of)$/i.test(prevTok);
-          if (!isDocLabelPrefix && prevTok.length >= 3) {
-            // Preceding word belongs to name -> reject partial first name
+      if (sequenceOk) break;
+
+      // Check Format B: [LAST WORDS...] [intervening noise...] [FIRST WORDS...] [OPTIONAL MIDDLE / NOISE]
+      for (let i = 0; i <= tokens.length - (expLastWords.length + expFirstWords.length); i++) {
+        let lastMatches = true;
+        for (let l = 0; l < expLastWords.length; l++) {
+          if (!wordsMatchStrict(expLastWords[l], tokens[i + l])) {
+            lastMatches = false;
+            break;
+          }
+        }
+        if (!lastMatches) continue;
+
+        let nextIdx = i + expLastWords.length;
+        let skipCount = 0;
+        while (nextIdx < tokens.length && skipCount < 5 && noiseTokens.has(tokens[nextIdx])) {
+          nextIdx++;
+          skipCount++;
+        }
+
+        let firstMatches = true;
+        for (let f = 0; f < expFirstWords.length; f++) {
+          if (nextIdx + f >= tokens.length || !wordsMatchStrict(expFirstWords[f], tokens[nextIdx + f])) {
+            firstMatches = false;
+            break;
+          }
+        }
+        if (!firstMatches) continue;
+
+        const afterFirstIdx = nextIdx + expFirstWords.length;
+        if (afterFirstIdx < tokens.length) {
+          const afterTok = tokens[afterFirstIdx];
+          const isFollowedByNoiseOrMiddle = isMiddleMatch(afterTok) || noiseTokens.has(afterTok) ||
+            (afterFirstIdx === tokens.length - 1);
+          if (!isFollowedByNoiseOrMiddle && afterTok.length >= 3) {
             continue;
           }
         }
-      }
 
-      // Check what follows the first name words:
-      let nextIdx = i + expFirstWords.length;
-
-      // Skip optional middle name / initial token(s)
-      let middleCount = 0;
-      while (nextIdx < tokens.length && middleCount < 2 && isMiddleMatch(tokens[nextIdx])) {
-        nextIdx++;
-        middleCount++;
-      }
-
-      // Now nextIdx must match ALL expLastWords in exact contiguous order
-      let lastMatches = true;
-      for (let l = 0; l < expLastWords.length; l++) {
-        if (nextIdx + l >= tokens.length || !wordsMatchStrict(expLastWords[l], tokens[nextIdx + l])) {
-          lastMatches = false;
-          break;
-        }
-      }
-
-      if (lastMatches) {
         firstOk = true;
         lastOk = true;
         sequenceOk = true;
         break;
       }
+
+      if (sequenceOk) break;
     }
-
-    if (sequenceOk) break;
-
-    // Check Format B: [LAST WORDS...] [FIRST WORDS...] [OPTIONAL MIDDLE]
-    for (let i = 0; i <= tokens.length - (expLastWords.length + expFirstWords.length); i++) {
-      let lastMatches = true;
-      for (let l = 0; l < expLastWords.length; l++) {
-        if (!wordsMatchStrict(expLastWords[l], tokens[i + l])) {
-          lastMatches = false;
-          break;
-        }
-      }
-      if (!lastMatches) continue;
-
-      let nextIdx = i + expLastWords.length;
-      // In Format B, FIRST WORDS immediately follow last name
-      let firstMatches = true;
-      for (let f = 0; f < expFirstWords.length; f++) {
-        if (nextIdx + f >= tokens.length || !wordsMatchStrict(expFirstWords[f], tokens[nextIdx + f])) {
-          firstMatches = false;
-          break;
-        }
-      }
-      if (!firstMatches) continue;
-
-      // Token after the last first name word must be either middle initial/name, noise, or end of name
-      const afterFirstIdx = nextIdx + expFirstWords.length;
-      if (afterFirstIdx < tokens.length) {
-        const afterTok = tokens[afterFirstIdx];
-        if (!isMiddleMatch(afterTok) && !noiseTokens.has(afterTok) && afterTok.length >= 3) {
-          // Extra un-entered first name word follows -> reject partial first name
-          continue;
-        }
-      }
-
-      firstOk = true;
-      lastOk = true;
-      sequenceOk = true;
-      break;
-    }
-
-    if (sequenceOk) break;
   }
 
-  const success = (sequenceOk || (firstOk && lastOk)) && (expMiddleWords.length > 0 ? middleOk : true);
+  const success = (sequenceOk || (firstOk && lastOk)) && middleOk;
 
   return {
     success,
@@ -3604,6 +3640,7 @@ const StudentInfo = () => {
         message: 'Indigency Certificate verified successfully! (Debug Bypass)',
         score_details: {
           "First Name": true,
+          "Middle Name": formData.middleName ? true : null,
           "Last Name": true,
           "Barangay Address": true
         }
@@ -3617,6 +3654,7 @@ const StudentInfo = () => {
         message: 'Certificate of Enrollment verified successfully! (Debug Bypass)',
         score_details: {
           "First Name": true,
+          "Middle Name": formData.middleName ? true : null,
           "Last Name": true,
           "ID Number": true,
           "School Name": true,
@@ -3632,6 +3670,7 @@ const StudentInfo = () => {
         message: 'Grades document verified successfully! (Debug Bypass)',
         score_details: {
           "First Name": true,
+          "Middle Name": formData.middleName ? true : null,
           "Last Name": true
         }
       }]);
@@ -3644,6 +3683,7 @@ const StudentInfo = () => {
         message: 'School ID verified successfully! (Debug Bypass)',
         score_details: {
           "First Name": true,
+          "Middle Name": formData.middleName ? true : null,
           "Last Name": true,
           "ID Number": true,
           "School Name": true,
@@ -5293,11 +5333,13 @@ const StudentInfo = () => {
         }
         debugRequirements = isNationalId ? {
           "First Name": firstName || 'N/A',
+          "Middle Name": middleName || 'N/A',
           "Last Name": lastName || 'N/A',
           "Barangay Address": targetBarangay || 'N/A',
           "Video Proof": videoReason
         } : {
           "First Name": firstName || 'N/A',
+          "Middle Name": middleName || 'N/A',
           "Last Name": lastName || 'N/A',
           "ID Number": idNumber || 'N/A',
           "School Name": schoolName || 'N/A',
@@ -5313,6 +5355,7 @@ const StudentInfo = () => {
 
         debugRequirements = {
           "First Name": firstName || 'N/A',
+          "Middle Name": middleName || 'N/A',
           "Last Name": lastName || 'N/A',
           "School Name": schoolName || 'N/A',
           "Course / Track": course || 'N/A',
@@ -5332,6 +5375,7 @@ const StudentInfo = () => {
 
         debugRequirements = {
           "First Name": firstName || 'N/A',
+          "Middle Name": middleName || 'N/A',
           "Last Name": lastName || 'N/A',
           "Document Type": 'Grades / Transcript of Record',
           "GPA (Document)": detectedDocGpa || 'Not detected',
@@ -5350,6 +5394,7 @@ const StudentInfo = () => {
 
         debugRequirements = {
           "First Name": firstName || 'N/A',
+          "Middle Name": middleName || 'N/A',
           "Last Name": lastName || 'N/A',
           "Barangay Address": targetBarangay || 'N/A',
           "Town / City": townCity || 'N/A',
@@ -6321,19 +6366,19 @@ const StudentInfo = () => {
         if (profile.indigency_verified && profile.indigency_vid_url && profile.has_mayorIndigency_photo) {
           setOcrVerified('success');
           setOcrStatus('Indigency verified successfully client-side!');
-          setIndigencyResults([{ doc: 'Indigency', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true, "Barangay Address": true } }]);
+          setIndigencyResults([{ doc: 'Indigency', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Middle Name": targetMiddleName ? true : null, "Last Name": true, "Barangay Address": true } }]);
         }
 
         if (profile.enrollment_verified && profile.enrollment_certificate_vid_url && profile.has_mayorCOE_photo) {
           setCoeVerified('success');
           setCoeStatus('COE verified successfully client-side!');
-          setCoeResults([{ doc: 'Enrollment', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true, "School Name": true } }]);
+          setCoeResults([{ doc: 'Enrollment', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Middle Name": targetMiddleName ? true : null, "Last Name": true, "School Name": true } }]);
         }
 
         if (profile.grades_verified && profile.grades_vid_url && profile.has_mayorGrades_photo) {
           setGradesVerified('success');
           setGradesStatus('Grades verified successfully client-side!');
-          setGradesResults([{ doc: 'Grades', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true, "GPA Requirement": true } }]);
+          setGradesResults([{ doc: 'Grades', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Middle Name": targetMiddleName ? true : null, "Last Name": true, "GPA Requirement": true } }]);
         }
 
         const restoredIdType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
@@ -6346,7 +6391,7 @@ const StudentInfo = () => {
             doc: 'SchoolID',
             verified: true,
             message: 'Verified from database records.',
-            score_details: isRestoredNationalId ? { "First Name": true, "Last Name": true, "Barangay Address": true, "Video Proof": true } : { "First Name": true, "Last Name": true, "Video Proof": true }
+            score_details: isRestoredNationalId ? { "First Name": true, "Middle Name": targetMiddleName ? true : null, "Last Name": true, "Barangay Address": true, "Video Proof": true } : { "First Name": true, "Middle Name": targetMiddleName ? true : null, "Last Name": true, "Video Proof": true }
           }]);
         }
 
