@@ -885,8 +885,7 @@ def _extract_signature_from_id_back(id_img):
         y_mid = y + h / 2.0
 
         # 1. Exclude standalone underline contours:
-        # High aspect ratio, thin, situated in the lower section (y_mid > 40% height)
-        if (aspect > 6.5 and h <= 12 and w > w_idx * 0.16 and y_mid > h_idx * 0.40) or (aspect > 12.0 and h <= 14):
+        if (aspect > 6.0 and h <= 12 and w > w_idx * 0.15 and y_mid > h_idx * 0.40) or (aspect > 10.0 and h <= 14):
             continue
 
         # 2. Exclude top star logo / emblems (top 32% of ROI, compact, or large solid area)
@@ -894,8 +893,8 @@ def _extract_signature_from_id_back(id_img):
             if solidity > 0.25 or (0.5 < aspect < 2.0 and area > 400):
                 continue
 
-        # 3. Exclude printed text labels at the bottom ("Signature", "Date")
-        if y_mid > h_idx * 0.65 and h < 26 and area < 400 and aspect < 2.5:
+        # 3. Exclude printed text labels at the bottom ("Signature", "Signature of Student", "Date")
+        if y_mid > h_idx * 0.65 and h <= 22 and (aspect >= 2.5 or solidity > 0.35):
             continue
 
         # 4. Exclude geometric noise
@@ -922,7 +921,7 @@ def _extract_signature_from_id_back(id_img):
         return cv2.resize(result, (400, max(1, int(400 * ch / cw))), interpolation=cv2.INTER_LINEAR)
 
     # Find the main signature anchor stroke (high handwriting score and significant area in middle ROI)
-    mid_candidates = [c for c in candidates if h_idx * 0.25 <= c['y_mid'] <= h_idx * 0.75]
+    mid_candidates = [c for c in candidates if h_idx * 0.20 <= c['y_mid'] <= h_idx * 0.75]
     if not mid_candidates:
         mid_candidates = candidates
 
@@ -939,11 +938,12 @@ def _extract_signature_from_id_back(id_img):
         x, y, w, h = c['box']
         y_mid = c['y_mid']
 
-        # Must be vertically aligned with the signature anchor (within 85% of anchor height or 35px)
-        if abs(y_mid - anchor_y_mid) <= max(35, anchor_h * 0.85):
-            # Must not be printed text below the anchor bottom
-            if y >= anchor_bottom and y_mid > anchor_y_mid + anchor_h * 0.35 and c['area'] < 300:
-                continue
+        # Discard printed text lines strictly below anchor bottom or in bottom 30%
+        if y >= anchor_bottom - 2 and y_mid > h_idx * 0.68:
+            continue
+
+        # Must be vertically aligned with the signature anchor
+        if abs(y_mid - anchor_y_mid) <= max(35, anchor_h * 0.90):
             sig_parts.append(c)
 
     if not sig_parts:
@@ -956,25 +956,33 @@ def _extract_signature_from_id_back(id_img):
 
     sig_ink = cv2.bitwise_and(binary, binary, mask=sig_mask)
 
-    # Check if an underline is attached/touching the bottom of the signature mask:
-    # Search for purely horizontal line segments strictly BELOW anchor centroid
-    lower_sig_zone = sig_ink.copy()
-    lower_sig_zone[:int(anchor_y_mid + anchor_h * 0.20), :] = 0
-
-    line_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (max(25, int(w_idx * 0.18)), 1))
-    attached_lines = cv2.morphologyEx(lower_sig_zone, cv2.MORPH_OPEN, line_kernel)
+    # Remove attached underline line segments strictly at/below anchor baseline:
+    line_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (max(20, int(w_idx * 0.12)), 1))
+    attached_lines = cv2.morphologyEx(sig_ink, cv2.MORPH_OPEN, line_kernel)
     att_contours, _ = cv2.findContours(attached_lines, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     for alc in att_contours:
         lx, ly, lw, lh = cv2.boundingRect(alc)
-        if lw >= int(w_idx * 0.18) and lh <= 8:
-            y0 = max(0, ly - 1)
-            y1 = min(h_idx, ly + lh + 1)
-            for col in range(lx, lx + lw):
-                above = np.any(sig_ink[max(0, y0 - 8):y0, col] > 0)
-                below = np.any(sig_ink[y1:min(h_idx, y1 + 8), col] > 0)
-                if not (above or below):
-                    sig_ink[y0:y1, col] = 0
+        if lw >= int(w_idx * 0.12) and lh <= 7 and ly >= anchor_y_mid:
+            # Cut horizontal baseline segment
+            y0 = max(0, ly - 2)
+            y1 = min(h_idx, ly + lh + 2)
+            sig_ink[y0:y1, lx:lx + lw] = 0
+
+    # Also clean any isolated small disconnected line remnants below the anchor
+    clean_contours, _ = cv2.findContours(sig_ink.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    clean_mask = np.zeros((h_idx, w_idx), dtype=np.uint8)
+    for cc in clean_contours:
+        cx, cy, cw, ch = cv2.boundingRect(cc)
+        c_area = cv2.contourArea(cc)
+        if c_area < 25 and cy > anchor_y_mid + anchor_h * 0.3:
+            continue
+        # Also remove isolated dash fragments far left/right with high aspect ratio
+        if ch <= 6 and cw <= 35 and (cx < anchor_box[0] or cx > anchor_box[0] + anchor_box[2]):
+            continue
+        cv2.drawContours(clean_mask, [cc], -1, 255, -1)
+
+    sig_ink = cv2.bitwise_and(sig_ink, sig_ink, mask=clean_mask)
 
     # Find bounding box of remaining signature ink
     pts_y, pts_x = np.where(sig_ink > 0)
@@ -988,7 +996,7 @@ def _extract_signature_from_id_back(id_img):
     min_x, max_x = np.min(pts_x), np.max(pts_x)
     min_y, max_y = np.min(pts_y), np.max(pts_y)
 
-    pad = 8
+    pad = 10
     x0, y0 = max(0, min_x - pad), max(0, min_y - pad)
     x1, y1 = min(w_idx, max_x + pad + 1), min(h_idx, max_y + pad + 1)
 

@@ -6128,15 +6128,57 @@ const StudentInfo = () => {
       return;
     }
 
+    let saveResult = null;
     if (Object.keys(jsonData).length > 0 && Array.from(payload.entries()).length === 0) {
-      await applicantAPI.updateProfile(jsonData);
+      saveResult = await applicantAPI.updateProfile(jsonData);
     } else if (Object.keys(jsonData).length > 0) {
       Object.entries(jsonData).forEach(([key, value]) => {
         payload.append(key, value);
       });
-      await applicantAPI.updateProfile(payload);
+      saveResult = await applicantAPI.updateProfile(payload);
     } else {
-      await applicantAPI.updateProfile(payload);
+      saveResult = await applicantAPI.updateProfile(payload);
+    }
+
+    // Replace uploaded base64 data with permanent storage URLs to prevent duplicate uploads on next steps
+    if (saveResult && saveResult.document_urls) {
+      const docUrls = saveResult.document_urls;
+      const photoUpdates = {};
+      const idPhotoUpdates = {};
+      const formDocUpdates = {};
+
+      if (docUrls.indigency_doc) {
+        photoUpdates.mayorIndigency_photo = docUrls.indigency_doc;
+        photoUpdates.indigency = docUrls.indigency_doc;
+        formDocUpdates.mayorIndigency_photo = docUrls.indigency_doc;
+      }
+      if (docUrls.enrollment_certificate_doc) {
+        photoUpdates.mayorCOE_photo = docUrls.enrollment_certificate_doc;
+        photoUpdates.enrollment = docUrls.enrollment_certificate_doc;
+        formDocUpdates.mayorCOE_photo = docUrls.enrollment_certificate_doc;
+      }
+      if (docUrls.grades_doc) {
+        photoUpdates.mayorGrades_photo = docUrls.grades_doc;
+        photoUpdates.grades = docUrls.grades_doc;
+        formDocUpdates.mayorGrades_photo = docUrls.grades_doc;
+      }
+      if (docUrls.id_img_front) {
+        idPhotoUpdates.front = docUrls.id_img_front;
+        formDocUpdates.schoolIdFront = docUrls.id_img_front;
+      }
+      if (docUrls.id_img_back) {
+        idPhotoUpdates.back = docUrls.id_img_back;
+        formDocUpdates.schoolIdBack = docUrls.id_img_back;
+      }
+      if (saveResult.profile_picture) {
+        setIdPicturePreview(saveResult.profile_picture);
+        photoUpdates.profile_picture = saveResult.profile_picture;
+        formDocUpdates.profile_picture = saveResult.profile_picture;
+      }
+
+      if (Object.keys(photoUpdates).length > 0) setPhotos(prev => ({ ...prev, ...photoUpdates }));
+      if (Object.keys(idPhotoUpdates).length > 0) setSchoolIdPhotos(prev => ({ ...prev, ...idPhotoUpdates }));
+      if (Object.keys(formDocUpdates).length > 0) setFormData(prev => ({ ...prev, ...formDocUpdates }));
     }
   };
 

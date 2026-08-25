@@ -2543,12 +2543,10 @@ def get_profile():
             sibling_blocked_ids = []
             restriction_scope = get_identity_restriction_scope(cur, applicant)
             if restriction_scope and restriction_scope.get('applications'):
-                # Check all existing scholarship IDs to see which ones are family-taken
-                cur.execute("SELECT req_no FROM scholarships WHERE is_removed = FALSE")
-                all_sch_ids = [row['req_no'] for row in cur.fetchall()]
-                for sid in all_sch_ids:
+                candidate_sids = {app['scholarship_no'] for app in restriction_scope['applications'] if app.get('scholarship_no')}
+                for sid in candidate_sids:
                     res = get_scholarship_restriction(restriction_scope, sid)
-                    if res['blocked'] and res['reason'] in ['family-existing-same-scholarship', 'family-accepted-same-scholarship', 'family-pending-same-scholarship']:
+                    if res.get('blocked') and res.get('reason') in ['family-existing-same-scholarship', 'family-accepted-same-scholarship', 'family-pending-same-scholarship']:
                         sibling_blocked_ids.append(sid)
             
             applicant['sibling_blocked_scholarships'] = sibling_blocked_ids
@@ -2570,7 +2568,7 @@ def get_profile():
             ]
             document_values = fetch_applicant_document_values(cur, request.user_no, media_document_fields)
 
-            # Extract request JWT token to append to the lazy-load URLs
+            # Extract request JWT token to append to the lazy-load URLs if needed
             token_str = None
             auth_header = request.headers.get('Authorization')
             if auth_header:
@@ -2579,10 +2577,10 @@ def get_profile():
                 else:
                     token_str = auth_header
 
-            # 2. Add lazy-load URLs for the frontend to fetch binary data on-demand
-            # This ensures the browser can still access the data without bloating the initial profile load
+            # 2. Add fast direct/lazy URLs for documents
             for key in blob_fields:
                 flag_name = flag_map.get(key, f"has_{key}")
+                doc_val = document_values.get(key)
                 if key == 'profile_picture':
                     has_pic = (
                         document_values.get('profile_picture') is not None or 
@@ -2593,16 +2591,22 @@ def get_profile():
                     applicant['has_profile_picture'] = bool(has_pic)
                     if has_pic:
                         raw_field = 'profile_picture' if (document_values.get('profile_picture') is not None or applicant.get('profile_picture')) else 'id_pic'
-                        if token_str:
+                        val_str = str(document_values.get(raw_field) or applicant.get(raw_field) or '')
+                        if val_str.startswith('http'):
+                            applicant['profile_picture'] = val_str
+                        elif token_str:
                             applicant['profile_picture'] = url_for('student_api.get_applicant_document_raw', field_name=raw_field, token=token_str, _external=True)
                         else:
                             applicant['profile_picture'] = url_for('student_api.get_applicant_document_raw', field_name=raw_field, _external=True)
                     else:
                         applicant['profile_picture'] = None
                 else:
-                    applicant[flag_name] = document_values.get(key) is not None
+                    applicant[flag_name] = doc_val is not None
                     if applicant.get(flag_name):
-                        if token_str:
+                        val_str = str(doc_val or applicant.get(key) or '')
+                        if val_str.startswith('http'):
+                            applicant[key] = val_str
+                        elif token_str:
                             applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, token=token_str, _external=True)
                         else:
                             applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
@@ -2619,11 +2623,7 @@ def get_profile():
             ):
                 val = document_values.get(key) or applicant.get(key)
                 if isinstance(val, str) and val.startswith('http'):
-                    # Route videos through the backend proxy raw endpoint for decryption too
-                    if token_str:
-                        applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, token=token_str, _external=True)
-                    else:
-                        applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
+                    applicant[key] = val
                 else:
                     applicant[key] = val
 
@@ -3081,6 +3081,8 @@ def update_profile():
                 'enrollment_certificate_doc': 'enrollment_certificate_doc',
             }
 
+            # 1. Collect upload tasks for concurrent execution
+            upload_tasks = []
             for field_key, db_col in binary_fields.items():
                 blob_bytes = None
                 raw_val = None
@@ -3112,22 +3114,29 @@ def update_profile():
                     blob_bytes = decode_base64(raw_val)
                 
                 if blob_bytes:
-                    print(f"[UPDATE PROFILE] Field {field_key} -> {db_col}: {len(blob_bytes)} bytes detected. Cloud? {use_storage()}", flush=True)
-                    try:
-                        url = upload_image_to_storage(blob_bytes, request.user_no, db_col, is_update=True)
+                    upload_tasks.append((field_key, db_col, blob_bytes))
+
+            # 2. Parallel upload to storage
+            if upload_tasks:
+                import concurrent.futures
+                def _do_upload(task):
+                    f_key, d_col, b_bytes = task
+                    uploaded_url = upload_image_to_storage(b_bytes, request.user_no, d_col, is_update=True)
+                    return f_key, d_col, uploaded_url
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(upload_tasks))) as executor:
+                    futures = [executor.submit(_do_upload, t) for t in upload_tasks]
+                    for fut in concurrent.futures.as_completed(futures):
+                        f_key, d_col, url = fut.result()
                         if url:
-                            print(f"[UPDATE PROFILE] SUCCESS: {db_col} uploaded to {url[:50]}...", flush=True)
-                            if db_col == 'profile_picture' and has_profile_picture_column:
-                                add_update(db_col, url)
+                            print(f"[UPDATE PROFILE] SUCCESS: {d_col} uploaded to {url[:50]}...", flush=True)
+                            if d_col == 'profile_picture' and has_profile_picture_column:
+                                add_update(d_col, url)
                             else:
-                                document_updates[db_col] = url
+                                document_updates[d_col] = url
                         else:
-                            # Cloud upload failed
-                            print(f"[UPDATE PROFILE] ERROR: upload_image_to_storage failed for {db_col}. Persistence aborted to prevent BYTEA corruption.", flush=True)
-                            raise ValueError(f"Cloud upload failed for {field_key}. The server might be experiencing connectivity issues. Please try again.")
-                    except Exception as storage_err:
-                        print(f"[UPDATE PROFILE] CRITICAL STORAGE ERROR for {db_col}: {storage_err}", flush=True)
-                        raise ValueError(f"Storage System Error: {str(storage_err)}")
+                            print(f"[UPDATE PROFILE] ERROR: upload_image_to_storage failed for {d_col}.", flush=True)
+                            raise ValueError(f"Cloud upload failed for {f_key}. The server might be experiencing connectivity issues. Please try again.")
 
             if not updates_dict and not document_updates:
                 return jsonify({'message': 'No changes provided'}), 200
@@ -3228,7 +3237,11 @@ def update_profile():
 
             conn.commit()
 
-            return jsonify({'message': 'Progress saved successfully'})
+            return jsonify({
+                'message': 'Progress saved successfully',
+                'document_urls': document_updates,
+                'profile_picture': updates_dict.get('profile_picture')
+            })
     except Exception as exc:
         return jsonify({'message': str(exc)}), 500
 
