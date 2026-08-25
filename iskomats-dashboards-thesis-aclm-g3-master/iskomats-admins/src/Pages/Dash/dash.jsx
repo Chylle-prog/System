@@ -244,15 +244,38 @@ export default function Dash() {
   }, [providers]);
 
   const providerStats = useMemo(() => {
-    // Calculate users and applicants per provider
-    return providers.map((provider) => {
-      const usersCount = accounts.filter((a) => a.scholarship === provider.provider_name && a.type === 'Admin').length;
-      const applicantsCount = accounts.filter((a) => a.scholarship === provider.provider_name && a.type === 'Applicant').length;
+    // Filter out generic admin accounts from actual scholarship programs list
+    const actualPrograms = (providers || []).filter((p) => {
+      const name = (p.provider_name || '').trim().toLowerCase();
+      return name && name !== 'admin' && name !== 'superadmin' && name !== 'system' && p.pro_no !== 0;
+    });
+
+    const totalApplicantsInSystem = accounts.filter(a => a.type === 'Applicant').length;
+
+    return actualPrograms.map((provider) => {
+      const usersCount = accounts.filter((a) => {
+        if (a.type !== 'Admin') return false;
+        if (a.providerNo && provider.pro_no && Number(a.providerNo) === Number(provider.pro_no)) return true;
+        return matchesProgramFilter(a.scholarship, provider.provider_name, provider.provider_name);
+      }).length;
+
+      const applicantsCount = accounts.filter((a) => {
+        if (a.type !== 'Applicant') return false;
+        if (a.providerNo && provider.pro_no && Number(a.providerNo) === Number(provider.pro_no)) return true;
+        return matchesProgramFilter(a.scholarship, provider.provider_name, provider.provider_name);
+      }).length;
+
+      const totalAccounts = usersCount + applicantsCount;
+      const percentage = totalApplicantsInSystem > 0
+        ? (applicantsCount / totalApplicantsInSystem) * 100
+        : (accounts.length > 0 ? (totalAccounts / accounts.length) * 100 : 0);
+
       return {
         ...provider,
         usersCount,
         applicantsCount,
-        totalAccounts: usersCount + applicantsCount,
+        totalAccounts,
+        percentage: Math.min(100, Math.round(percentage)),
       };
     });
   }, [providers, accounts]);
@@ -324,8 +347,45 @@ export default function Dash() {
         console.log('[SYNC] Account change detected live:', data);
         loadDashboardData(false);
       });
+      const unsubStatus = socketService.subscribe('applicant_status_update', (data) => {
+        console.log('[SYNC] Applicant status update detected live:', data);
+        loadDashboardData(false);
+      });
+      const unsubScholarship = socketService.subscribe('scholarship_update', (data) => {
+        console.log('[SYNC] Scholarship update detected live:', data);
+        loadDashboardData(false);
+      });
+      const unsubScholarshipChange = socketService.subscribe('scholarship_change', (data) => {
+        console.log('[SYNC] Scholarship change detected live:', data);
+        loadDashboardData(false);
+      });
+      const unsubAnnouncement = socketService.subscribe('announcement_update', (data) => {
+        console.log('[SYNC] Announcement update detected live:', data);
+        loadDashboardData(false);
+      });
+      const unsubNewAnnouncement = socketService.subscribe('new_announcement', (data) => {
+        console.log('[SYNC] New announcement detected live:', data);
+        loadDashboardData(false);
+      });
+
+      const unsubNewApp = socketService.subscribe('new_application', (data) => {
+        console.log('[SYNC] New application detected live:', data);
+        loadDashboardData(false);
+      });
+      const unsubNewApplicant = socketService.subscribe('new_applicant', (data) => {
+        console.log('[SYNC] New applicant detected live:', data);
+        loadDashboardData(false);
+      });
+
       return () => {
         unsubAccount();
+        unsubStatus();
+        unsubNewApp();
+        unsubNewApplicant();
+        unsubScholarship();
+        unsubScholarshipChange();
+        unsubAnnouncement();
+        unsubNewAnnouncement();
         socketService.disconnect();
       };
     }
@@ -829,29 +889,46 @@ export default function Dash() {
                       </div>
 
                       <div className="space-y-8">
-                        <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-                          <h4 className="font-black text-gray-900 uppercase tracking-widest text-xs mb-6 border-l-4 border-[#800020] pl-4">Program Distribution</h4>
-                          <div className="space-y-6 max-h-[350px] overflow-y-auto custom-scrollbar pr-2">
+                        <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-gray-100">
+                          <div className="flex items-center justify-between gap-2 mb-6 flex-wrap">
+                            <h4 className="font-black text-gray-900 uppercase tracking-widest text-xs border-l-4 border-[#800020] pl-4">
+                              Program Distribution
+                            </h4>
+                            <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider">
+                              <span className="flex items-center gap-1 text-[#800020]">
+                                <span className="w-2 h-2 rounded-full bg-[#800020]"></span> Staff
+                              </span>
+                              <span className="flex items-center gap-1 text-emerald-600">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Applicants
+                              </span>
+                            </div>
+                          </div>
+                          <div className="space-y-4 max-h-[350px] overflow-y-auto custom-scrollbar pr-2">
                             {providerStats.length === 0 ? (
-                              <p className="text-sm font-bold text-gray-400">No scholarship providers found.</p>
+                              <p className="text-sm font-bold text-gray-400">No scholarship programs found.</p>
                             ) : (
-                              providerStats.map((provider) => {
-                                const percentage = accounts.length > 0 ? (provider.totalAccounts / accounts.length) * 100 : 0;
-                                return (
-                                  <div key={provider.pro_no} className="space-y-2">
-                                    <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-gray-500 gap-2">
-                                      <span>{provider.provider_name}</span>
-                                      <span className="text-right flex gap-2">
-                                        <span style={{ color: '#800020' }}> {provider.usersCount}</span>
-                                        <span style={{ color: '#16a34a' }}>{provider.applicantsCount}</span>
+                              providerStats.map((provider) => (
+                                <div key={provider.pro_no} className="space-y-2 p-3 rounded-2xl bg-gray-50/60 hover:bg-gray-50 transition-colors border border-gray-100/80">
+                                  <div className="flex justify-between items-center text-xs font-bold text-gray-800 gap-2">
+                                    <span className="uppercase tracking-wider truncate">{provider.provider_name}</span>
+                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                      <span className="text-[10px] font-black text-[#800020] bg-rose-50 border border-rose-200/60 px-2 py-0.5 rounded-lg" title="Assigned Admins/Staff">
+                                        {provider.usersCount} {provider.usersCount === 1 ? 'Staff' : 'Staff'}
+                                      </span>
+                                      <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded-lg" title="Registered Applicant Students">
+                                        {provider.applicantsCount} {provider.applicantsCount === 1 ? 'Applicant' : 'Applicants'}
                                       </span>
                                     </div>
-                                    <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
-                                      <div className="bg-[#800020] h-full rounded-full" style={{ width: `${percentage}%` }}></div>
-                                    </div>
                                   </div>
-                                );
-                              })
+                                  <div className="w-full bg-gray-200/70 h-2 rounded-full overflow-hidden flex">
+                                    <div
+                                      className="bg-emerald-600 h-full rounded-full transition-all duration-500"
+                                      style={{ width: `${Math.max(provider.percentage, (provider.applicantsCount > 0 ? 5 : 0))}%` }}
+                                      title={`${provider.percentage}% of applicants`}
+                                    ></div>
+                                  </div>
+                                </div>
+                              ))
                             )}
                           </div>
                         </div>

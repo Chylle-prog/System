@@ -59,31 +59,44 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
 
   const decryptPromise = (async () => {
     try {
-      const isVideo = Boolean((type && type.startsWith('video')) || url.toLowerCase().includes('.mp4') || url.toLowerCase().includes('.webm') || url.toLowerCase().includes('video'));
+      const isVideo = Boolean(
+        (type && type.startsWith('video')) ||
+        url.toLowerCase().includes('.mp4') ||
+        url.toLowerCase().includes('.webm') ||
+        url.toLowerCase().includes('.mov') ||
+        url.toLowerCase().includes('/video/') ||
+        url.toLowerCase().includes('video')
+      );
+
+      // Cloudinary and standard hosted videos stream directly via browser for instant buffer-free playback
+      if (isVideo && (url.includes('cloudinary.com') || url.includes('res.cloudinary') || !url.includes('encrypted'))) {
+        return url;
+      }
+
       const prefixBytes = new TextEncoder().encode(MAGIC_PREFIX);
 
-      // Fast check for videos using Range request to avoid downloading multi-megabyte files unnecessarily!
+      // Fast check for videos using Range request to avoid downloading multi-megabyte files unnecessarily
       if (isVideo) {
         try {
           const headResp = await fetch(url, {
             headers: { 'Range': `bytes=0-${prefixBytes.length + 12 - 1}` },
-            cache: 'force-cache'
+            cache: 'default'
           });
 
-          if (headResp.ok || headResp.status === 206) {
+          if (headResp.status === 206 || headResp.ok) {
             const sampleBuffer = await headResp.arrayBuffer();
             if (sampleBuffer.byteLength >= prefixBytes.length) {
               const samplePrefix = new Uint8Array(sampleBuffer.slice(0, prefixBytes.length));
               const isEncrypted = prefixBytes.every((val, i) => val === samplePrefix[i]);
 
-              // If it's NOT encrypted, return original URL immediately without downloading the full video!
               if (!isEncrypted) {
-                return url;
+                return url; // Stream directly via browser native player!
               }
             }
           }
         } catch (rangeErr) {
-          // Fallback to normal fetch if Range header is rejected by server
+          // If range check fails on a video, return the URL to let browser stream natively instead of blocking on full download
+          return url;
         }
       }
 
@@ -121,20 +134,14 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
 };
 
 /**
- * Preload and decrypt multiple media URLs in parallel, prioritizing images over videos
+ * Preload and decrypt multiple media URLs in parallel, prioritizing images
  */
 export const preloadMediaUrls = (urls = [], type = 'image/jpeg') => {
   if (!Array.isArray(urls)) return;
   const imageUrls = urls.filter(u => u && typeof u === 'string' && u.startsWith('http') && !u.toLowerCase().includes('.mp4') && !u.toLowerCase().includes('video'));
-  const videoUrls = urls.filter(u => u && typeof u === 'string' && u.startsWith('http') && (u.toLowerCase().includes('.mp4') || u.toLowerCase().includes('video')));
 
-  // Preload images first in parallel so dossier document photos appear instantly
+  // Preload images in parallel so dossier document photos appear instantly
   imageUrls.forEach(url => {
     decryptUrl(url, type || 'image/jpeg');
-  });
-
-  // Preload video headers asynchronously
-  videoUrls.forEach(url => {
-    decryptUrl(url, 'video/mp4');
   });
 };

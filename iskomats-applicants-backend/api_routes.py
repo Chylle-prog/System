@@ -4234,6 +4234,16 @@ def create_scholarship(current_user_id, pro_no, role):
                 subject_prefix='New Scholarship opportunity from',
                 intro_prefix='A new scholarship opportunity has been posted by',
             )
+
+            safe_emit('scholarship_update', {
+                'action': 'create',
+                'req_no': req_no,
+                'scholarship_name': data.get('scholarshipName'),
+                'program': provider_label,
+                'pro_no': target_pro_no
+            }, broadcast=True)
+            safe_emit('scholarship_change', {'action': 'create', 'req_no': req_no}, broadcast=True)
+            safe_emit('account_change', {'type': 'scholarship_create'}, broadcast=True)
         
             return jsonify({
                 'success': True, 
@@ -4289,7 +4299,6 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
                 cursor.execute("UPDATE scholarships SET pro_no = %s WHERE req_no = %s", (resolved_provider_no, req_no))
              
 
-
             units_val = int(data.get('units')) if data.get('units') not in (None, '', 'null') else None
             res_doc_type = data.get('residencyDocType', 'Indigency Document')
             id_type_val = data.get('idType', 'School ID')
@@ -4326,6 +4335,16 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
                 subject_prefix='Updated Scholarship from',
                 intro_prefix='A scholarship has been updated by',
             )
+
+            safe_emit('scholarship_update', {
+                'action': 'update',
+                'req_no': req_no,
+                'scholarship_name': data.get('scholarshipName', sch_row.get('scholarship_name')),
+                'program': display_provider_name,
+                'pro_no': resolved_provider_no
+            }, broadcast=True)
+            safe_emit('scholarship_change', {'action': 'update', 'req_no': req_no}, broadcast=True)
+            safe_emit('account_change', {'type': 'scholarship_update'}, broadcast=True)
         
             return jsonify({'success': True, 'message': 'Scholarship updated'}), 200
     
@@ -4374,7 +4393,15 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
                 target_label=scholarship_name,
                 provider_no=resolved_provider_no,
             )
-        
+
+            safe_emit('scholarship_update', {
+                'action': 'delete',
+                'req_no': req_no,
+                'scholarship_name': scholarship_name,
+                'pro_no': resolved_provider_no
+            }, broadcast=True)
+            safe_emit('scholarship_change', {'action': 'delete', 'req_no': req_no}, broadcast=True)
+            safe_emit('account_change', {'type': 'scholarship_delete'}, broadcast=True)
             return jsonify({'success': True, 'message': 'Scholarship removed'}), 200
         
     except Exception as e:

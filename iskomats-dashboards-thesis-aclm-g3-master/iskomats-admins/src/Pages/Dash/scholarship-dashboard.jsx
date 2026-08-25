@@ -51,8 +51,15 @@ Chart.register(...registerables);
  * Helper component to handle encrypted images and videos in the dossier
  */
 const DecryptedMedia = ({ src, type, className, controls = false, autoPlay = false, onClick = null, alt = "Document" }) => {
-  const [decryptedSrc, setDecryptedSrc] = useState(src);
-  const [isLoading, setIsLoading] = useState(Boolean(src && typeof src === 'string' && src.startsWith('http')));
+  const isVideo = Boolean(
+    (type && type.startsWith('video')) ||
+    (typeof src === 'string' && (src.includes('.mp4') || src.includes('.webm') || src.includes('.mov') || src.includes('/video/')))
+  );
+  // Unencrypted videos (Cloudinary, standard video URLs) stream natively and do not need initial blocking fetch
+  const isDirectVideoStream = isVideo && typeof src === 'string' && src.startsWith('http') && (src.includes('cloudinary.com') || src.includes('res.cloudinary') || !src.includes('encrypted'));
+
+  const [decryptedSrc, setDecryptedSrc] = useState(isDirectVideoStream ? src : src);
+  const [isLoading, setIsLoading] = useState(Boolean(!isDirectVideoStream && src && typeof src === 'string' && src.startsWith('http')));
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
@@ -60,6 +67,12 @@ const DecryptedMedia = ({ src, type, className, controls = false, autoPlay = fal
     setHasError(false);
 
     if (!src || typeof src !== 'string' || !src.startsWith('http')) {
+      setDecryptedSrc(src);
+      setIsLoading(false);
+      return;
+    }
+
+    if (isDirectVideoStream) {
       setDecryptedSrc(src);
       setIsLoading(false);
       return;
@@ -84,7 +97,7 @@ const DecryptedMedia = ({ src, type, className, controls = false, autoPlay = fal
     return () => {
       isMounted = false;
     };
-  }, [src, type]);
+  }, [src, type, isDirectVideoStream]);
 
   if (isLoading) {
     return (
@@ -1350,7 +1363,10 @@ export default function ScholarshipDashboard({
             newMsgs.push({
               id: msg.m_id || (Date.now() + Math.random()),
               m_id: msg.m_id,
-              studentName: msg.username,
+              studentName: msg.applicant_name || (msg.is_student_sender ? msg.username : (resolvedApplicantNo ? `Applicant ${resolvedApplicantNo}` : msg.username)),
+              applicant_name: msg.applicant_name,
+              first_name: msg.first_name,
+              last_name: msg.last_name,
               studentEmail: msg.username,
               applicant_no: resolvedApplicantNo,
               studentStatus: msg.student_status || 'Pending',
@@ -1390,36 +1406,28 @@ export default function ScholarshipDashboard({
         }
       });
 
-      // Subscribe to applicant status updates from other admins
+      // Subscribe to applicant updates from students and other admins
       const unsubStatusUpdate = socketService.subscribe('applicant_status_update', (update) => {
-        if (update.program !== providerKey) return;
+        console.log('[LIVE SYNC] Applicant status update received:', update);
+        loadApplicants();
+      });
 
-        setData(prev => {
-          const newData = { ...prev };
-          const applicantToMove = newData.applicants.find(
-            a => a.id === update.applicantId || a.name === update.applicantName
-          );
+      const unsubNewApp = socketService.subscribe('new_application', (update) => {
+        console.log('[LIVE SYNC] New application received live:', update);
+        loadApplicants();
+        if (update && update.applicant_no && update.pro_no) {
+          socketService.loadHistory(`${update.applicant_no}+${update.pro_no}`);
+        }
+      });
 
-          if (applicantToMove) {
-            newData.applicants = newData.applicants.filter(
-              a => a.id !== update.applicantId && a.name !== update.applicantName
-            );
+      const unsubNewApplicant = socketService.subscribe('new_applicant', (update) => {
+        console.log('[LIVE SYNC] New applicant received live:', update);
+        loadApplicants();
+      });
 
-            if (update.newStatus === 'Accepted') {
-              newData.accepted = [...newData.accepted, applicantToMove];
-            } else if (update.newStatus === 'Rejected' || update.newStatus === 'Declined') {
-              newData.rejected = [...newData.rejected, applicantToMove];
-            } else if (update.newStatus === 'Cancelled') {
-              newData.cancelled = [...newData.cancelled, applicantToMove];
-            }
-
-            // Recalculate historical data
-            const allApplicants = [...(newData.applicants || []), ...(newData.accepted || []), ...(newData.rejected || []), ...(newData.declined || []), ...(newData.cancelled || [])];
-            newData.historicalData = calculateHistoricalData(allApplicants);
-          }
-
-          return newData;
-        });
+      const unsubAccountChange = socketService.subscribe('account_change', (update) => {
+        console.log('[LIVE SYNC] Account change received live:', update);
+        loadApplicants();
       });
 
       return () => {
@@ -1427,6 +1435,9 @@ export default function ScholarshipDashboard({
         unsubLogged();
         unsubRoom();
         unsubStatusUpdate();
+        unsubNewApp();
+        unsubNewApplicant();
+        unsubAccountChange();
         if (unsubHistory) unsubHistory();
         socketService.disconnect();
       };
@@ -1469,7 +1480,10 @@ export default function ScholarshipDashboard({
             return {
               id: m.m_id,
               m_id: m.m_id,
-              studentName: isStudentName ? m.username : (appNo ? `Applicant ${appNo}` : 'Admin'),
+              studentName: m.applicant_name || (isStudentName ? m.username : (appNo ? `Applicant ${appNo}` : 'Admin')),
+              applicant_name: m.applicant_name,
+              first_name: m.first_name,
+              last_name: m.last_name,
               studentEmail: isStudentName ? m.username : '',
               applicant_no: appNo,
               pro_no: m.pro_no,
@@ -1874,30 +1888,36 @@ export default function ScholarshipDashboard({
 
     // Listen for scholarship updates from other admins
     const unsubScholarships = socketService.onScholarshipUpdate((data) => {
-      if (data.program === providerKey) {
-        console.log('[SCHOLARSHIP UPDATE] Received update:', data);
-        loadScholarships();
-      }
+      console.log('[SCHOLARSHIP UPDATE] Received update:', data);
+      loadScholarships(false);
+    });
+
+    const unsubScholarshipChange = socketService.subscribe('scholarship_change', (data) => {
+      console.log('[SCHOLARSHIP CHANGE] Received change:', data);
+      loadScholarships(false);
     });
 
     // Listen for announcement updates from other admins
     const unsubAnnouncements = socketService.onAnnouncementUpdate((data) => {
-      if (data.program === providerKey) {
-        console.log('[ANNOUNCEMENT UPDATE] Received update:', data);
-        loadAnnouncements();
-      }
+      console.log('[ANNOUNCEMENT UPDATE] Received update:', data);
+      loadAnnouncements();
+    });
+
+    const unsubNewAnnouncements = socketService.subscribe('new_announcement', (data) => {
+      console.log('[NEW ANNOUNCEMENT] Received new announcement:', data);
+      loadAnnouncements();
     });
 
     // Listen for real-time notifications
     const unsubNotifications = socketService.onAnnouncementNotification((data) => {
       console.log('[NOTIFICATION] Received announcement notification:', data);
-      // Show an alert for the new announcement
-      alert(`📢 ${data.title}\n\n${data.message}`);
     });
 
     return () => {
       unsubScholarships();
+      unsubScholarshipChange();
       unsubAnnouncements();
+      unsubNewAnnouncements();
       unsubNotifications();
     };
   }, [section, providerKey]);
@@ -3352,14 +3372,12 @@ export default function ScholarshipDashboard({
         if (/^[1-9]\d*$/.test(p)) resolvedApplicantNo = p;
       }
 
-      // Match applicant in all applicant lists
+      // 1. Check allKnownApplicants
       const match = allKnownApplicants.find(a => {
         const aNo = (a.applicant_no || a.applicantNo || a.applicant_id || a.user_no || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id) || '').toString();
         if (resolvedApplicantNo && aNo === resolvedApplicantNo) return true;
         const aEmail = (a.email || a.emailAddress || a.studentContact?.email || '').toLowerCase();
         if (msg.studentEmail && aEmail && aEmail === msg.studentEmail.toLowerCase()) return true;
-        const aName = (a.name || `${a.firstName || ''} ${a.lastName || ''}`.trim()).toLowerCase();
-        if (msg.studentName && aName && aName === msg.studentName.toLowerCase()) return true;
         return false;
       });
 
@@ -3370,23 +3388,51 @@ export default function ScholarshipDashboard({
         else if (match.name && !match.name.toLowerCase().startsWith('applicant ')) applicantFullName = match.name;
       }
 
+      // 2. Check resolved conversations
+      if (!applicantFullName && resolvedApplicantNo && Array.isArray(conversations)) {
+        const conv = conversations.find(c => String(c.applicant_no) === String(resolvedApplicantNo));
+        if (conv && conv.studentName && !conv.studentName.toLowerCase().startsWith('applicant ')) {
+          applicantFullName = conv.studentName;
+        }
+      }
+
+      // 3. Check explicit applicant_name or name fields on the message
+      if (!applicantFullName) {
+        if (msg.applicant_name && !msg.applicant_name.toLowerCase().startsWith('applicant ')) {
+          applicantFullName = msg.applicant_name;
+        } else if (msg.first_name || msg.last_name) {
+          applicantFullName = `${msg.first_name || ''} ${msg.last_name || ''}`.trim();
+        }
+      }
+
+      // 4. If student sender sent it and username is not a provider alias
+      if (!applicantFullName && msg.is_student_sender && msg.username && !adminSenderAliases.has(normalizeProviderIdentity(msg.username)) && !msg.username.toLowerCase().startsWith('applicant ')) {
+        applicantFullName = msg.username;
+      }
+
+      // 5. Fallback
       if (!applicantFullName) {
         if (resolvedApplicantNo) {
           applicantFullName = `Applicant ${resolvedApplicantNo}`;
-        } else if (msg.studentName && !adminSenderAliases.has(normalizeProviderIdentity(msg.studentName))) {
-          applicantFullName = msg.studentName;
         } else {
           applicantFullName = 'Applicant';
         }
       }
 
+      // Clean up auto-generated initial system message text if it contains "Applicant <number>"
+      let displayMessage = msg.message || '';
+      if (displayMessage && /Chat initiated for Applicant \d+/i.test(displayMessage) && applicantFullName && !applicantFullName.startsWith('Applicant ')) {
+        displayMessage = displayMessage.replace(/Chat initiated for Applicant \d+/i, `Chat initiated for ${applicantFullName}`);
+      }
+
       return {
         ...msg,
         applicant_no: resolvedApplicantNo || msg.applicant_no,
-        studentName: applicantFullName
+        studentName: applicantFullName,
+        message: displayMessage
       };
     });
-  }, [data.inbox, allKnownApplicants]);
+  }, [data.inbox, allKnownApplicants, conversations]);
 
   const filteredConversations = useMemo(() => {
     let filtered = conversations;
@@ -5636,7 +5682,7 @@ export default function ScholarshipDashboard({
           id: mp.merit_id
         })).filter(f => Boolean(f.src));
 
-    // Preload media URLs when applicant object is available (prioritizing images over videos)
+    // Preload document images when applicant dossier opens so photos appear immediately
     if (a) {
       const imageMediaUrls = [
         a.profile_picture,
@@ -5648,15 +5694,7 @@ export default function ScholarshipDashboard({
         ...meritFiles.filter(f => f.type && f.type.startsWith('image')).map(f => f.src),
       ].filter(Boolean);
 
-      const videoMediaUrls = [
-        ...(a.coeFiles || []).filter(f => f.type && f.type.startsWith('video')).map(f => f.src),
-        ...(a.indigencyFiles || []).filter(f => f.type && f.type.startsWith('video')).map(f => f.src),
-        ...(a.gradesFiles || []).filter(f => f.type && f.type.startsWith('video')).map(f => f.src),
-        ...idFiles.filter(f => f.type && f.type.startsWith('video')).map(f => f.src),
-      ].filter(Boolean);
-
       preloadMediaUrls(imageMediaUrls, 'image/jpeg');
-      preloadMediaUrls(videoMediaUrls, 'video/mp4');
     }
 
     // Normalize family data for display
@@ -5682,29 +5720,42 @@ export default function ScholarshipDashboard({
       return (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {files.map((f, idx) => {
-            const isVideo = Boolean(f.type && f.type.startsWith('video'));
+            const isVideo = Boolean(
+              (f.type && f.type.startsWith('video')) ||
+              (typeof f.src === 'string' && (f.src.includes('.mp4') || f.src.includes('.webm') || f.src.includes('.mov') || f.src.includes('/video/')))
+            );
+
             return (
               <div
                 key={idx}
-                className="relative group cursor-pointer border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all bg-gray-900"
-                onClick={() => setImageModalSrc({ src: f.src, type: f.type })}
+                className="relative group cursor-pointer border-2 border-gray-200 hover:border-[#800020] rounded-xl overflow-hidden shadow-xs hover:shadow-md transition-all bg-gray-900 flex flex-col items-center justify-center min-h-[112px]"
+                onClick={() => setImageModalSrc({ src: f.src, type: f.type || (isVideo ? 'video/mp4' : 'image/jpeg') })}
               >
-                <DecryptedMedia
-                  src={f.src}
-                  type={f.type}
-                  className="w-full h-28 object-contain bg-gray-100 group-hover:scale-105 transition-transform pointer-events-none"
-                  controls={false}
-                />
-                {isVideo && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/50 transition-colors pointer-events-none">
-                    <div className="w-10 h-10 rounded-full bg-black/70 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform border border-white/40">
-                      <FaPlay className="text-sm ml-0.5" />
+                {isVideo ? (
+                  <div className="w-full h-28 bg-gradient-to-br from-gray-900 via-gray-800 to-black flex flex-col items-center justify-center p-2 relative group-hover:scale-105 transition-transform select-none">
+                    <div className="w-11 h-11 rounded-full bg-[#800020] text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform border-2 border-white/60 mb-1">
+                      <FaPlay className="text-sm ml-0.5 text-white" />
+                    </div>
+                    <span className="text-[10px] text-gray-200 font-bold tracking-tight text-center truncate max-w-[90%]">
+                      {f.name || 'Click to Play Video'}
+                    </span>
+                    <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded font-black tracking-wider uppercase">
+                      VIDEO
                     </div>
                   </div>
+                ) : (
+                  <>
+                    <DecryptedMedia
+                      src={f.src}
+                      type={f.type || 'image/jpeg'}
+                      className="w-full h-28 object-contain bg-gray-100 group-hover:scale-105 transition-transform pointer-events-none"
+                      controls={false}
+                    />
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] py-0.5 text-center font-bold pointer-events-none">
+                      IMAGE
+                    </div>
+                  </>
                 )}
-                <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] py-0.5 text-center font-bold pointer-events-none">
-                  {isVideo ? 'VIDEO' : 'IMAGE'}
-                </div>
               </div>
             );
           })}
@@ -6115,7 +6166,16 @@ export default function ScholarshipDashboard({
             {/* Date box */}
             <div className="flex-1 flex flex-col text-center sm:text-left">
               <div className="border-b-2 border-gray-300 mb-2 h-20 flex items-end justify-center pb-2">
-                <p className="font-bold text-gray-800 text-base">{new Date().toLocaleDateString()}</p>
+                <p className="font-bold text-gray-800 text-base">{(() => {
+                  const rawDate = a.status_created_at || a.created_at || a.dateApplied || a.createdAt;
+                  if (rawDate) {
+                    const parsed = new Date(rawDate);
+                    if (!isNaN(parsed.getTime())) {
+                      return parsed.toLocaleDateString();
+                    }
+                  }
+                  return '—';
+                })()}</p>
               </div>
               <p className="text-[10px] font-black text-gray-400 uppercase">Date Accomplished</p>
             </div>

@@ -1807,11 +1807,15 @@ def initialize_auto_chat_rooms():
             cursor.execute("SELECT 1 FROM message WHERE applicant_no = %s AND pro_no = %s LIMIT 1", (app_no, pro_no))
             if not cursor.fetchone():
                 room = f"{app_no}+{pro_no}"
+                # Get applicant name
+                cursor.execute("SELECT first_name, last_name FROM applicants WHERE applicant_no = %s", (app_no,))
+                app_row = cursor.fetchone()
+                app_name = f"{app_row['first_name']} {app_row['last_name']}".strip() if app_row and (app_row.get('first_name') or app_row.get('last_name')) else f"Applicant {app_no}"
                 # Create initial system message
                 cursor.execute("""
                     INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp)
                     VALUES (%s, %s, %s, %s, %s, NOW())
-                """, (app_no, pro_no, room, sender_name, f'Chat initiated for Applicant {app_no}.'))
+                """, (app_no, pro_no, room, sender_name, f'Chat initiated for {app_name}.'))
         
         conn.commit()
     except Exception as e:
@@ -2025,6 +2029,8 @@ def init_socketio(socketio):
                            WHEN m.username = (a.first_name || ' ' || a.last_name) OR m.username = a.first_name THEN a.first_name 
                            ELSE m.username 
                        END as username,
+                       a.first_name, a.last_name,
+                       CONCAT_WS(' ', NULLIF(a.first_name, ''), NULLIF(a.last_name, '')) as applicant_name,
                        m.message, m.timestamp,
                        CASE 
                            WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
@@ -2072,10 +2078,14 @@ def init_socketio(socketio):
             
             formatted_list = []
             for msg in messages:
+                app_name = msg.get('applicant_name') or f"Applicant {msg['applicant_no']}"
                 formatted_list.append({
                     'm_id': msg['m_id'],
                     'applicant_no': msg['applicant_no'],
                     'username': msg['username'],
+                    'first_name': msg.get('first_name'),
+                    'last_name': msg.get('last_name'),
+                    'applicant_name': app_name,
                     'sender_id': msg['sender_id'],
                     'is_student_sender': msg['is_student_sender'],
                     'message': msg['message'],
@@ -3610,65 +3620,148 @@ def analyze_merits_onthefly(merits_text):
         'math', 'science', 'academic', 'research', 'thesis', 'scholar', 'lister', 'gwa'
     ]
 
+    # Calculate base rule-based score
+    base_score = 0
+    base_reason = "No recognized academic honors or awards."
+    if any(k in text_clean for k in ['summa cum laude', 'summa', 'valedictorian', 'national math olympiad', 'national science olympiad', 'international olympiad', 'rank 1 overall']):
+        base_score, base_reason = 20, "Highest academic distinction (Summa Cum Laude / Valedictorian / National Olympiad Champion)."
+    elif any(k in text_clean for k in ['magna cum laude', 'magna', 'salutatorian', 'regional olympiad champion', 'top 3 national']):
+        base_score, base_reason = 18, "Top national / regional academic distinction (Magna Cum Laude / Salutatorian / Regional Champion)."
+    elif any(k in text_clean for k in ['cum laude', 'first honor', '1st honor', 'with highest honors', 'highest honors', '1st place division']):
+        base_score, base_reason = 15, "High academic honors (Cum Laude / 1st Honor / With Highest Honors / Division Champion)."
+    elif any(k in text_clean for k in ['second honor', '2nd honor', 'with high honors', 'high honors', "president's list", 'presidents list', 'division olympiad', 'division quiz bee']):
+        base_score, base_reason = 12, "High academic honors (2nd Honor / With High Honors / President's List / Division Placement)."
+    elif any(k in text_clean for k in ['third honor', '3rd honor', "dean's list", 'deans list', 'dean', 'academic lister', 'honor student', 'with honors', 'academic excellence', 'quiz bee', 'science fair', 'math contest', 'academic award']):
+        base_score, base_reason = 8, "School-level academic honors (3rd Honor / With Honors / Dean's List / Academic Contest)."
+    elif any(k in text_clean for k in ['academic', 'honor', 'award', 'certificate', 'contestant', 'top 10', 'best in math', 'best in science', 'best in research']):
+        base_score, base_reason = 5, "General academic recognition / subject award."
+
     api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
     if api_key:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
-            prompt = f"""You are an expert academic scholarship evaluator.
-Analyze the student's merits and awards text and assign a calibrated score from 0 to 20 points based SOLELY on verified academic honors, recognitions, and scholastic achievements.
+            prompt = f"""You are a Senior Academic Scholarship Reviewer on a holistic admissions committee.
+Your role is to evaluate the applicant's academic merit profile using qualitative, multi-dimensional assessment.
 
-SCORING PRINCIPLES:
-1. Points are awarded exclusively for academic honors, academic competition awards, GWA distinctions, and formal scholastic recognitions.
-2. Submissions that do not describe qualifying academic honors or scholastic achievements receive 0 points.
-3. If multiple achievements are mentioned, award points based on the highest qualifying academic honor.
+DO NOT simply match keywords. Instead, subjectively evaluate the applicant's academic dedication, consistency, rigor, and scholarly initiative.
 
-CALIBRATED ACADEMIC RUBRIC (0 - 20 Points):
-- 20 points: Highest National / International Academic Distinction
-  • Summa Cum Laude, Batch Valedictorian, Rank 1 Overall Batch, 1st Place National/International Science/Math/Research Olympiad.
-- 17 - 19 points: High National / Top Regional Academic Distinction
-  • Magna Cum Laude, Batch Salutatorian, Rank 2 Overall Batch, 1st Place Regional Olympiad / Top 3 National Olympiad.
-- 14 - 16 points: Regional Placement / Division Champion / Highest Honors
-  • Cum Laude, 1st Honor, With Highest Honors (DepEd GWA 98-100), 1st Place Division Academic Contest / Top 3 Regional Fair.
-- 11 - 13 points: High Division Placement / High Academic Honors
-  • 2nd Honor, With High Honors (DepEd GWA 95-97), President's Lister, 2nd-3rd Place Division Science/Math Contest.
-- 7 - 10 points: School-Level Honors / Regular Academic Distinction
-  • 3rd Honor, With Honors (DepEd GWA 90-94), Dean's Lister, Academic Excellence Awardee, Division Contest Participant.
-- 3 - 6 points: General Academic Recognition / School-Level Contestant
-  • Academic Contestant / Quiz Bee Participant, Top 10 in Class/Section, Subject Academic Award (e.g., Best in Science/Math).
-- 0 points: No Qualifying Academic Honors
-  • No recognized academic honors or scholastic achievements provided.
+EVALUATION FRAMEWORK (Total: 0 - 20 Points):
+
+**COMPONENT A: Core Academic Achievement (0 - 5 points)**
+This is the FLOOR/CEILING score based on the highest academic honor achieved.
+
+- 5 pts: Valedictorian, Summa Cum Laude, Rank 1 Overall Batch, National/International Olympiad Champion.
+- 4 pts: Magna Cum Laude, Salutatorian, Rank 2, National Olympiad Top 3.
+- 3 pts: Cum Laude, With Highest Honors (GWA 98-100), Rank 3-5, Regional Champion.
+- 2 pts: With High Honors (GWA 95-97), President's Lister, Top 10% of batch, Division Champion.
+- 1 pt: With Honors (GWA 90-94), Dean's Lister, Top 15% of batch, School-Level Honors.
+- 0 pts: No academic honors or recognitions mentioned.
+
+**COMPONENT B: Adversity & Resilience (0 - 5 points)**
+Evaluate if the student overcame significant obstacles to achieve their academic standing.
+
+- 5 pts: Explicit major adversity (e.g., self-supporting student, orphaned, extreme poverty, remote/underprivileged school, major illness/disability, or refugee/displaced background).
+- 4 pts: Significant challenges (e.g., worked part-time while studying, first-generation college student, single-parent household, or transferred schools mid-year).
+- 3 pts: Moderate challenges (e.g., balancing academics with family responsibilities or leadership roles).
+- 2 pts: Minor contextual challenges mentioned but not severe.
+- 1 pt: Hint of challenge but not explicitly described.
+- 0 pts: No adversity or challenges mentioned.
+
+**COMPONENT C: Sustained Excellence & Consistency (0 - 5 points)**
+Evaluate if the student maintained their academic performance over time.
+
+- 5 pts: Multi-year excellence (e.g., "Valedictorian for 4 straight years", "Consistent Dean's Lister for 5+ semesters", "With Honors from Grade 7-12").
+- 4 pts: Sustained honors for at least 2 full academic years or 4+ semesters.
+- 3 pts: Sustained honors for 1 full academic year or 3 consecutive semesters.
+- 2 pts: Honors for at least 2 consecutive semesters.
+- 1 pt: Single-term or one-off achievement with no evidence of sustained performance.
+- 0 pts: No evidence of sustained performance or only a single achievement listed.
+
+**COMPONENT D: Scholarly Initiative & Rigor (0 - 5 points)**
+Evaluate academic activities beyond the classroom that show intellectual curiosity.
+
+- 5 pts: Major research publication, international-level investigatory project, national olympiad medalist, or formal thesis with distinction.
+- 4 pts: Regional/division olympiad placements, published school research, or multi-year academic club leadership (e.g., President of Science Club for 2+ years).
+- 3 pts: Active participation in inter-school academic competitions (quiz bees, debates, math challenges), or mentorship/tutoring roles.
+- 2 pts: School-level contest participation, academic club officer, or classroom project leader.
+- 1 pt: General attendance in academic seminars or passive club membership.
+- 0 pts: No academic competitions, research, or specialized scholarly projects mentioned.
+
+---
+
+SUBJECTIVITY RULE:
+If the applicant's text includes context of adversity (e.g., working while studying, self-supporting student, coming from an underprivileged/remote school), this is explicitly rewarded in Component B. Do not double-count. Be generous but honest.
 
 FEW-SHOT EXAMPLES:
 
-Example 1 (Top Academic Distinction):
-Input: "High School Batch Valedictorian and Champion in National Math Olympiad"
-Output: {{"score": 20, "reason": "Awarded maximum 20 points for High School Batch Valedictorian and National Olympiad Champion."}}
+Example 1 (Perfect Candidate):
+Input: "High School Batch Valedictorian for 4 straight years. Champion in National Math Olympiad. Worked as a vendor to support studies. President of Science Club."
+Output: {{
+  "score": 20,
+  "breakdown": {{
+    "core_achievement": 5,
+    "adversity": 5,
+    "sustained_excellence": 5,
+    "initiative_rigor": 5
+  }},
+  "reason": "Awarded 5/5 for Valedictorian peak achievement, 5/5 for overcoming work-study adversity, 5/5 for 4-year sustained excellence, and 5/5 for National Math Olympiad champion and Science Club leadership. Perfect 20/20."
+}}
 
-Example 2 (DepEd K-12 Honors):
-Input: "Graduated Senior High School STEM Strand With Highest Honors (GWA 98.4)"
-Output: {{"score": 16, "reason": "Awarded 16 points for graduating With Highest Honors."}}
+Example 2 (High Achiever, No Context):
+Input: "Cum Laude graduate from Ateneo de Manila University. Dean's Lister for 1 semester."
+Output: {{
+  "score": 7,
+  "breakdown": {{
+    "core_achievement": 3,
+    "adversity": 0,
+    "sustained_excellence": 1,
+    "initiative_rigor": 0
+  }},
+  "reason": "Awarded 3/5 for Cum Laude, 0/5 for no adversity, 1/5 for single-semester Dean's List, and 0/5 for no scholarly initiative. Total: 7/20."
+}}
 
-Example 3 (Division Level Placement):
-Input: "2nd Place in Division Science Investigatory Project Contest"
-Output: {{"score": 12, "reason": "Awarded 12 points for 2nd Place in Division Science Contest."}}
+Example 3 (Mid Honors, High Initiative, Some Adversity):
+Input: "With High Honors (GWA 96) for 2 consecutive years. 1st Place in Division Science Fair. First-generation college student. President of Math Club."
+Output: {{
+  "score": 14,
+  "breakdown": {{
+    "core_achievement": 2,
+    "adversity": 3,
+    "sustained_excellence": 3,
+    "initiative_rigor": 4
+  }},
+  "reason": "Awarded 2/5 for With High Honors, 3/5 for first-generation college student adversity, 3/5 for 2-year sustained excellence, and 4/5 for Division Science Fair champion and Math Club leadership. Total: 14/20."
+}}
 
-Example 4 (College Academic Lister):
-Input: "Consistent Dean's Lister for 1st and 2nd Semester AY 2023-2024"
-Output: {{"score": 9, "reason": "Awarded 9 points for multi-semester Dean's List academic standing."}}
+Example 4 (No Achievements):
+Input: "Regular student, no awards or honors."
+Output: {{
+  "score": 0,
+  "breakdown": {{
+    "core_achievement": 0,
+    "adversity": 0,
+    "sustained_excellence": 0,
+    "initiative_rigor": 0
+  }},
+  "reason": "No academic honors, adversity, sustained performance, or scholarly initiative mentioned. Score: 0/20."
+}}
 
-Example 5 (School Academic Award):
-Input: "Best in Mathematics and Top 5 in Section"
-Output: {{"score": 5, "reason": "Awarded 5 points for subject academic excellence award."}}
+---
 
-Example 6 (No Qualifying Academic Honor):
-Input: "Member of Student Committee 2023"
-Output: {{"score": 0, "reason": "No qualifying academic honors or scholastic achievements recognized."}}
+NOW EVALUATE THIS APPLICANT:
+Input Text: \"\"\"{merits_text}\"\"\"
 
-Now evaluate this applicant:
-Input Text: "{merits_text}"
-
-Return ONLY a valid JSON object:
-{{"score": <0-20>, "reason": "<one sentence concise explanation focusing on academic honors>"}}"""
+Return ONLY a valid JSON object. No markdown, no extra text.
+{{
+  "score": <total 0-20>,
+  "breakdown": {{
+    "core_achievement": <0-5>,
+    "adversity": <0-5>,
+    "sustained_excellence": <0-5>,
+    "initiative_rigor": <0-5>
+  }},
+  "reason": "<2-sentence qualitative review explaining the allocation>"
+}}"""
             
             payload = {
                 "contents": [{
@@ -3683,27 +3776,22 @@ Return ONLY a valid JSON object:
                 res_data = response.json()
                 text = res_data['candidates'][0]['content']['parts'][0]['text']
                 parsed = json.loads(text.strip())
-                return int(parsed.get('score', 0)), str(parsed.get('reason', 'Evaluated by AI based on academic merits.'))
+                if 'score' in parsed:
+                    score = int(parsed['score'])
+                elif 'breakdown' in parsed and isinstance(parsed['breakdown'], dict):
+                    score = sum(int(v) for v in parsed['breakdown'].values() if isinstance(v, (int, float)))
+                else:
+                    score = 0
+                score = max(0, min(20, score))
+                reason = str(parsed.get('reason', 'Evaluated by AI based on holistic merit profile.'))
+                return score, reason
             else:
                 print(f"[AI MERITS ERROR] API call returned status {response.status_code}: {response.text}", flush=True)
         except Exception as e:
             print(f"[AI MERITS ERROR] API call failed: {e}", flush=True)
 
     # Calibrated rule-based academic evaluation fallback
-    if any(k in text_clean for k in ['summa cum laude', 'summa', 'valedictorian', 'national math olympiad', 'national science olympiad', 'international olympiad', 'rank 1 overall']):
-        return 20, "Highest academic distinction (Summa Cum Laude / Valedictorian / National Olympiad Champion)."
-    elif any(k in text_clean for k in ['magna cum laude', 'magna', 'salutatorian', 'regional olympiad champion', 'top 3 national']):
-        return 18, "Top national / regional academic distinction (Magna Cum Laude / Salutatorian / Regional Champion)."
-    elif any(k in text_clean for k in ['cum laude', 'first honor', '1st honor', 'with highest honors', 'highest honors', '1st place division']):
-        return 15, "High academic honors (Cum Laude / 1st Honor / With Highest Honors / Division Champion)."
-    elif any(k in text_clean for k in ['second honor', '2nd honor', 'with high honors', 'high honors', "president's list", 'presidents list', 'division olympiad', 'division quiz bee']):
-        return 12, "High academic honors (2nd Honor / With High Honors / President's List / Division Placement)."
-    elif any(k in text_clean for k in ['third honor', '3rd honor', "dean's list", 'deans list', 'dean', 'academic lister', 'honor student', 'with honors', 'academic excellence', 'quiz bee', 'science fair', 'math contest', 'academic award']):
-        return 8, "School-level academic honors (3rd Honor / With Honors / Dean's List / Academic Contest)."
-    elif any(k in text_clean for k in ['academic', 'honor', 'award', 'certificate', 'contestant', 'top 10', 'best in math', 'best in science', 'best in research']):
-        return 5, "General academic recognition / subject award."
-    
-    return 0, "No recognized academic honors or awards."
+    return base_score, base_reason
 
 @api_bp.route('/test-ai', methods=['GET'])
 def test_ai():
@@ -3773,9 +3861,10 @@ def get_applicants(current_user_id, pro_no, role, program):
                        ELSE 'Pending'
                    END as status,
                    esc.scholarship_name as "scholarshipName",
-                   COALESCE(s.created_at, s.status_updated, CURRENT_TIMESTAMP) as "createdAt",
-                   COALESCE(s.created_at, s.status_updated, CURRENT_TIMESTAMP) as "dateApplied",
+                   COALESCE(s.created_at, s.status_updated) as "createdAt",
+                   COALESCE(s.created_at, s.status_updated) as "dateApplied",
                    s.created_at as "status_created_at",
+                   s.created_at as "created_at",
                    ({applicant_document_expr(cursor, 'indigency_doc', 'a', 'ad')} IS NOT NULL) as "has_indigency_doc",
                    ({applicant_document_expr(cursor, 'enrollment_certificate_doc', 'a', 'ad')} IS NOT NULL) as "has_enrollment_certificate_doc",
                    ({applicant_document_expr(cursor, 'grades_doc', 'a', 'ad')} IS NOT NULL) as "has_grades_doc",
@@ -4049,8 +4138,18 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
                 message=f"Congratulations! We are pleased to inform you that your application for {status_row['scholarship_name']} has been accepted.",
                 notif_type='result'
             )
-            # Notify the student portal instantly via socket
+            # Notify the student portal and admin dashboards instantly via socket
             safe_emit('notification_update', {'user_no': applicant_no}, broadcast=True)
+            safe_emit('applicant_status_update', {
+                'applicant_no': applicant_no,
+                'applicantId': applicant_no,
+                'scholarship_no': scholarship_no,
+                'status': 'Accepted',
+                'newStatus': 'Accepted',
+                'is_accepted': 'Accepted',
+                'program': status_row.get('pro_no')
+            }, broadcast=True)
+            safe_emit('account_change', {'type': 'applicant_status_accepted', 'applicant_no': applicant_no}, broadcast=True)
         except Exception as notif_err:
             print(f"[NOTIF ERROR] Failed to notify accepted applicant {applicant_no}: {notif_err}", flush=True)
 
@@ -4109,8 +4208,17 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
                 message=f"Thank you for your interest in {status_row['scholarship_name']}. We regret to inform you that your application has been declined.",
                 notif_type='result'
             )
-            # Notify the student portal instantly via socket
             safe_emit('notification_update', {'user_no': applicant_no}, broadcast=True)
+            safe_emit('applicant_status_update', {
+                'applicant_no': applicant_no,
+                'applicantId': applicant_no,
+                'scholarship_no': scholarship_no,
+                'status': 'Rejected',
+                'newStatus': 'Rejected',
+                'is_accepted': 'Rejected',
+                'program': status_row.get('pro_no')
+            }, broadcast=True)
+            safe_emit('account_change', {'type': 'applicant_status_declined', 'applicant_no': applicant_no}, broadcast=True)
         except Exception as notif_err:
             print(f"[NOTIF ERROR] Failed to notify declined applicant {applicant_no}: {notif_err}", flush=True)
 
@@ -4122,10 +4230,10 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
-@api_bp.route('/applicants/<int:applicant_no>/cancel', methods=['POST'])
+@api_bp.route('/applicants/<int:applicant_no>/revert', methods=['POST'])
 @token_required
-def cancel_applicant(current_user_id, pro_no, role, applicant_no):
-    """Cancel applicant status (revert to pending/NULL)"""
+def revert_applicant(current_user_id, pro_no, role, applicant_no):
+    """Revert an applicant back to pending status"""
     try:
         data = request.get_json(silent=True) or {}
         scholarship_no = data.get('scholarshipNo')
@@ -4136,7 +4244,7 @@ def cancel_applicant(current_user_id, pro_no, role, applicant_no):
         cursor = conn.cursor()
 
         cursor.execute(
-            '''SELECT s.pro_no
+            '''SELECT s.pro_no, s.scholarship_name
                FROM applicant_status ast
                INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
                WHERE ast.applicant_no = %s AND ast.scholarship_no = %s''',
@@ -4153,7 +4261,7 @@ def cancel_applicant(current_user_id, pro_no, role, applicant_no):
             conn.close()
             return jsonify({'success': False, 'message': 'Unauthorized'}), 403
         
-        # Update applicant status back to NULL (pending review)
+        # Update applicant status back to Pending (NULL)
         cursor.execute(
             '''UPDATE applicant_status 
                SET is_accepted = NULL, status_updated = CURRENT_DATE
@@ -4161,6 +4269,22 @@ def cancel_applicant(current_user_id, pro_no, role, applicant_no):
             (applicant_no, scholarship_no)
         )
         conn.commit()
+
+        try:
+            safe_emit('notification_update', {'user_no': applicant_no}, broadcast=True)
+            safe_emit('applicant_status_update', {
+                'applicant_no': applicant_no,
+                'applicantId': applicant_no,
+                'scholarship_no': scholarship_no,
+                'status': 'Pending',
+                'newStatus': 'Pending',
+                'is_accepted': None,
+                'program': status_row.get('pro_no')
+            }, broadcast=True)
+            safe_emit('account_change', {'type': 'applicant_status_reverted', 'applicant_no': applicant_no}, broadcast=True)
+        except Exception as notif_err:
+            print(f"[NOTIF ERROR] Failed to emit revert for applicant {applicant_no}: {notif_err}", flush=True)
+
         cursor.close()
         conn.close()
         
@@ -4315,6 +4439,16 @@ def create_scholarship(current_user_id, pro_no, role):
             subject_prefix='New Scholarship opportunity from',
             intro_prefix='A new scholarship opportunity has been posted by',
         )
+
+        safe_emit('scholarship_update', {
+            'action': 'create',
+            'req_no': req_no,
+            'scholarship_name': data.get('scholarshipName'),
+            'program': provider_label,
+            'pro_no': target_pro_no
+        }, broadcast=True)
+        safe_emit('scholarship_change', {'action': 'create', 'req_no': req_no}, broadcast=True)
+        safe_emit('account_change', {'type': 'scholarship_create'}, broadcast=True)
         
         return jsonify({
             'success': True, 
@@ -4430,6 +4564,16 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
             subject_prefix='Updated Scholarship from',
             intro_prefix='A scholarship has been updated by',
         )
+
+        safe_emit('scholarship_update', {
+            'action': 'update',
+            'req_no': req_no,
+            'scholarship_name': data.get('scholarshipName', sch_row.get('scholarship_name')),
+            'program': display_provider_name,
+            'pro_no': resolved_provider_no
+        }, broadcast=True)
+        safe_emit('scholarship_change', {'action': 'update', 'req_no': req_no}, broadcast=True)
+        safe_emit('account_change', {'type': 'scholarship_update'}, broadcast=True)
         
         return jsonify({'success': True, 'message': 'Scholarship updated'}), 200
     
@@ -4477,6 +4621,15 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
             target_label=scholarship_name,
             provider_no=resolved_provider_no,
         )
+
+        safe_emit('scholarship_update', {
+            'action': 'delete',
+            'req_no': req_no,
+            'scholarship_name': scholarship_name,
+            'pro_no': resolved_provider_no
+        }, broadcast=True)
+        safe_emit('scholarship_change', {'action': 'delete', 'req_no': req_no}, broadcast=True)
+        safe_emit('account_change', {'type': 'scholarship_delete'}, broadcast=True)
         
         return jsonify({'success': True, 'message': 'Scholarship removed'}), 200
         
@@ -5011,6 +5164,22 @@ def create_announcement(current_user_id, pro_no, role):
             target_label=title,
             provider_no=target_pro_no
         )
+
+        safe_emit('announcement_update', {
+            'action': 'create',
+            'ann_no': ann_no,
+            'title': title,
+            'program': provider_name,
+            'pro_no': target_pro_no
+        }, broadcast=True)
+        safe_emit('new_announcement', {
+            'action': 'create',
+            'ann_no': ann_no,
+            'title': title,
+            'content': message,
+            'provider': provider_name,
+            'pro_no': target_pro_no
+        }, broadcast=True)
         
         # Notify students based on send_to_all_applicants flag
         run_background_task(
@@ -5170,6 +5339,14 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
             provider_no=resolved_provider_no
         )
 
+        safe_emit('announcement_update', {
+            'action': 'update',
+            'ann_no': ann_no,
+            'title': title,
+            'program': target_provider_name,
+            'pro_no': target_provider_no
+        }, broadcast=True)
+
         if should_notify:
             run_background_task(
                 notify_announcement_applicants,
@@ -5235,6 +5412,13 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
             target_label=title,
             provider_no=resolved_provider_no
         )
+
+        safe_emit('announcement_update', {
+            'action': 'delete',
+            'ann_no': ann_no,
+            'title': title,
+            'pro_no': resolved_provider_no
+        }, broadcast=True)
         
         return jsonify({'message': 'Announcement deleted'}), 200
     except Exception as e:

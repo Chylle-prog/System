@@ -3743,6 +3743,37 @@ def submit_application():
                     )
 
             conn.commit()
+
+            try:
+                from api_routes import safe_emit
+                safe_emit('applicant_status_update', {
+                    'applicant_no': current_user_id,
+                    'applicantId': current_user_id,
+                    'scholarship_no': scholarship_id,
+                    'status': 'Pending',
+                    'newStatus': 'Pending',
+                    'is_accepted': None,
+                    'action': 'apply',
+                    'pro_no': pro_no,
+                    'program': pro_name
+                }, broadcast=True)
+                safe_emit('new_application', {
+                    'applicant_no': current_user_id,
+                    'scholarship_no': scholarship_id,
+                    'pro_no': pro_no,
+                    'program': pro_name
+                }, broadcast=True)
+                safe_emit('new_applicant', {
+                    'applicant_no': current_user_id,
+                    'scholarship_no': scholarship_id,
+                    'pro_no': pro_no,
+                    'program': pro_name
+                }, broadcast=True)
+                safe_emit('account_change', {'type': 'new_application', 'applicant_no': current_user_id}, broadcast=True)
+                safe_emit('notification_update', {'user_no': current_user_id}, broadcast=True)
+            except Exception as emit_err:
+                print(f"[SUBMIT SOCKET ERROR]: {emit_err}", flush=True)
+
             print(f"[SUBMIT] Application successful for User {current_user_id} in {time.time() - start_time:.2f}s")
             return jsonify({
                 'message': 'Application submitted successfully',

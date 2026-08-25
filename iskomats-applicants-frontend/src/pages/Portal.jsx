@@ -395,6 +395,56 @@ const Portal = () => {
           }];
         });
       });
+
+      // Live real-time updates for announcements
+      const unsubAnnounce = socketService.subscribe('announcement_update', () => {
+        console.log('[LIVE SYNC] Announcement update received live');
+        fetchAnnouncements();
+        fetchNotifications();
+      });
+      const unsubNewAnnounce = socketService.subscribe('new_announcement', () => {
+        console.log('[LIVE SYNC] New announcement received live');
+        fetchAnnouncements();
+        fetchNotifications();
+      });
+
+      // Live real-time updates for scholarships
+      const unsubScholar = socketService.subscribe('scholarship_update', () => {
+        console.log('[LIVE SYNC] Scholarship update received live');
+        fetchResources();
+      });
+      const unsubScholarChange = socketService.subscribe('scholarship_change', () => {
+        console.log('[LIVE SYNC] Scholarship change received live');
+        fetchResources();
+      });
+
+      // Live real-time updates for applicant status changes & notifications
+      const unsubStatus = socketService.subscribe('applicant_status_update', (data) => {
+        console.log('[LIVE SYNC] Applicant status update received live:', data);
+        fetchApplications();
+        fetchProfile();
+        fetchNotifications();
+      });
+      const unsubNotifUpdate = socketService.subscribe('notification_update', () => {
+        console.log('[LIVE SYNC] Notification update received live');
+        fetchNotifications();
+        fetchApplications();
+      });
+      const unsubNewNotif = socketService.subscribe('new_notification', () => {
+        console.log('[LIVE SYNC] New notification received live');
+        fetchNotifications();
+        fetchApplications();
+      });
+
+      var cleanupLiveSockets = () => {
+        unsubAnnounce();
+        unsubNewAnnounce();
+        unsubScholar();
+        unsubScholarChange();
+        unsubStatus();
+        unsubNotifUpdate();
+        unsubNewNotif();
+      };
     }
 
     // Close dropdowns when clicking outside
@@ -414,6 +464,7 @@ const Portal = () => {
       if (unsubLogged) unsubLogged();
       if (unsubMsg) unsubMsg();
       if (unsubRoom) unsubRoom();
+      if (typeof cleanupLiveSockets === 'function') cleanupLiveSockets();
       if (token) {
         socketService.disconnect();
       }

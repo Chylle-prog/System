@@ -83,6 +83,36 @@ class SocketService {
       console.log('Notification update triggered:', data);
       this.notify('notification_update', data);
     });
+
+    this.socket.on('applicant_status_update', (data) => {
+      console.log('Applicant status update received:', data);
+      this.notify('applicant_status_update', data);
+    });
+
+    this.socket.on('scholarship_update', (data) => {
+      console.log('Scholarship update received:', data);
+      this.notify('scholarship_update', data);
+    });
+
+    this.socket.on('scholarship_change', (data) => {
+      console.log('Scholarship change received:', data);
+      this.notify('scholarship_change', data);
+    });
+
+    this.socket.on('announcement_update', (data) => {
+      console.log('Announcement update received:', data);
+      this.notify('announcement_update', data);
+    });
+
+    this.socket.on('new_announcement', (data) => {
+      console.log('New announcement received:', data);
+      this.notify('new_announcement', data);
+    });
+
+    this.socket.on('account_change', (data) => {
+      console.log('Account change received:', data);
+      this.notify('account_change', data);
+    });
   }
 
   disconnect() {

@@ -1677,6 +1677,13 @@ def student_verify_email():
 
             conn.commit()
 
+            try:
+                from api_routes import safe_emit
+                safe_emit('new_applicant', {'applicant_no': applicant_no, 'email': email}, broadcast=True)
+                safe_emit('account_change', {'type': 'new_applicant', 'applicant_no': applicant_no}, broadcast=True)
+            except Exception as emit_err:
+                print(f"[VERIFY SOCKET ERROR]: {emit_err}", flush=True)
+
         # 4. Generate session token
         payload = {
             'exp': datetime.utcnow() + timedelta(days=7),
@@ -3129,16 +3136,50 @@ def submit_application():
                 (current_user_id, pro_no),
             )
             if not cur.fetchone():
+                cur.execute("SELECT first_name, last_name FROM applicants WHERE applicant_no = %s", (current_user_id,))
+                app_row = cur.fetchone()
+                app_name = f"{app_row['first_name']} {app_row['last_name']}".strip() if app_row and (app_row.get('first_name') or app_row.get('last_name')) else f"Applicant {current_user_id}"
                 room = f"{current_user_id}+{pro_no}"
                 cur.execute(
                     """
                     INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp)
                     VALUES (%s, %s, %s, %s, %s, NOW())
                     """,
-                    (current_user_id, pro_no, room, pro_name, f'Chat initiated for Applicant {current_user_id}.'),
+                    (current_user_id, pro_no, room, pro_name, f'Chat initiated for {app_name}.'),
                 )
 
         conn.commit()
+
+        try:
+            from api_routes import safe_emit
+            safe_emit('applicant_status_update', {
+                'applicant_no': current_user_id,
+                'applicantId': current_user_id,
+                'scholarship_no': scholarship_id,
+                'status': 'Pending',
+                'newStatus': 'Pending',
+                'is_accepted': None,
+                'action': 'apply',
+                'pro_no': pro_no,
+                'program': pro_name
+            }, broadcast=True)
+            safe_emit('new_application', {
+                'applicant_no': current_user_id,
+                'scholarship_no': scholarship_id,
+                'pro_no': pro_no,
+                'program': pro_name
+            }, broadcast=True)
+            safe_emit('new_applicant', {
+                'applicant_no': current_user_id,
+                'scholarship_no': scholarship_id,
+                'pro_no': pro_no,
+                'program': pro_name
+            }, broadcast=True)
+            safe_emit('account_change', {'type': 'new_application', 'applicant_no': current_user_id}, broadcast=True)
+            safe_emit('notification_update', {'user_no': current_user_id}, broadcast=True)
+        except Exception as emit_err:
+            print(f"[SUBMIT SOCKET ERROR]: {emit_err}", flush=True)
+
         print(f"[SUBMIT] Application successful for User {current_user_id} in {time.time() - start_time:.2f}s")
         return jsonify({
             'message': 'Application submitted successfully',
@@ -3915,6 +3956,23 @@ def update_application_status(req_no):
                 print(f"[RESULT ERROR] Failed to send notification/chat: {e}")
 
             conn.commit()
+
+            try:
+                from api_routes import safe_emit
+                safe_emit('applicant_status_update', {
+                    'applicant_no': applicant_no,
+                    'applicantId': applicant_no,
+                    'scholarship_no': req_no,
+                    'status': normalized_status,
+                    'newStatus': normalized_status,
+                    'is_accepted': normalized_status,
+                    'pro_no': pro_no,
+                    'program': pro_name
+                }, broadcast=True)
+                safe_emit('account_change', {'type': 'applicant_status_update', 'applicant_no': applicant_no}, broadcast=True)
+                safe_emit('notification_update', {'user_no': applicant_no}, broadcast=True)
+            except Exception as emit_err:
+                print(f"[STATUS SOCKET ERROR]: {emit_err}", flush=True)
 
             return jsonify({'message': 'Status updated'})
     except Exception as exc:
