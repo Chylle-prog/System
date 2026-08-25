@@ -12,6 +12,10 @@ import difflib
 import platform
 import logging
 try:
+    import pytesseract
+except ImportError:
+    pytesseract = None
+try:
     from project_config import get_performance_config
 except ImportError:
     def get_performance_config():
@@ -102,6 +106,94 @@ def resolve_verification_image_bytes(image_data):
                 print(f"[RESOLVE] Failed to fetch image URL {normalized}: {e}", flush=True)
                 return None
     return None
+
+def deskew_image(gray):
+    try:
+        coords = np.column_stack(np.where(gray > 0))
+        if len(coords) < 10:
+            return gray
+        angle = cv2.minAreaRect(coords)[-1]
+        if angle < -45:
+            angle = -(90 + angle)
+        elif angle > 45:
+            angle = 90 - angle
+        else:
+            angle = -angle
+
+        if abs(angle) > 0.5 and abs(angle) < 15.0:
+            (h, w) = gray.shape[:2]
+            center = (w // 2, h // 2)
+            M = cv2.getRotationMatrix2D(center, angle, 1.0)
+            gray = cv2.warpAffine(gray, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    except Exception:
+        pass
+    return gray
+
+def auto_adjust_luminance_and_gamma(gray_img):
+    if gray_img is None:
+        return gray_img
+    try:
+        mean_val = float(np.mean(gray_img))
+        if mean_val >= 145.0:
+            return gray_img
+        
+        gamma = max(0.40, min(0.70, mean_val / 180.0))
+        table = np.array([((i / 255.0) ** gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+        brightened = cv2.LUT(gray_img, table)
+
+        if mean_val < 110.0:
+            alpha = 1.25
+            beta = int((110.0 - mean_val) * 0.4)
+            brightened = cv2.convertScaleAbs(brightened, alpha=alpha, beta=beta)
+        
+        return brightened
+    except Exception as e:
+        print(f"[DARK DOC ENHANCE] Gamma correction error: {e}", flush=True)
+        return gray_img
+
+def create_shadow_removed_binarized_image(gray_img):
+    if gray_img is None:
+        return gray_img
+    try:
+        blurred = cv2.GaussianBlur(gray_img, (5, 5), 0)
+        binarized = cv2.adaptiveThreshold(
+            blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 25, 11
+        )
+        return binarized
+    except Exception as e:
+        print(f"[DARK DOC ENHANCE] Shadow removal error: {e}", flush=True)
+        return gray_img
+
+def preprocess_image_advanced(img, scale_factor=2.0, apply_clahe=True, sharpen=True):
+    if img is None:
+        return None
+    try:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img.copy()
+        
+        h, w = gray.shape[:2]
+        target_w = max(1800, int(w * scale_factor)) if w < 1200 else int(w * 1.5)
+        if target_w > 3000:
+            target_w = 3000
+        scale = float(target_w) / float(w)
+        gray = cv2.resize(gray, (target_w, int(h * scale)), interpolation=cv2.INTER_CUBIC)
+
+        gray = deskew_image(gray)
+        gray = auto_adjust_luminance_and_gamma(gray)
+
+        if apply_clahe:
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+            gray = clahe.apply(gray)
+
+        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+
+        if sharpen:
+            kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+            return cv2.filter2D(blurred, -1, kernel)
+
+        return blurred
+    except Exception as e:
+        print(f"[OCR PREPROCESS] Error: {e}", flush=True)
+        return img
 
 _tesseract_initialized = False
 

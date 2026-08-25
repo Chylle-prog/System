@@ -6,10 +6,14 @@ import logging
 logger = logging.getLogger("verifier-bench-backend.signature_brain")
 
 try:
-    from tensorflow.keras.applications import MobileNetV2
-    from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
-    from tensorflow.keras.preprocessing import image
-    TENSORFLOW_AVAILABLE = True
+    import importlib
+    _tf_app = importlib.import_module('tensorflow.keras.applications')
+    MobileNetV2 = getattr(_tf_app, 'MobileNetV2', None)
+    _tf_mob = importlib.import_module('tensorflow.keras.applications.mobilenet_v2')
+    preprocess_input = getattr(_tf_mob, 'preprocess_input', None)
+    _tf_pre = importlib.import_module('tensorflow.keras.preprocessing')
+    image = getattr(_tf_pre, 'image', None)
+    TENSORFLOW_AVAILABLE = bool(MobileNetV2 and preprocess_input and image)
 except Exception as exc:
     MobileNetV2 = None
     preprocess_input = None
