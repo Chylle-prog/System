@@ -520,6 +520,16 @@ const Portal = () => {
     };
   }, [notifications]);
 
+  useEffect(() => {
+    if (activeSection === 'community') {
+      announcementAPI.getAll()
+        .then((data) => {
+          if (data) setDbAnnouncements(data);
+        })
+        .catch((err) => console.warn('Failed to load announcements on tab switch:', err));
+    }
+  }, [activeSection]);
+
   const logout = () => {
     authLogout();  // This clears currentUser, authToken, and applicantNo
     navigate('/');

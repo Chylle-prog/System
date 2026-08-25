@@ -5008,6 +5008,23 @@ def create_announcement(current_user_id, pro_no, role):
                 target_label=title,
                 provider_no=target_pro_no
             )
+
+            safe_emit('announcement_update', {
+                'action': 'create',
+                'ann_no': ann_no,
+                'title': title,
+                'program': provider_name,
+                'pro_no': target_pro_no
+            }, broadcast=True)
+            safe_emit('new_announcement', {
+                'action': 'create',
+                'ann_no': ann_no,
+                'title': title,
+                'content': message,
+                'provider': provider_name,
+                'pro_no': target_pro_no
+            }, broadcast=True)
+            safe_emit('notification_update', {'type': 'announcement', 'ann_no': ann_no}, broadcast=True)
         
             # Dispatch notifications asynchronously in background thread
             print(f"[ANNOUNCEMENT] Dispatching notifications for ann_no {ann_no} (SendToAll: {send_to_all_applicants})", flush=True)
@@ -5181,6 +5198,15 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
                 provider_no=resolved_provider_no
             )
 
+            safe_emit('announcement_update', {
+                'action': 'update',
+                'ann_no': ann_no,
+                'title': title,
+                'program': target_provider_name,
+                'pro_no': target_provider_no
+            }, broadcast=True)
+            safe_emit('notification_update', {'type': 'announcement', 'ann_no': ann_no}, broadcast=True)
+
             if should_notify:
                 run_background_task(
                     notify_announcement_applicants,
@@ -5210,7 +5236,6 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
         if 'conn' in locals() and conn:
             conn.close()
 
-@api_bp.route('/announcements/<int:ann_no>', methods=['DELETE'])
 @api_bp.route('/announcements/<int:ann_no>', methods=['DELETE'])
 @api_bp.route('/admin/announcements/<int:ann_no>', methods=['DELETE'])
 @token_required
@@ -5250,6 +5275,14 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
                 target_label=title,
                 provider_no=resolved_provider_no
             )
+
+            safe_emit('announcement_update', {
+                'action': 'delete',
+                'ann_no': ann_no,
+                'title': title,
+                'pro_no': ann_provider_no
+            }, broadcast=True)
+            safe_emit('notification_update', {'type': 'announcement', 'ann_no': ann_no}, broadcast=True)
         
             return jsonify({'success': True, 'message': 'Announcement deleted'}), 200
     except Exception as e:
