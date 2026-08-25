@@ -1433,7 +1433,7 @@ def notify_announcement_applicants(
             log(f"[ANNOUNCEMENT NOTIF WARNING] No recipients found for announcement.")
             return
 
-        log(f"[ANNOUNCEMENT NOTIF] Found {len(recipients)} recipients. Processing notifications...")
+        log(f"[ANNOUNCEMENT NOTIF] Found {len(recipients)} recipients. Bulk inserting in-app notifications...")
         
         provider_label = (provider_name or 'ISKOMATS').strip()
         notification_title = f"{notification_title_prefix}: {title}"
@@ -1442,46 +1442,56 @@ def notify_announcement_applicants(
         if provider_label and provider_label.lower() != 'iskomats':
             notification_message = f"{provider_label}: {notification_message}"
 
+        # 1. Instant Bulk Insert for all recipients so they see it in real-time immediately
+        app_ids = []
+        for r in recipients:
+            if hasattr(r, 'get'): a_no = r.get('applicant_no')
+            elif isinstance(r, dict): a_no = r.get('applicant_no')
+            else: a_no = r[0]
+            if a_no: app_ids.append(a_no)
+
+        if app_ids:
+            try:
+                with get_db() as bulk_conn:
+                    bcur = bulk_conn.cursor()
+                    from psycopg2.extras import execute_values
+                    execute_values(
+                        bcur,
+                        """
+                        INSERT INTO notifications (user_no, title, message, type, expires_at)
+                        VALUES %s
+                        """,
+                        [(a_no, notification_title, notification_message, 'announcement') for a_no in app_ids],
+                        template="(%s, %s, %s, %s, NOW() + INTERVAL '10 days')"
+                    )
+                    bulk_conn.commit()
+                    log(f"[ANNOUNCEMENT NOTIF] Bulk inserted {len(app_ids)} notifications successfully.")
+                    safe_emit('notification_update', {'type': 'announcement', 'count': len(app_ids)}, broadcast=True)
+                    safe_emit('new_notification', {'title': notification_title, 'message': notification_message, 'type': 'announcement'}, broadcast=True)
+            except Exception as bulk_err:
+                log(f"[ANNOUNCEMENT NOTIF BULK ERROR] {bulk_err}")
+
         email_success_count = 0
         email_failure_count = 0
 
-        # Connection is now closed (outside the with block)
-        for recipient in recipients:
-            try:
-                # Handle both dict and tuple results
-                if hasattr(recipient, 'get'):
-                    app_no = recipient.get('applicant_no')
-                elif isinstance(recipient, dict):
-                    app_no = recipient.get('applicant_no')
-                else:
-                    app_no = recipient[0]
-
-                if not app_no: continue
-
-                # Each call to create_notification handles its own connection and commit.
-                # Use sync_email=True because notify_announcement_applicants is ALREADY running inside a background worker thread.
-                result = create_notification(
-                    user_no=app_no,
-                    title=notification_title,
-                    message=notification_message,
-                    notif_type='announcement',
-                    send_email=send_email_alerts,
-                    sync_email=False,
-                )
-                
-                # Force a UI refresh for the student portal via socket
+        # 2. Asynchronous email delivery in background
+        if send_email_alerts:
+            for app_no in app_ids:
                 try:
-                    safe_emit('notification_update', {'user_no': app_no}, broadcast=True)
-                except: pass
-
-                log(f"[ANNOUNCEMENT NOTIF SUCCESS] Notification created for user {app_no}. Email: {result.get('email_sent')}")
-                if send_email_alerts:
+                    result = create_notification(
+                        user_no=app_no,
+                        title=notification_title,
+                        message=notification_message,
+                        notif_type='announcement',
+                        send_email=True,
+                        sync_email=False,
+                    )
                     if result and result.get('email_sent'):
                         email_success_count += 1
                     else:
                         email_failure_count += 1
-            except Exception as inner_e:
-                log(f"[ANNOUNCEMENT NOTIF ERROR] Failed for user {app_no}: {inner_e}")
+                except Exception as inner_e:
+                    log(f"[ANNOUNCEMENT EMAIL ERROR] Failed for user {app_no}: {inner_e}")
                 
         log(f"[ANNOUNCEMENT NOTIF] Task completed. Total Recipients: {len(recipients)}, Email Success: {email_success_count}, Failure: {email_failure_count}")
 

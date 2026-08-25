@@ -4123,10 +4123,10 @@ def update_application_status(req_no):
 @student_api_bp.route('/announcements', methods=['GET'])
 def get_announcements():
     cache_key = "announcements_all"
-    cached_data = get_cached_response(cache_key, ttl_seconds=60)
+    cached_data = get_cached_response(cache_key, ttl_seconds=5)
     if cached_data is not None:
         resp = jsonify(cached_data)
-        resp.headers['Cache-Control'] = 'public, max-age=60, s-maxage=300, stale-while-revalidate=30'
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         resp.headers['X-Cache-Status'] = 'HIT'
         return resp
 
@@ -4230,9 +4230,9 @@ def get_announcements():
                     announcements[ann_no]['announcementImages'].append(image_url)
 
             result_list = list(announcements.values())
-            set_cached_response(cache_key, result_list, ttl_seconds=60)
+            set_cached_response(cache_key, result_list, ttl_seconds=5)
             resp = jsonify(result_list)
-            resp.headers['Cache-Control'] = 'public, max-age=60, s-maxage=300, stale-while-revalidate=30'
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
             resp.headers['X-Cache-Status'] = 'MISS'
             return resp
     except Exception as e:

@@ -1448,36 +1448,51 @@ def notify_announcement_applicants(
         email_success_count = 0
         email_failure_count = 0
         
-        print(f"[ANNOUNCEMENT BG] Notifying {len(recipients)} applicants...")
-
-        for idx, recipient in enumerate(recipients):
+        print(f"[ANNOUNCEMENT BG] Found {len(recipients)} recipients. Bulk inserting in-app notifications...")
+        
+        # 1. Fast bulk insert in-app notifications
+        app_ids = [r['applicant_no'] for r in recipients if r and r.get('applicant_no')]
+        if app_ids:
             try:
-                # Reuse DB connection, use pre-fetched token, and send synchronously (in this bg thread)
-                result = create_notification(
-                    user_no=recipient['applicant_no'],
-                    title=notification_title,
-                    message=notification_message,
-                    notif_type='announcement',
-                    send_email=send_email_alerts,
-                    db_conn=conn,
-                    google_access_token=google_access_token,
-                    sync_email=True
-                )
+                with get_db() as bulk_conn:
+                    bcur = bulk_conn.cursor()
+                    from psycopg2.extras import execute_values
+                    execute_values(
+                        bcur,
+                        """
+                        INSERT INTO notifications (user_no, title, message, type, expires_at)
+                        VALUES %s
+                        """,
+                        [(a_no, notification_title, notification_message, 'announcement') for a_no in app_ids],
+                        template="(%s, %s, %s, %s, NOW() + INTERVAL '10 days')"
+                    )
+                    bulk_conn.commit()
+                    safe_emit('notification_update', {'type': 'announcement', 'count': len(app_ids)}, broadcast=True)
+                    safe_emit('new_notification', {'title': notification_title, 'message': notification_message, 'type': 'announcement'}, broadcast=True)
+            except Exception as bulk_err:
+                print(f"[ANNOUNCEMENT NOTIF BULK ERROR] {bulk_err}")
 
-                if send_email_alerts:
+        # 2. Process emails asynchronously if requested
+        if send_email_alerts:
+            for idx, app_no in enumerate(app_ids):
+                try:
+                    result = create_notification(
+                        user_no=app_no,
+                        title=notification_title,
+                        message=notification_message,
+                        notif_type='announcement',
+                        send_email=True,
+                        db_conn=conn,
+                        google_access_token=google_access_token,
+                        sync_email=True
+                    )
                     if result and result.get('email_sent'):
                         email_success_count += 1
                     else:
                         email_failure_count += 1
-                    
-                    # Add a small delay (200ms) to respect Gmail rate limits
                     time.sleep(0.2)
-                
-                # Log progress
-                if (idx + 1) % 20 == 0:
-                    print(f"[ANNOUNCEMENT PROGRESS] Notified {idx+1}/{len(recipients)} recipients")
-            except Exception as row_err:
-                print(f"[ANNOUNCEMENT ERROR] Failed to notify {recipient['applicant_no']}: {row_err}")
+                except Exception as row_err:
+                    print(f"[ANNOUNCEMENT ERROR] Failed email for {app_no}: {row_err}")
 
         if send_email_alerts:
             print(
