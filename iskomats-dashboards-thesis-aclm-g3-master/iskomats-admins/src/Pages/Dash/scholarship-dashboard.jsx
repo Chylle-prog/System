@@ -252,6 +252,63 @@ const normalizeProviderIdentity = (value) => String(value || '').toLowerCase().t
 
 const normalizeSearchText = (value) => String(value ?? '').toLowerCase().trim();
 
+export const convertGpaToPercentage = (val, schoolName = '') => {
+  if (val === null || val === undefined || val === '') return null;
+  const cleanStr = String(val).replace(/%/g, '').trim();
+  const num = parseFloat(cleanStr);
+  if (isNaN(num)) return null;
+
+  // Already on percentage scale (e.g. 50.0 to 100.0)
+  if (num >= 50.0 && num <= 100.0) {
+    return num;
+  }
+
+  // 1.0 to 5.0 Point scale (Philippine university GPA/GWA or 4.0 scale)
+  if (num >= 1.0 && num <= 5.0) {
+    const schoolLower = String(schoolName || '').toLowerCase().trim();
+    let isUpSystem = false;
+
+    if (schoolLower) {
+      const upKeywords = ['philippines', 'up', 'pup', 'plm', 'pamantasan', 'tup', 'bulsu', 'state', 'university', 'college', 'technological', 'mapua', 'su'];
+      const dlsuKeywords = ['la salle', 'dlsu', 'ateneo', 'admu', 'benilde', 'csb', 'beda'];
+      if (upKeywords.some(kw => schoolLower.includes(kw)) && !dlsuKeywords.some(kw => schoolLower.includes(kw))) {
+        isUpSystem = true;
+      }
+    } else {
+      if (num <= 2.4) {
+        isUpSystem = true;
+      }
+    }
+
+    if (isUpSystem) {
+      // 1.0 = 100%, 3.0 = 75%, 5.0 = 50%
+      return Math.round((100 - (num - 1.0) * 12.5) * 100) / 100;
+    } else {
+      // 4.0 Scale: 4.0 = 100%, 3.0 = 87.5%, 2.0 = 75%, 1.0 = 62.5%
+      if (num <= 4.0) {
+        return Math.round((50 + num * 12.5) * 100) / 100;
+      } else {
+        return Math.round((37.5 + num * 12.5) * 100) / 100;
+      }
+    }
+  }
+
+  // Fraction scale (e.g. 0.85 = 85%)
+  if (num > 0.0 && num < 1.0) {
+    return Math.round(num * 10000) / 100;
+  }
+
+  return num;
+};
+
+export const formatGpaDisplay = (grade, schoolName = '') => {
+  if (grade === null || grade === undefined || grade === '') return 'N/A';
+  const converted = convertGpaToPercentage(grade, schoolName);
+  if (converted === null || isNaN(converted)) return String(grade);
+  const formatted = (converted % 1 === 0) ? converted.toFixed(0) : converted.toFixed(2).replace(/\.?0+$/, '');
+  return `${formatted}%`;
+};
+
 const EMPTY_ADVANCED_SEARCH = {
   scholarshipName: '',
   provider: '',
@@ -327,8 +384,13 @@ const applicantMatchesAdvancedScholarshipFilters = (applicant, advanced, scholar
     return false;
   }
 
-  if (advanced.applicantGpa && applicant.grade && !normalizeSearchText(String(applicant.grade)).includes(normalizeSearchText(advanced.applicantGpa))) {
-    return false;
+  if (advanced.applicantGpa) {
+    const rawGpaText = normalizeSearchText(String(applicant.grade || applicant.overall_gpa || applicant.gpa || ''));
+    const convertedGpaText = normalizeSearchText(formatGpaDisplay(applicant.grade || applicant.overall_gpa || applicant.gpa, applicant.school));
+    const searchGpaText = normalizeSearchText(advanced.applicantGpa);
+    if (!rawGpaText.includes(searchGpaText) && !convertedGpaText.includes(searchGpaText)) {
+      return false;
+    }
   }
 
   if (advanced.familyName && !normalizeSearchText(applicant.lastName || applicant.last_name || applicant.surname || applicant.family_name || applicant.name || '').includes(normalizeSearchText(advanced.familyName))) {
@@ -1055,8 +1117,8 @@ export default function ScholarshipDashboard({
         valA = String(a.name || '').trim().toLowerCase();
         valB = String(b.name || '').trim().toLowerCase();
       } else if (sortConfig.column === 'grade') {
-        valA = parseFloat(String(a.grade || 0).replace(/,/g, ''));
-        valB = parseFloat(String(b.grade || 0).replace(/,/g, ''));
+        valA = convertGpaToPercentage(a.grade || a.overall_gpa || a.gpa, a.school) ?? 0;
+        valB = convertGpaToPercentage(b.grade || b.overall_gpa || b.gpa, b.school) ?? 0;
         if (isNaN(valA)) valA = 0;
         if (isNaN(valB)) valB = 0;
       } else if (sortConfig.column === 'financial') {
@@ -1549,7 +1611,7 @@ export default function ScholarshipDashboard({
   const normalizeFinderText = (value) => String(value || '').toLowerCase().trim();
 
   const applicantMatchesScholarshipCriteria = (applicant, scholarship) => {
-    const applicantGrade = parseNumericValue(applicant.grade);
+    const applicantGrade = convertGpaToPercentage(applicant.grade || applicant.overall_gpa || applicant.gpa, applicant.school);
     const minimumGpa = parseNumericValue(scholarship.minGpa);
     if (minimumGpa !== null && (applicantGrade === null || applicantGrade < minimumGpa)) {
       return false;
@@ -1579,7 +1641,11 @@ export default function ScholarshipDashboard({
       const allPending = data.applicants || [];
       const filteredApplicants = allPending.filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
       const top = [...filteredApplicants]
-        .sort((a, b) => (Number(b.grade) || 0) - (Number(a.grade) || 0))
+        .sort((a, b) => {
+          const gradeA = convertGpaToPercentage(a.grade || a.overall_gpa || a.gpa, a.school) ?? 0;
+          const gradeB = convertGpaToPercentage(b.grade || b.overall_gpa || b.gpa, b.school) ?? 0;
+          return gradeB - gradeA;
+        })
         .slice(0, count);
       setRecommended(top);
     }
@@ -1620,12 +1686,15 @@ export default function ScholarshipDashboard({
       courses[course] = (courses[course] || 0) + 1;
 
       // Grade
-      const g = parseFloat(a.grade);
-      if (g >= 95) grades['95-100']++;
-      else if (g >= 90) grades['90-94']++;
-      else if (g >= 85) grades['85-89']++;
-      else if (g >= 80) grades['80-84']++;
-      else grades['Below 80']++;
+      const convertedGrade = convertGpaToPercentage(a.grade || a.overall_gpa || a.gpa, a.school);
+      const g = convertedGrade !== null ? convertedGrade : parseFloat(a.grade);
+      if (!isNaN(g)) {
+        if (g >= 95) grades['95-100']++;
+        else if (g >= 90) grades['90-94']++;
+        else if (g >= 85) grades['85-89']++;
+        else if (g >= 80) grades['80-84']++;
+        else grades['Below 80']++;
+      }
 
       // Financial
       const income = a.income || a.family?.grossIncome || '0';
@@ -2332,37 +2401,10 @@ export default function ScholarshipDashboard({
   const calculateDeservednessScoreDetails = (a, sch) => {
     if (!a) return { total: 0, gpaScore: 0, incomeScore: 0, meritScore: 0, reason: '' };
 
-    const applicantGpa = Number(a.grade ?? a.overall_gpa ?? a.gpa ?? 0);
+    const applicantRawGpa = a.grade ?? a.overall_gpa ?? a.gpa ?? 0;
     const applicantIncome = Number(a.income ?? a.financial_income_of_parents ?? a.family?.grossIncome ?? 0);
 
-    let normalizedGpa = applicantGpa;
-
-    if (applicantGpa >= 1.0 && applicantGpa <= 5.0) {
-      const schoolLower = String(a.school || a.schoolName || '').toLowerCase().trim();
-      let isUpSystem = false;
-
-      if (schoolLower) {
-        const upKeywords = ['philippines', 'up', 'pup', 'plm', 'pamantasan', 'tup', 'bulsu', 'state', 'university', 'college', 'technological', 'mapua', 'su'];
-        const dlsuKeywords = ['la salle', 'dlsu', 'ateneo', 'admu', 'benilde', 'csb', 'beda'];
-        if (upKeywords.some(kw => schoolLower.includes(kw)) && !dlsuKeywords.some(kw => schoolLower.includes(kw))) {
-          isUpSystem = true;
-        }
-      } else {
-        if (applicantGpa <= 2.4) {
-          isUpSystem = true;
-        }
-      }
-
-      if (isUpSystem) {
-        normalizedGpa = 100 - (applicantGpa - 1.0) * 12.5;
-      } else {
-        if (applicantGpa <= 4.0) {
-          normalizedGpa = 50 + applicantGpa * 12.5;
-        } else {
-          normalizedGpa = 37.5 + applicantGpa * 12.5;
-        }
-      }
-    }
+    const normalizedGpa = convertGpaToPercentage(applicantRawGpa, a.school || a.schoolName) ?? Number(applicantRawGpa || 0);
 
     let gpaScore = 0;
     const minGpa = sch ? Number(sch.gpa ?? sch.minGpa ?? 0) : 0;
@@ -4314,8 +4356,8 @@ export default function ScholarshipDashboard({
             valA = String(a.name || '').toLowerCase();
             valB = String(b.name || '').toLowerCase();
           } else if (sortConfig.column === 'grade') {
-            valA = Number(a.grade || 0);
-            valB = Number(b.grade || 0);
+            valA = convertGpaToPercentage(a.grade || a.overall_gpa || a.gpa, a.school) ?? 0;
+            valB = convertGpaToPercentage(b.grade || b.overall_gpa || b.gpa, b.school) ?? 0;
           } else if (sortConfig.column === 'financial') {
             valA = Number(a.income || a.financial_income_of_parents || a.parentFinance || a.family?.grossIncome || 0);
             valB = Number(b.income || b.financial_income_of_parents || b.parentFinance || b.family?.grossIncome || 0);
@@ -4498,7 +4540,7 @@ export default function ScholarshipDashboard({
             <thead className="sticky top-0 z-20 bg-[#800020] text-white">
               <tr className="bg-[#800020] text-white select-none">
                 <th className="px-4 py-3 text-left font-semibold">Name</th>
-                <th className="px-4 py-3 text-left font-semibold">Grade</th>
+                <th className="px-4 py-3 text-left font-semibold">Grade / GPA</th>
                 <th className="px-4 py-3 text-left font-semibold">Financial</th>
                 <th className="px-4 py-3 text-left font-semibold">Points</th>
                 <th className="px-4 py-3 text-left font-semibold">School &amp; Course</th>
@@ -4520,7 +4562,7 @@ export default function ScholarshipDashboard({
                         </div>
                         <div className="font-semibold text-sm">{a.name}</div>
                       </td>
-                      <td className="px-3 py-2 text-sm">{a.grade}</td>
+                      <td className="px-3 py-2 text-sm font-semibold text-gray-800" title={a.grade ? `Original GPA: ${a.grade}` : ''}>{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
                       <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       {renderPointsCell(a)}
                       <td className="px-3 py-2 text-xs">
@@ -4560,7 +4602,7 @@ export default function ScholarshipDashboard({
                         </div>
                         <div className="font-semibold text-sm">{a.name}</div>
                       </td>
-                      <td className="px-3 py-2 text-sm">{a.grade}</td>
+                      <td className="px-3 py-2 text-sm font-semibold text-gray-800" title={a.grade ? `Original GPA: ${a.grade}` : ''}>{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
                       <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       {renderPointsCell(a)}
                       <td className="px-3 py-2 text-xs">
@@ -4592,7 +4634,7 @@ export default function ScholarshipDashboard({
                         </div>
                         <div className="font-semibold text-sm">{a.name}</div>
                       </td>
-                      <td className="px-3 py-2 text-sm">{a.grade}</td>
+                      <td className="px-3 py-2 text-sm font-semibold text-gray-800" title={a.grade ? `Original GPA: ${a.grade}` : ''}>{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
                       <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       {renderPointsCell(a)}
                       <td className="px-3 py-2 text-xs">
@@ -4624,7 +4666,7 @@ export default function ScholarshipDashboard({
                         </div>
                         <div className="font-semibold text-sm">{a.name}</div>
                       </td>
-                      <td className="px-3 py-2 text-sm">{a.grade}</td>
+                      <td className="px-3 py-2 text-sm font-semibold text-gray-800" title={a.grade ? `Original GPA: ${a.grade}` : ''}>{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
                       <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       {renderPointsCell(a)}
                       <td className="px-3 py-2 text-xs">
@@ -4656,7 +4698,7 @@ export default function ScholarshipDashboard({
                         </div>
                         <div className="font-semibold text-sm">{a.name}</div>
                       </td>
-                      <td className="px-3 py-2 text-sm">{a.grade}</td>
+                      <td className="px-3 py-2 text-sm font-semibold text-gray-800" title={a.grade ? `Original GPA: ${a.grade}` : ''}>{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
                       <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       {renderPointsCell(a)}
                       <td className="px-3 py-2 text-xs">
@@ -4712,7 +4754,7 @@ export default function ScholarshipDashboard({
         return {
           'Student Name': app.name || `${app.firstName || ''} ${app.lastName || ''}`.trim() || 'N/A',
           'Status': app.status || 'Pending',
-          'Grade': app.grade ?? 'N/A',
+          'Grade': formatGpaDisplay(app.grade || app.overall_gpa || app.gpa, app.school),
           'Financial Status': getFinancialStatusLabel(app.income || app.financial_income_of_parents || app.parentFinance || app.family?.grossIncome),
           'Points': points ?? 'N/A',
           'School': app.school || 'N/A',
@@ -4778,7 +4820,7 @@ export default function ScholarshipDashboard({
     const formatApplicants = (list) => list.map(app => ({
       'Student Name': app.name || `${app.firstName} ${app.lastName}`,
       'Scholarship Name': app.scholarshipName || 'N/A',
-      'Grade': app.grade || 'N/A',
+      'Grade': formatGpaDisplay(app.grade || app.overall_gpa || app.gpa, app.school),
       'Financial Status': getFinancialStatusLabel(app.income || app.family?.grossIncome),
       'School': app.school || 'N/A',
       'Contact No.': app.mobileNumber || app.phone || app.studentContact?.phone || 'N/A',
@@ -5341,10 +5383,10 @@ export default function ScholarshipDashboard({
                       </h5>
                       <div className="overflow-x-auto max-h-72">
                         <table className="w-full text-left text-xs border-collapse">
-                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
+                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
                             {filteredPending.map((a) => (
-                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3">{a.grade}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td></tr>
+                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td></tr>
                             ))}
                             {filteredPending.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No pending applicants found for this scholarship</td></tr>}
                           </tbody>
@@ -5361,10 +5403,10 @@ export default function ScholarshipDashboard({
                       </h5>
                       <div className="overflow-x-auto max-h-72">
                         <table className="w-full text-left text-xs border-collapse">
-                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
+                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
                             {filteredAccepted.map((a) => (
-                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3">{a.grade}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td></tr>
+                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td></tr>
                             ))}
                             {filteredAccepted.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No accepted scholars found for this scholarship</td></tr>}
                           </tbody>
@@ -5381,10 +5423,10 @@ export default function ScholarshipDashboard({
                       </h5>
                       <div className="overflow-x-auto max-h-72">
                         <table className="w-full text-left text-xs border-collapse">
-                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
+                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
                             {filteredRejected.map((a) => (
-                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3">{a.grade}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td></tr>
+                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td></tr>
                             ))}
                             {filteredRejected.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No rejected applicants found for this scholarship</td></tr>}
                           </tbody>
@@ -5569,7 +5611,7 @@ export default function ScholarshipDashboard({
                   {filteredPending.map((a) => (
                     <tr key={a.id || a.applicant_no || a.name}>
                       <td className="border p-2 font-bold">{a.name}</td>
-                      <td className="border p-2">{a.grade}</td>
+                      <td className="border p-2">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
                       <td className="border p-2">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       <td className="border p-2">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
                     </tr>
@@ -5584,7 +5626,7 @@ export default function ScholarshipDashboard({
                 <thead>
                   <tr className="bg-gray-50">
                     <th className="border p-2 text-left">Student Name</th>
-                    <th className="border p-2 text-left">Grade</th>
+                    <th className="border p-2 text-left">Grade / GPA</th>
                     <th className="border p-2 text-left">Financial Status</th>
                     <th className="border p-2 text-left">Contact & Address</th>
                   </tr>
@@ -5593,7 +5635,7 @@ export default function ScholarshipDashboard({
                   {filteredAccepted.map((a) => (
                     <tr key={a.id || a.applicant_no || a.name}>
                       <td className="border p-2 font-bold">{a.name}</td>
-                      <td className="border p-2">{a.grade}</td>
+                      <td className="border p-2">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
                       <td className="border p-2">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       <td className="border p-2">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
                     </tr>
@@ -5608,7 +5650,7 @@ export default function ScholarshipDashboard({
                 <thead>
                   <tr className="bg-gray-50">
                     <th className="border p-2 text-left">Student Name</th>
-                    <th className="border p-2 text-left">Grade</th>
+                    <th className="border p-2 text-left">Grade / GPA</th>
                     <th className="border p-2 text-left">Financial Status</th>
                     <th className="border p-2 text-left">Contact & Address</th>
                   </tr>
@@ -5617,7 +5659,7 @@ export default function ScholarshipDashboard({
                   {filteredRejected.concat(filteredCancelled).map((a) => (
                     <tr key={a.id || a.applicant_no || a.name}>
                       <td className="border p-2 font-bold">{a.name}</td>
-                      <td className="border p-2">{a.grade}</td>
+                      <td className="border p-2">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
                       <td className="border p-2">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       <td className="border p-2">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
                     </tr>
@@ -6085,7 +6127,9 @@ export default function ScholarshipDashboard({
             <div className="flex gap-1.5 sm:gap-3 flex-wrap">
               <div className="bg-yellow-50 border border-yellow-200 px-2 sm:px-3 py-1 rounded-full flex items-center gap-1.5">
                 <span className="text-[9px] sm:text-[10px] font-black text-[#800020] uppercase">Avg Grade:</span>
-                <span className="text-xs sm:text-sm font-black text-gray-800">{a.grade}</span>
+                <span className="text-xs sm:text-sm font-black text-gray-800" title={a.grade ? `Original GPA: ${a.grade}` : ''}>
+                  {formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}
+                </span>
               </div>
               <div className="bg-rose-50 border border-rose-200 px-2 sm:px-3 py-1 rounded-full flex items-center gap-1.5">
                 <span className="text-[9px] sm:text-[10px] font-black text-[#800020] uppercase">Income:</span>
@@ -6656,7 +6700,11 @@ export default function ScholarshipDashboard({
                     const allPending = data.applicants || [];
                     const filteredApplicants = allPending.filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
                     const top = [...filteredApplicants]
-                      .sort((a, b) => (Number(b.grade) || 0) - (Number(a.grade) || 0))
+                      .sort((a, b) => {
+                        const gradeA = convertGpaToPercentage(a.grade || a.overall_gpa || a.gpa, a.school) ?? 0;
+                        const gradeB = convertGpaToPercentage(b.grade || b.overall_gpa || b.gpa, b.school) ?? 0;
+                        return gradeB - gradeA;
+                      })
                       .slice(0, count);
                     setRecommended(top);
                   }}
@@ -6671,7 +6719,7 @@ export default function ScholarshipDashboard({
                   <tr className="bg-[#800020] text-white">
                     <th className="px-4 py-3 text-left font-bold">Rank</th>
                     <th className="px-4 py-3 text-left font-bold">Name</th>
-                    <th className="px-4 py-3 text-left font-bold">Grade</th>
+                    <th className="px-4 py-3 text-left font-bold">Grade / GPA</th>
                     <th className="px-4 py-3 text-left font-bold">Financial Status</th>
                     <th className="px-4 py-3 text-center font-bold">Actions</th>
                   </tr>
@@ -6681,7 +6729,9 @@ export default function ScholarshipDashboard({
                     <tr key={`${s.name}-${i}`} className="hover:bg-rose-50/30 transition-colors">
                       <td className="px-4 py-3 font-black text-[#800020] text-lg">{i + 1}</td>
                       <td className="px-4 py-3 font-bold text-gray-800">{s.name}</td>
-                      <td className="px-4 py-3 font-mono text-blue-700 font-bold">{s.grade}</td>
+                      <td className="px-4 py-3 font-mono text-blue-700 font-bold" title={s.grade ? `Original GPA: ${s.grade}` : ''}>
+                        {formatGpaDisplay(s.grade || s.overall_gpa || s.gpa, s.school)}
+                      </td>
                       <td className="px-4 py-3">
                         <span className="px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">
                           {getFinancialStatusLabel(s.income || s.financial_income_of_parents || s.family?.grossIncome)}
