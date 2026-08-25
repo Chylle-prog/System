@@ -2249,11 +2249,11 @@ def get_all_scholarships():
     offset = int(request.args.get('offset', 0))
     cache_key = f"scholarships_all_{limit}_{offset}"
     
-    # 1. Check in-memory TTL cache (60s lifetime)
-    cached_data = get_cached_response(cache_key, ttl_seconds=60)
+    # 1. Check in-memory TTL cache (30s lifetime, cleared immediately on admin mutations)
+    cached_data = get_cached_response(cache_key, ttl_seconds=30)
     if cached_data is not None:
         resp = jsonify(cached_data)
-        resp.headers['Cache-Control'] = 'public, max-age=60, s-maxage=300, stale-while-revalidate=30'
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         resp.headers['X-Cache-Status'] = 'HIT'
         return resp
 
@@ -2262,10 +2262,10 @@ def get_all_scholarships():
             cur = conn.cursor()
             cur.execute('SELECT req_no, scholarship_name, deadline, gpa, parent_finance, location, "desc" as description, semester, year, units, COALESCE(residency_doc_type, \'Indigency Document\') as "residencyDocType", COALESCE(id_type, \'School ID\') as "idType" FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
             rows = cur.fetchall()
-            set_cached_response(cache_key, rows, ttl_seconds=60)
+            set_cached_response(cache_key, rows, ttl_seconds=30)
             print(f"[PERF] /scholarships DB query took {time.time() - start:.3f}s (limit={limit}, offset={offset})", flush=True)
             resp = jsonify(rows)
-            resp.headers['Cache-Control'] = 'public, max-age=60, s-maxage=300, stale-while-revalidate=30'
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
             resp.headers['X-Cache-Status'] = 'MISS'
             return resp
     except Exception as exc:

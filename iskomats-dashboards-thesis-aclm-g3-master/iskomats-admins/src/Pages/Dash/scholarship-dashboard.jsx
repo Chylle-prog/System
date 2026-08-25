@@ -252,6 +252,36 @@ const normalizeProviderIdentity = (value) => String(value || '').toLowerCase().t
 
 const normalizeSearchText = (value) => String(value ?? '').toLowerCase().trim();
 
+/**
+ * Official 4.0 GPA to Percentage Conversion Table:
+ * 98-100   - 4.00 (midpoint ~99%)
+ * 95-97    - 3.75 (midpoint ~96%)
+ * 92-94    - 3.50 (midpoint ~93%)
+ * 89-91    - 3.25 (midpoint ~90%)
+ * 86-88    - 3.00 (midpoint ~87%)
+ * 83-85    - 2.75 (midpoint ~84%)
+ * 80-82    - 2.50 (midpoint ~81%)
+ * 77-79    - 2.25 (midpoint ~78%)
+ * 75-76    - 2.00 (midpoint ~75.5%)
+ * Below 75 - 0.00
+ */
+export const getGpaRangeLabel = (grade) => {
+  if (grade === null || grade === undefined || grade === '') return '';
+  const num = parseFloat(String(grade).replace(/%/g, '').trim());
+  if (isNaN(num)) return '';
+  if (num >= 3.88 && num <= 4.0) return '98-100%';
+  if (num >= 3.63 && num < 3.88) return '95-97%';
+  if (num >= 3.38 && num < 3.63) return '92-94%';
+  if (num >= 3.13 && num < 3.38) return '89-91%';
+  if (num >= 2.88 && num < 3.13) return '86-88%';
+  if (num >= 2.63 && num < 2.88) return '83-85%';
+  if (num >= 2.38 && num < 2.63) return '80-82%';
+  if (num >= 2.13 && num < 2.38) return '77-79%';
+  if (num >= 1.90 && num < 2.13) return '75-76%';
+  if (num < 1.90 && num > 0) return 'Below 75%';
+  return '';
+};
+
 export const convertGpaToPercentage = (val, schoolName = '') => {
   if (val === null || val === undefined || val === '') return null;
   const cleanStr = String(val).replace(/%/g, '').trim();
@@ -263,8 +293,8 @@ export const convertGpaToPercentage = (val, schoolName = '') => {
     return num;
   }
 
-  // 1.0 to 5.0 Point scale (Philippine university GPA/GWA or 4.0 scale)
-  if (num >= 1.0 && num <= 5.0) {
+  // 1.0 to 5.0 Point scale
+  if (num >= 0.0 && num <= 5.0) {
     const schoolLower = String(schoolName || '').toLowerCase().trim();
     let isUpSystem = false;
 
@@ -274,23 +304,30 @@ export const convertGpaToPercentage = (val, schoolName = '') => {
       if (upKeywords.some(kw => schoolLower.includes(kw)) && !dlsuKeywords.some(kw => schoolLower.includes(kw))) {
         isUpSystem = true;
       }
-    } else {
-      if (num <= 2.4) {
-        isUpSystem = true;
-      }
+    } else if (num >= 1.0 && num <= 1.9) {
+      isUpSystem = true;
     }
 
     if (isUpSystem) {
-      // 1.0 = 100%, 3.0 = 75%, 5.0 = 50%
+      // UP/State U 1.0 - 5.0 scale (1.0 = 100%, 3.0 = 75%, 5.0 = 50%)
       return Math.round((100 - (num - 1.0) * 12.5) * 100) / 100;
-    } else {
-      // 4.0 Scale: 4.0 = 100%, 3.0 = 87.5%, 2.0 = 75%, 1.0 = 62.5%
-      if (num <= 4.0) {
-        return Math.round((50 + num * 12.5) * 100) / 100;
-      } else {
-        return Math.round((37.5 + num * 12.5) * 100) / 100;
-      }
     }
+
+    // 4.0 Scale tier mapping from chart
+    if (num >= 3.88) return 99;   // 98-100 (4.00)
+    if (num >= 3.63) return 96;   // 95-97  (3.75)
+    if (num >= 3.38) return 93;   // 92-94  (3.50)
+    if (num >= 3.13) return 90;   // 89-91  (3.25)
+    if (num >= 2.88) return 87;   // 86-88  (3.00)
+    if (num >= 2.63) return 84;   // 83-85  (2.75)
+    if (num >= 2.38) return 81;   // 80-82  (2.50)
+    if (num >= 2.13) return 78;   // 77-79  (2.25)
+    if (num >= 1.90) return 75.5; // 75-76  (2.00)
+    if (num > 0.0) {
+      // Below 2.00 / Below 75
+      return Math.max(0, Math.round((75 - (2.0 - num) * 12) * 100) / 100);
+    }
+    return 0; // 0.00 -> Below 75
   }
 
   // Fraction scale (e.g. 0.85 = 85%)
@@ -303,6 +340,16 @@ export const convertGpaToPercentage = (val, schoolName = '') => {
 
 export const formatGpaDisplay = (grade, schoolName = '') => {
   if (grade === null || grade === undefined || grade === '') return 'N/A';
+  const cleanStr = String(grade).replace(/%/g, '').trim();
+  const num = parseFloat(cleanStr);
+  if (isNaN(num)) return String(grade);
+
+  // If already percentage >= 50
+  if (num >= 50.0 && num <= 100.0) {
+    const formatted = (num % 1 === 0) ? num.toFixed(0) : num.toFixed(2).replace(/\.?0+$/, '');
+    return `${formatted}%`;
+  }
+
   const converted = convertGpaToPercentage(grade, schoolName);
   if (converted === null || isNaN(converted)) return String(grade);
   const formatted = (converted % 1 === 0) ? converted.toFixed(0) : converted.toFixed(2).replace(/\.?0+$/, '');

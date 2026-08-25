@@ -40,6 +40,14 @@ def safe_emit(event, data, **kwargs):
     except Exception as _e:
         print(f"[SOCKETIO EMIT] Could not broadcast '{event}': {_e}", flush=True)
 
+def safe_invalidate_public_caches():
+    """Immediately clears in-memory public caches (announcements and scholarships) on data mutation."""
+    try:
+        from blueprints.student_api import invalidate_public_caches
+        invalidate_public_caches()
+    except Exception as _e:
+        print(f"[CACHE] Could not invalidate public caches: {_e}", flush=True)
+
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_DIR not in sys.path:
     sys.path.append(PROJECT_DIR)
@@ -4240,6 +4248,7 @@ def create_scholarship(current_user_id, pro_no, role):
             }, broadcast=True)
             safe_emit('scholarship_change', {'action': 'create', 'req_no': req_no}, broadcast=True)
             safe_emit('account_change', {'type': 'scholarship_create'}, broadcast=True)
+            safe_invalidate_public_caches()
         
             return jsonify({
                 'success': True, 
@@ -4341,6 +4350,7 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
             }, broadcast=True)
             safe_emit('scholarship_change', {'action': 'update', 'req_no': req_no}, broadcast=True)
             safe_emit('account_change', {'type': 'scholarship_update'}, broadcast=True)
+            safe_invalidate_public_caches()
         
             return jsonify({'success': True, 'message': 'Scholarship updated'}), 200
     
@@ -4398,6 +4408,7 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
             }, broadcast=True)
             safe_emit('scholarship_change', {'action': 'delete', 'req_no': req_no}, broadcast=True)
             safe_emit('account_change', {'type': 'scholarship_delete'}, broadcast=True)
+            safe_invalidate_public_caches()
             return jsonify({'success': True, 'message': 'Scholarship removed'}), 200
         
     except Exception as e:
@@ -5035,6 +5046,7 @@ def create_announcement(current_user_id, pro_no, role):
                 'pro_no': target_pro_no
             }, broadcast=True)
             safe_emit('notification_update', {'type': 'announcement', 'ann_no': ann_no}, broadcast=True)
+            safe_invalidate_public_caches()
         
             # Dispatch notifications asynchronously in background thread
             print(f"[ANNOUNCEMENT] Dispatching notifications for ann_no {ann_no} (SendToAll: {send_to_all_applicants})", flush=True)
@@ -5216,6 +5228,7 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
                 'pro_no': target_provider_no
             }, broadcast=True)
             safe_emit('notification_update', {'type': 'announcement', 'ann_no': ann_no}, broadcast=True)
+            safe_invalidate_public_caches()
 
             if should_notify:
                 run_background_task(
@@ -5293,6 +5306,7 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
                 'pro_no': ann_provider_no
             }, broadcast=True)
             safe_emit('notification_update', {'type': 'announcement', 'ann_no': ann_no}, broadcast=True)
+            safe_invalidate_public_caches()
         
             return jsonify({'success': True, 'message': 'Announcement deleted'}), 200
     except Exception as e:
