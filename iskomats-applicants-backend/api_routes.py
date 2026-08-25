@@ -3778,11 +3778,14 @@ def get_applicants(current_user_id, pro_no, role, program):
                 search_term = f"%{filters['search']}%"
                 params.extend([search_term, search_term, search_term])
             
-            # Add Pagination for SuperAdmin performance
-            limit = int(filters.get('limit', 500))
-            offset = int(filters.get('offset', 0))
-            query += ' ORDER BY a.applicant_no DESC LIMIT %s OFFSET %s'
-            params.extend([limit, offset])
+            # Add Pagination if explicitly requested by client
+            if filters.get('limit'):
+                limit = int(filters.get('limit'))
+                offset = int(filters.get('offset', 0))
+                query += ' ORDER BY a.applicant_no DESC LIMIT %s OFFSET %s'
+                params.extend([limit, offset])
+            else:
+                query += ' ORDER BY a.applicant_no DESC'
 
             cursor.execute(query, params)
             applicants = cursor.fetchall()
