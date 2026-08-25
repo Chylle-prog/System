@@ -942,18 +942,12 @@ export const applicantAPI = {
    * @param {string} fieldName - Field name
    * @param {File} file - Video file
    * @param {function} onProgress - Progress callback
-   * @returns {Promise} - { publicUrl }
-   */
   uploadRequirementVideo: async (fieldName, file, onProgress) => {
     try {
-      console.log(`[VIDEO-UPLOAD] High-speed uploading ${fieldName}: ${file.name || 'video'} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+      console.log(`[VIDEO-UPLOAD] Ultra-fast direct uploading ${fieldName}: ${file.name || 'video'} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
 
-      // 1. Instant client-side optimization if video is large
-      let uploadFile = file;
-      if (file.size > 2.5 * 1024 * 1024) {
-        if (onProgress) onProgress(10);
-        uploadFile = await applicantAPI.optimizeVideo(file);
-      }
+      const uploadFile = file;
+      if (onProgress) onProgress(5);
 
       let response = null;
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://choqncwkxobwsouyotih.supabase.co';
