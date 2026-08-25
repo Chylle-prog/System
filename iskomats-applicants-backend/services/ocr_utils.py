@@ -863,166 +863,139 @@ def _extract_signature_from_id_back(id_img):
     
     h_idx, w_idx = binary.shape[:2]
 
-    # Detect horizontal signature line to isolate signature ink from printed text below
-    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (int(w_idx * 0.18), 1))
-    detected_lines = cv2.morphologyEx(binary, cv2.MORPH_OPEN, horizontal_kernel)
-    line_contours, _ = cv2.findContours(detected_lines, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    sig_line_y = None
-    if line_contours:
-        candidate_lines = []
-        for l_cnt in line_contours:
-            lx, ly, lw, lh = cv2.boundingRect(l_cnt)
-            if lw > w_idx * 0.18 and h_idx * 0.20 < ly < h_idx * 0.85:
-                candidate_lines.append((ly, lw))
-        if candidate_lines:
-            candidate_lines.sort(key=lambda x: x[1], reverse=True)
-            sig_line_y = candidate_lines[0][0]
+    # Find external contours in the binary ROI
+    contours, _ = cv2.findContours(binary.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
 
-    # Define vertical window limits: Handwritten signature lives STRICTLY ABOVE the signature line
-    if sig_line_y is not None:
-        window_height = max(50, int(h_idx * 0.70))
-        y_min_limit = max(0, sig_line_y - window_height)
-        y_max_limit = sig_line_y - 2
-        logger.info(f"[SIGNATURE] Detected signature underline at y={sig_line_y}. Window: {y_min_limit} to {y_max_limit}")
-    else:
-        y_min_limit = int(h_idx * 0.05)
-        y_max_limit = int(h_idx * 0.65)
-        logger.info(f"[SIGNATURE] Underline not found. Using fallback window: {y_min_limit} to {y_max_limit}")
-
-    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     candidates = []
-    
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
-        
-        if x < 2 or (x+w) > w_idx-2: continue
-        if y < 2 or (y+h) > h_idx-2: continue
-        
+        if x < 2 or (x + w) > w_idx - 2:
+            continue
+        if y < 2 or (y + h) > h_idx - 2:
+            continue
+
         area = cv2.contourArea(cnt)
-        if area < 25: continue
-        
-        solidity = area / float(w * h) if w * h > 0 else 0
+        if area < 20:
+            continue
+
         aspect = w / float(h) if h > 0 else 0
-        extent = area / float(w_idx * h_idx)
-        y_mid = y + h/2
+        solidity = area / float(w * h) if w * h > 0 else 0
+        y_mid = y + h / 2.0
 
-        # Filter out star logo / top graphics in the upper 35% of ROI
-        # (raised from 28 → 35 so the star centroid is safely excluded)
-        if y_mid < h_idx * 0.35:
-            continue
-        
-        # Enforce vertical signature limits to isolate handwritten ink strictly above the line
-        # When an underline is detected, y_max_limit = sig_line_y - 2 (hard cut)
-        if not (y_min_limit <= y_mid <= y_max_limit):
+        # 1. Exclude standalone underline contours:
+        # High aspect ratio, thin, situated in the lower section (y_mid > 40% height)
+        if (aspect > 6.5 and h <= 12 and w > w_idx * 0.16 and y_mid > h_idx * 0.40) or (aspect > 12.0 and h <= 14):
             continue
 
-        if aspect < 0.22:
+        # 2. Exclude top star logo / emblems (top 32% of ROI, compact, or large solid area)
+        if y_mid < h_idx * 0.32:
+            if solidity > 0.25 or (0.5 < aspect < 2.0 and area > 400):
+                continue
+
+        # 3. Exclude printed text labels at the bottom ("Signature", "Date")
+        if y_mid > h_idx * 0.65 and h < 26 and area < 400 and aspect < 2.5:
             continue
 
-        if aspect > 5.5 or (aspect > 4.0 and h < 8): 
-            continue
-        
+        # 4. Exclude geometric noise
         peri = cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
-        
-        # Filter out geometric logo shapes (star points, squares, circles)
-        if (4 <= len(approx) <= 12 and solidity > 0.45) or solidity > 0.65:
-             continue
-             
-        if 0.6 < aspect < 1.6 and solidity > 0.40:
+        if (4 <= len(approx) <= 12 and solidity > 0.55) or solidity > 0.70:
             continue
-            
-        if (extent > 0.12 or w > w_idx * 0.40) and solidity > 0.45: 
-             continue
-            
-        complexity = cv2.arcLength(cnt, True)
-        hw_score = complexity / (np.sqrt(area) + 1)
-        
+
+        complexity = peri / (np.sqrt(area) + 1)
         candidates.append({
             'cnt': cnt,
-            'box': (x, y, w, h), 
-            'complex': complexity, 
-            'hw_score': hw_score,
-            'y_mid': y_mid, 
-            'area': area
+            'box': (x, y, w, h),
+            'area': area,
+            'aspect': aspect,
+            'hw_score': complexity,
+            'y_mid': y_mid
         })
 
     if not candidates:
         ch, cw = int(h_idx * 0.6), int(w_idx * 0.7)
-        qy0, qx0 = int((h_idx - ch)/2), int((w_idx - cw)/2)
-        fallback = binary[qy0:qy0+ch, qx0:qx0+cw]
-        result = np.full((fallback.shape[0], fallback.shape[1], 3), 255, dtype=np.uint8)
-        result[fallback > 0] = (0, 0, 0)
-        return cv2.resize(result, (400, max(1, int(400 * ch/cw))), interpolation=cv2.INTER_LINEAR)
-        
-    # Anchor must be a candidate in the middle signature zone (not top logo, not bottom printed text)
-    anchor_candidates = [c for c in candidates if h_idx * 0.25 <= c['y_mid'] <= h_idx * 0.75]
-    if not anchor_candidates:
-        anchor_candidates = candidates
+        qy0, qx0 = int((h_idx - ch) / 2), int((w_idx - cw) / 2)
+        fallback = roi_gray[qy0:qy0 + ch, qx0:qx0 + cw]
+        result = cv2.cvtColor(fallback, cv2.COLOR_GRAY2BGR)
+        return cv2.resize(result, (400, max(1, int(400 * ch / cw))), interpolation=cv2.INTER_LINEAR)
 
-    anchor_candidates.sort(key=lambda c: c['hw_score'], reverse=True)
-    anchor = anchor_candidates[0]
-    anchor_top = anchor['box'][1]
-    anchor_bottom = anchor['box'][1] + anchor['box'][3]
-    anchor_h = anchor['box'][3]
+    # Find the main signature anchor stroke (high handwriting score and significant area in middle ROI)
+    mid_candidates = [c for c in candidates if h_idx * 0.25 <= c['y_mid'] <= h_idx * 0.75]
+    if not mid_candidates:
+        mid_candidates = candidates
 
-    final_parts = []
+    mid_candidates.sort(key=lambda c: (c['hw_score'] * np.sqrt(c['area'])), reverse=True)
+    anchor = mid_candidates[0]
+    anchor_box = anchor['box']
+    anchor_y_mid = anchor['y_mid']
+    anchor_h = anchor_box[3]
+    anchor_bottom = anchor_box[1] + anchor_box[3]
+
+    # Collect all contour parts that belong to the signature
+    sig_parts = []
     for c in candidates:
         x, y, w, h = c['box']
         y_mid = c['y_mid']
 
-        # Filter out horizontal underlines (w > 35% image width, h < 16px)
-        if w > w_idx * 0.35 and h < 16:
-            continue
-
-        # Filter out printed label text ("Signature", "Date", dots) strictly below the anchor
-        # These are below anchor_bottom AND far from the anchor centroid
-        if y >= anchor_bottom and y_mid > anchor['y_mid'] + anchor_h * 0.30:
-            continue
-
-        # Filter out top star logo / graphic elements strictly above anchor
-        # A star is compact (solidity > 0.3) and its entire bbox is above the anchor top
-        if (y + h) <= anchor_top:
-            cnt_area = c['area']
-            cnt_solidity = cnt_area / float(w * h) if w * h > 0 else 0
-            # Exclude compact (star/logo) shapes above the signature
-            if cnt_solidity > 0.25 or (w / float(h) if h > 0 else 0) < 2.0:
+        # Must be vertically aligned with the signature anchor (within 85% of anchor height or 35px)
+        if abs(y_mid - anchor_y_mid) <= max(35, anchor_h * 0.85):
+            # Must not be printed text below the anchor bottom
+            if y >= anchor_bottom and y_mid > anchor_y_mid + anchor_h * 0.35 and c['area'] < 300:
                 continue
+            sig_parts.append(c)
 
-        # Check proximity to anchor signature stroke (tighter: 70% of anchor height)
-        if abs(y_mid - anchor['y_mid']) <= max(25, anchor_h * 0.70):
-            final_parts.append(c)
-            
-    if not final_parts:
-        final_parts = [anchor]
-            
-    contour_mask = np.zeros((h_idx, w_idx), dtype=np.uint8)
-    for part in final_parts:
-        cv2.drawContours(contour_mask, [part['cnt']], -1, 255, -1)
+    if not sig_parts:
+        sig_parts = [anchor]
 
-    isolated_ink = cv2.bitwise_and(binary, binary, mask=contour_mask)
+    # Build clean binary mask of signature ink
+    sig_mask = np.zeros((h_idx, w_idx), dtype=np.uint8)
+    for p in sig_parts:
+        cv2.drawContours(sig_mask, [p['cnt']], -1, 255, -1)
 
-    x0 = min(p['box'][0] for p in final_parts)
-    y0 = min(p['box'][1] for p in final_parts)
-    x1 = max(p['box'][0] + p['box'][2] for p in final_parts)
-    y1 = max(p['box'][1] + p['box'][3] for p in final_parts)
+    sig_ink = cv2.bitwise_and(binary, binary, mask=sig_mask)
 
-    pad = 6
-    x0, y0 = max(0, x0 - pad), max(0, y0 - pad)
-    x1, y1 = min(w_idx, x1 + pad), min(h_idx, y1 + pad)
+    # Check if an underline is attached/touching the bottom of the signature mask:
+    # Search for purely horizontal line segments strictly BELOW anchor centroid
+    lower_sig_zone = sig_ink.copy()
+    lower_sig_zone[:int(anchor_y_mid + anchor_h * 0.20), :] = 0
 
-    crop_ink = isolated_ink[y0:y1, x0:x1]
-    if crop_ink.size == 0 or np.count_nonzero(crop_ink) == 0:
+    line_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (max(25, int(w_idx * 0.18)), 1))
+    attached_lines = cv2.morphologyEx(lower_sig_zone, cv2.MORPH_OPEN, line_kernel)
+    att_contours, _ = cv2.findContours(attached_lines, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    for alc in att_contours:
+        lx, ly, lw, lh = cv2.boundingRect(alc)
+        if lw >= int(w_idx * 0.18) and lh <= 8:
+            y0 = max(0, ly - 1)
+            y1 = min(h_idx, ly + lh + 1)
+            for col in range(lx, lx + lw):
+                above = np.any(sig_ink[max(0, y0 - 8):y0, col] > 0)
+                below = np.any(sig_ink[y1:min(h_idx, y1 + 8), col] > 0)
+                if not (above or below):
+                    sig_ink[y0:y1, col] = 0
+
+    # Find bounding box of remaining signature ink
+    pts_y, pts_x = np.where(sig_ink > 0)
+    if len(pts_y) == 0:
         ch, cw = int(h_idx * 0.6), int(w_idx * 0.7)
-        qy0, qx0 = int((h_idx - ch)/2), int((w_idx - cw)/2)
-        fallback = roi_gray[qy0:qy0+ch, qx0:qx0+cw]
+        qy0, qx0 = int((h_idx - ch) / 2), int((w_idx - cw) / 2)
+        fallback = roi_gray[qy0:qy0 + ch, qx0:qx0 + cw]
         result = cv2.cvtColor(fallback, cv2.COLOR_GRAY2BGR)
-        return cv2.resize(result, (400, max(1, int(400 * ch/cw))), interpolation=cv2.INTER_LINEAR)
+        return cv2.resize(result, (400, max(1, int(400 * ch / cw))), interpolation=cv2.INTER_LINEAR)
 
+    min_x, max_x = np.min(pts_x), np.max(pts_x)
+    min_y, max_y = np.min(pts_y), np.max(pts_y)
+
+    pad = 8
+    x0, y0 = max(0, min_x - pad), max(0, min_y - pad)
+    x1, y1 = min(w_idx, max_x + pad + 1), min(h_idx, max_y + pad + 1)
+
+    crop_ink = sig_ink[y0:y1, x0:x1]
     result = np.full((crop_ink.shape[0], crop_ink.shape[1], 3), 255, dtype=np.uint8)
     result[crop_ink > 0] = (0, 0, 0)
-    
+
     target_w = 400
     target_h = max(1, int(target_w * (result.shape[0] / float(result.shape[1]))))
     return cv2.resize(result, (target_w, target_h), interpolation=cv2.INTER_CUBIC)

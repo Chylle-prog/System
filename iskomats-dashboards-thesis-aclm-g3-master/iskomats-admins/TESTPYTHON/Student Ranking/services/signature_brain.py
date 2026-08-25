@@ -104,28 +104,53 @@ def _extract_ink_crop(img_np):
     if not contours:
         return gray
 
-    min_area = max(30, int(gray.shape[0] * gray.shape[1] * 0.0005))
-    all_x, all_y, all_w, all_h = [], [], [], []
-    
+    H, W = gray.shape[:2]
     valid_contours = []
     for contour in contours:
         area = cv2.contourArea(contour)
-        if area < max(35, int(gray.shape[0] * gray.shape[1] * 0.0005)):
+        if area < max(25, int(H * W * 0.0003)):
             continue
         x, y, w, h = cv2.boundingRect(contour)
-        if w > gray.shape[1] * 0.6 and h < 10:
+        cx_c = x + w / 2.0
+        cy_c = y + h / 2.0
+        aspect = w / float(h) if h > 0 else 0.0
+
+        # 1. Filter out long horizontal underlines (wide & very thin)
+        if (aspect > 6.0 and h <= 10 and w > W * 0.25 and cy_c > H * 0.40) or (aspect > 10.0 and h <= 12):
             continue
+
+        # 2. Filter out printed "Signature" / "Date" text labels.
+        #    These appear in the lower ~35% of the crop and are small isolated letter blobs
+        if cy_c > H * 0.65 and h < 24 and area < 250 and aspect < 2.5:
+            continue
+
+        # 3. Filter out top header logos (star, seal, etc.).
+        #    Logo blobs sit entirely in the top 35% of the image AND are compact/square
+        if cy_c < H * 0.35 and (y + h) < H * 0.45:
+            if 0.5 <= aspect <= 2.0 and area > 300:
+                continue
+
+        # 4. Drop isolated tiny dots far from the image centre
+        cx_img, cy_img = W / 2.0, H / 2.0
+        dist = ((cx_c - cx_img) ** 2 + (cy_c - cy_img) ** 2) ** 0.5
+        max_dist = (cx_img ** 2 + cy_img ** 2) ** 0.5
+        if area < 100 and dist > max_dist * 0.75:
+            continue
+
         valid_contours.append((x, y, w, h, area))
     
     if not valid_contours:
         return gray
  
+    # Anchor on the largest surviving contour (the main signature body)
     valid_contours.sort(key=lambda c: c[4], reverse=True)
-    main_y = valid_contours[0][1] + valid_contours[0][3] / 2.0
+    main_cy = valid_contours[0][1] + valid_contours[0][3] / 2.0
 
     filtered_pts = []
     for x, y, w, h, area in valid_contours:
-        if area < 100 and abs((y + h/2.0) - main_y) > gray.shape[0] * 0.22:
+        cy_c = y + h / 2.0
+        # Discard small stray marks more than 40% of height away from the anchor
+        if area < 150 and abs(cy_c - main_cy) > H * 0.40:
             continue
         filtered_pts.append((x, y, w, h))
 
@@ -137,10 +162,10 @@ def _extract_ink_crop(img_np):
     w = max(p[0] + p[2] for p in filtered_pts) - x
     h = max(p[1] + p[3] for p in filtered_pts) - y
     
-    pad = max(5, int(min(w, h) * 0.1))
+    pad = max(6, int(min(w, h) * 0.08))
     x_p, y_p = max(0, x - pad), max(0, y - pad)
-    w_p = min(gray.shape[1] - x_p, w + 2 * pad)
-    h_p = min(gray.shape[0] - y_p, h + 2 * pad)
+    w_p = min(W - x_p, w + 2 * pad)
+    h_p = min(H - y_p, h + 2 * pad)
     
     return gray[y_p:y_p + h_p, x_p:x_p + w_p]
 

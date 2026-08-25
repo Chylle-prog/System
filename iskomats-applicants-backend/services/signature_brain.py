@@ -100,31 +100,28 @@ def _extract_ink_crop(img_np):
         x, y, w, h = cv2.boundingRect(contour)
         cx_c = x + w / 2.0
         cy_c = y + h / 2.0
+        aspect = w / float(h) if h > 0 else 0.0
 
         # 1. Filter out long horizontal underlines (wide & very thin)
-        if w > W * 0.40 and h < 16:
+        if (aspect > 6.0 and h <= 10 and w > W * 0.25 and cy_c > H * 0.40) or (aspect > 10.0 and h <= 12):
             continue
 
         # 2. Filter out printed "Signature" / "Date" text labels.
-        #    These appear in the lower ~45% of the crop and are either
-        #    very short or much wider than they are tall.
-        if cy_c > H * 0.58 and (h < 30 or w > 2.0 * h):
+        #    These appear in the lower ~35% of the crop and are small isolated letter blobs
+        if cy_c > H * 0.65 and h < 24 and area < 250 and aspect < 2.5:
             continue
 
         # 3. Filter out top header logos (star, seal, etc.).
-        #    Logo blobs sit entirely in the top 35% of the image AND
-        #    are compact/square (aspect ratio < 2.5) — unlike the
-        #    wide, sweeping strokes of a handwritten signature.
+        #    Logo blobs sit entirely in the top 35% of the image AND are compact/square
         if cy_c < H * 0.35 and (y + h) < H * 0.45:
-            ar = w / float(h) if h > 0 else 0
-            if ar < 2.5:
+            if 0.5 <= aspect <= 2.0 and area > 300:
                 continue
 
         # 4. Drop isolated tiny dots far from the image centre
         cx_img, cy_img = W / 2.0, H / 2.0
         dist = ((cx_c - cx_img) ** 2 + (cy_c - cy_img) ** 2) ** 0.5
         max_dist = (cx_img ** 2 + cy_img ** 2) ** 0.5
-        if area < 150 and dist > max_dist * 0.70:
+        if area < 100 and dist > max_dist * 0.75:
             continue
 
         valid_contours.append((x, y, w, h, area))
@@ -139,8 +136,8 @@ def _extract_ink_crop(img_np):
     filtered_pts = []
     for x, y, w, h, area in valid_contours:
         cy_c = y + h / 2.0
-        # Discard small stray marks more than 20% of height away from the anchor
-        if area < 150 and abs(cy_c - main_cy) > H * 0.20:
+        # Discard small stray marks more than 40% of height away from the anchor
+        if area < 150 and abs(cy_c - main_cy) > H * 0.40:
             continue
         filtered_pts.append((x, y, w, h))
 
@@ -152,7 +149,7 @@ def _extract_ink_crop(img_np):
     w = max(p[0] + p[2] for p in filtered_pts) - x
     h = max(p[1] + p[3] for p in filtered_pts) - y
     
-    pad = max(6, int(min(w, h) * 0.12))
+    pad = max(6, int(min(w, h) * 0.08))
     x_p, y_p = max(0, x - pad), max(0, y - pad)
     w_p = min(W - x_p, w + 2 * pad)
     h_p = min(H - y_p, h + 2 * pad)
