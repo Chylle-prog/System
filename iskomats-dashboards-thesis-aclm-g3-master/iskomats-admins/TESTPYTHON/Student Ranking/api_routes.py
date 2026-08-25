@@ -2804,8 +2804,8 @@ def get_accounts(current_user_id, pro_no, role):
             SELECT *
             FROM (
                 SELECT
-                    'admin-' || ue.user_em_no::text AS id,
-                    ue.email_address AS email,
+                    'admin-' || u.user_no::text AS id,
+                    COALESCE(ue.email_address, 'No email') AS email,
                     COALESCE(u.user_name, p.provider_name, 'Unknown') AS name,
                     COALESCE(u.user_name, p.provider_name, 'Unknown') AS first_name,
                     '' AS last_name,
@@ -2816,15 +2816,15 @@ def get_accounts(current_user_id, pro_no, role):
                     'Registered' AS status,
                     NULL::date AS joined,
                     COALESCE(ue.is_locked, FALSE) AS locked
-                FROM {user_email_table} ue
-                LEFT JOIN users u ON ue.user_no = u.user_no
+                FROM users u
+                LEFT JOIN {user_email_table} ue ON u.user_no = ue.user_no
                 LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
 
                 UNION ALL
 
                 SELECT
-                    'applicant-' || ae.app_em_no::text AS id,
-                    ae.email_address AS email,
+                    'applicant-' || a.applicant_no::text AS id,
+                    COALESCE(ae.email_address, 'No email') AS email,
                     COALESCE(NULLIF(TRIM(COALESCE(a.first_name, '') || ' ' || COALESCE(a.last_name, '')), ''), 'Unknown') AS name,
                     COALESCE(a.first_name, 'Unknown') AS first_name,
                     COALESCE(a.last_name, '') AS last_name,
@@ -2835,12 +2835,13 @@ def get_accounts(current_user_id, pro_no, role):
                     CASE
                         WHEN ast.is_accepted = 'Accepted' THEN 'Accepted'
                         WHEN ast.is_accepted = 'Rejected' THEN 'Rejected'
+                        WHEN ast.is_accepted = 'Cancelled' THEN 'Cancelled'
                         ELSE 'Pending'
                     END AS status,
                     {joined_expr} AS joined,
                     COALESCE(ae.is_locked, FALSE) AS locked
-                FROM {applicant_email_table} ae
-                LEFT JOIN applicants a ON ae.applicant_no = a.applicant_no
+                FROM applicants a
+                LEFT JOIN {applicant_email_table} ae ON a.applicant_no = ae.applicant_no
                 LEFT JOIN (
                     SELECT applicant_no, scholarship_no, is_accepted{status_column},
                            ROW_NUMBER() OVER(PARTITION BY applicant_no ORDER BY {applicant_order}) as rn
@@ -3300,19 +3301,15 @@ def get_statistics(current_user_id, pro_no, role):
         
         if role != 'Admin':
             # Get total users related to this provider
-            cursor.execute(f'''
+            cursor.execute('''
                 SELECT (
-                    (SELECT COUNT(DISTINCT ue.user_em_no)
-                     FROM {user_email_table} ue
-                     LEFT JOIN users u ON ue.user_no = u.user_no
+                    (SELECT COUNT(DISTINCT u.user_no)
+                     FROM users u
                      WHERE u.pro_no = %s) +
-                    (SELECT COUNT(DISTINCT ae.app_em_no)
-                     FROM {applicant_email_table} ae
-                     WHERE ae.applicant_no IN (
-                        SELECT applicant_no FROM applicant_status ast 
-                        JOIN scholarships s ON ast.scholarship_no = s.req_no 
-                        WHERE s.pro_no = %s
-                     ))
+                    (SELECT COUNT(DISTINCT ast.applicant_no)
+                     FROM applicant_status ast 
+                     JOIN scholarships s ON ast.scholarship_no = s.req_no 
+                     WHERE s.pro_no = %s)
                 ) as total
             ''', (pro_no, pro_no))
             total_users = cursor.fetchone()['total']
@@ -3321,21 +3318,13 @@ def get_statistics(current_user_id, pro_no, role):
                 {'role': 'admin', 'count': 0},
                 {'role': 'scholar', 'count': 0},
             ]
-            cursor.execute(f'''
-                SELECT COUNT(DISTINCT ue.user_em_no) as count
-                FROM {user_email_table} ue
-                LEFT JOIN users u ON ue.user_no = u.user_no
-                WHERE u.pro_no = %s
-            ''', (pro_no,))
+            cursor.execute('SELECT COUNT(DISTINCT user_no) as count FROM users WHERE pro_no = %s', (pro_no,))
             by_role[0]['count'] = cursor.fetchone()['count']
-            cursor.execute(f'''
-                SELECT COUNT(DISTINCT ae.app_em_no) as count
-                FROM {applicant_email_table} ae
-                WHERE ae.applicant_no IN (
-                    SELECT applicant_no FROM applicant_status ast 
-                    JOIN scholarships s ON ast.scholarship_no = s.req_no 
-                    WHERE s.pro_no = %s
-                )
+            cursor.execute('''
+                SELECT COUNT(DISTINCT ast.applicant_no) as count
+                FROM applicant_status ast 
+                JOIN scholarships s ON ast.scholarship_no = s.req_no 
+                WHERE s.pro_no = %s
             ''', (pro_no,))
             by_role[1]['count'] = cursor.fetchone()['count']
             
@@ -3349,19 +3338,19 @@ def get_statistics(current_user_id, pro_no, role):
             total_applicants = cursor.fetchone()['total']
         else:
             # Superadmin gets everything
-            cursor.execute(f'SELECT (SELECT COUNT(*) FROM {user_email_table}) + (SELECT COUNT(*) FROM {applicant_email_table}) as total')
+            cursor.execute('SELECT (SELECT COUNT(*) FROM users) + (SELECT COUNT(DISTINCT applicant_no) FROM applicant_status) as total')
             total_users = cursor.fetchone()['total']
 
-            cursor.execute(f'SELECT COUNT(*) as count FROM {user_email_table}')
+            cursor.execute('SELECT COUNT(*) as count FROM users')
             admin_count = cursor.fetchone()['count']
-            cursor.execute(f'SELECT COUNT(*) as count FROM {applicant_email_table}')
+            cursor.execute('SELECT COUNT(DISTINCT applicant_no) as count FROM applicant_status')
             applicant_count = cursor.fetchone()['count']
             by_role = [
                 {'role': 'admin', 'count': admin_count},
                 {'role': 'scholar', 'count': applicant_count},
             ]
             
-            cursor.execute('SELECT COUNT(*) as total FROM applicants')
+            cursor.execute('SELECT COUNT(DISTINCT applicant_no) as total FROM applicant_status')
             total_applicants = cursor.fetchone()['total']
         
         cursor.close()
