@@ -4914,12 +4914,8 @@ def get_applicant_image(applicant_no, column_name):
                     print(f"[APPLICANT IMAGE] Proxy resolution error: {ex}", flush=True)
 
         if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
-            fetched_bytes = fetch_cloud_media_bytes(data)
-            if fetched_bytes:
-                data = fetched_bytes
-            else:
-                from flask import redirect
-                return redirect(normalize_supabase_url(data))
+            from flask import redirect
+            return redirect(normalize_supabase_url(data), code=302)
             
         # Convert memoryview to bytes if needed
         if hasattr(data, 'tobytes'):

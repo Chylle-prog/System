@@ -604,20 +604,39 @@ export const applicantAPI = {
   resolveDocument: resolveApplicantDocumentForDisplay,
 
   /**
-   * Get current user's profile
+   * Get current user's profile (with memory TTL cache for instant navigation)
    * @returns {Promise}
    */
   getProfile: (() => {
+    let cachedProfile = null;
+    let cacheTimestamp = 0;
     let pendingProfilePromise = null;
-    return async () => {
+    const CACHE_TTL = 30000; // 30s cache for 0ms tab navigation
+
+    const fn = async (forceRefresh = false) => {
+      const now = Date.now();
+      if (!forceRefresh && cachedProfile && (now - cacheTimestamp < CACHE_TTL)) {
+        return cachedProfile;
+      }
       if (pendingProfilePromise) return pendingProfilePromise;
       pendingProfilePromise = makeRequest('/student/applicant/profile', {
         method: 'GET',
+      }).then(data => {
+        cachedProfile = data;
+        cacheTimestamp = Date.now();
+        return data;
       }).finally(() => {
         pendingProfilePromise = null;
       });
       return pendingProfilePromise;
     };
+
+    fn.invalidate = () => {
+      cachedProfile = null;
+      cacheTimestamp = 0;
+    };
+
+    return fn;
   })(),
 
   /**
@@ -626,6 +645,9 @@ export const applicantAPI = {
    * @returns {Promise}
    */
   updateProfile: async (profileData) => {
+    if (typeof applicantAPI?.getProfile?.invalidate === 'function') {
+      applicantAPI.getProfile.invalidate();
+    }
     if (profileData instanceof FormData) {
       return makeRequest('/student/applicant/profile', {
         method: 'PUT',

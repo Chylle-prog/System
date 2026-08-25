@@ -392,14 +392,20 @@ def _create_notification_internal(conn, user_no, title, message, notif_type='mes
         if _socketio:
             try:
                 room = f"applicant_{user_no}"
-                print(f"[NOTIF SOCKET] Emitting 'new_notification' to room {room} for notif {notif_id}")
-                _socketio.emit('new_notification', {
+                payload = {
                     'id': notif_id,
+                    'user_no': user_no,
                     'title': title,
                     'message': message,
                     'type': notif_type,
+                    'read': False,
                     'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                }, room=room)
+                }
+                print(f"[NOTIF SOCKET] Emitting 'new_notification' to room {room} for notif {notif_id}")
+                _socketio.emit('new_notification', payload, room=room)
+                _socketio.emit('notification_update', payload, room=room)
+                # Also broadcast lightweight event so any student tab syncs immediately
+                _socketio.emit('notification_update', {'user_no': user_no, 'id': notif_id, 'type': notif_type})
                 print(f"[NOTIF SOCKET] Emit successful for user {user_no}")
             except Exception as socket_err:
                 print(f"[NOTIF SOCKET ERROR] Failed to emit: {socket_err}")

@@ -174,17 +174,57 @@ export const scholarshipAPI = {
   getByProgram: (program, params = {}) =>
     api.get(`/admin/scholarships/${program}`, { params }),
   
-  getApplicants: (program, filters = {}) =>
-    api.get(`/admin/applicants/${program}`, { params: filters }),
+  getApplicants: (() => {
+    const cache = new Map();
+    const inflight = new Map();
+    const CACHE_TTL = 15000; // 15s cache for fast tab switches
+
+    const fn = async (program, filters = {}, forceRefresh = false) => {
+      const key = `${program}_${JSON.stringify(filters || {})}`;
+      const now = Date.now();
+      const cached = cache.get(key);
+      if (!forceRefresh && cached && (now - cached.time < CACHE_TTL)) {
+        return cached.data;
+      }
+      if (inflight.has(key)) {
+        return inflight.get(key);
+      }
+
+      const promise = api.get(`/admin/applicants/${program}`, { params: filters })
+        .then(res => {
+          cache.set(key, { data: res, time: Date.now() });
+          return res;
+        })
+        .finally(() => {
+          inflight.delete(key);
+        });
+
+      inflight.set(key, promise);
+      return promise;
+    };
+
+    fn.invalidate = () => {
+      cache.clear();
+      inflight.clear();
+    };
+
+    return fn;
+  })(),
   
-  createApplicant: (program, applicantData) =>
-    api.post(`/admin/applicants/${program}`, applicantData),
+  createApplicant: (program, applicantData) => {
+    scholarshipAPI.getApplicants.invalidate();
+    return api.post(`/admin/applicants/${program}`, applicantData);
+  },
   
-  updateApplicant: (program, applicantId, applicantData) =>
-    api.put(`/admin/applicants/${program}/${applicantId}`, applicantData),
+  updateApplicant: (program, applicantId, applicantData) => {
+    scholarshipAPI.getApplicants.invalidate();
+    return api.put(`/admin/applicants/${program}/${applicantId}`, applicantData);
+  },
   
-  deleteApplicant: (program, applicantId) =>
-    api.delete(`/admin/applicants/${program}/${applicantId}`),
+  deleteApplicant: (program, applicantId) => {
+    scholarshipAPI.getApplicants.invalidate();
+    return api.delete(`/admin/applicants/${program}/${applicantId}`);
+  },
   
   getRankings: (program) =>
     api.get(`/admin/rankings/${program}`),

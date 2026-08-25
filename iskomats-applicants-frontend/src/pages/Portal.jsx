@@ -254,9 +254,9 @@ const Portal = () => {
     };
     fetchNotifications();
 
-    // Set up polling for notifications every 30 seconds
-    const notifInterval = setInterval(fetchNotifications, 30000);
-    const announcementInterval = setInterval(fetchAnnouncements, 30000);
+    // Set up polling fallback for notifications every 10 seconds
+    const notifInterval = setInterval(fetchNotifications, 10000);
+    const announcementInterval = setInterval(fetchAnnouncements, 10000);
 
     // Socket.IO Integration
     let unsubLogged, unsubMsg, unsubHistory, unsubRoom;
@@ -425,13 +425,35 @@ const Portal = () => {
         fetchProfile();
         fetchNotifications();
       });
-      const unsubNotifUpdate = socketService.subscribe('notification_update', () => {
-        console.log('[LIVE SYNC] Notification update received live');
+      const unsubNotifUpdate = socketService.subscribe('notification_update', (data) => {
+        console.log('[LIVE SYNC] Notification update received live:', data);
         fetchNotifications();
         fetchApplications();
       });
-      const unsubNewNotif = socketService.subscribe('new_notification', () => {
-        console.log('[LIVE SYNC] New notification received live');
+      const unsubNewNotif = socketService.subscribe('new_notification', (data) => {
+        console.log('[LIVE SYNC] New notification received live:', data);
+        if (data && (data.id || data.title)) {
+          const typeIcons = {
+            'message': 'fa-comment-alt',
+            'announcement': 'fa-bullhorn',
+            'scholarship': 'fa-graduation-cap',
+            'result': 'fa-file-signature'
+          };
+          const formattedNotif = {
+            id: data.id || Date.now(),
+            title: data.title || 'New Notification',
+            message: data.message || '',
+            type: data.type || 'message',
+            read: false,
+            time: data.time || 'Just now',
+            icon: typeIcons[data.type] || 'fa-bell'
+          };
+          setNotifications(prev => {
+            const exists = prev.some(n => n.id === formattedNotif.id);
+            if (exists) return prev;
+            return [formattedNotif, ...prev];
+          });
+        }
         fetchNotifications();
         fetchApplications();
       });

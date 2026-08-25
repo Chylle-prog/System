@@ -60,6 +60,8 @@ from services.notification_service import create_notification, fetch_google_acce
 from services.google_auth_service import verify_google_token
 from concurrent.futures import ThreadPoolExecutor
 
+_APPLICANTS_COLUMNS_CACHE = None
+
 # --- SCHEMA MIGRATION ---
 def ensure_applicant_verification_columns():
     try:
@@ -2308,9 +2310,11 @@ def get_profile():
             }
 
             # 1. First, get all column names to build a safe SELECT query
-            # This prevents 502/OOM errors by NOT pulling massive binary data into Python memory
-            cur.execute("SELECT * FROM applicants LIMIT 0")
-            all_columns = [desc[0] for desc in cur.description]
+            global _APPLICANTS_COLUMNS_CACHE
+            if _APPLICANTS_COLUMNS_CACHE is None:
+                cur.execute("SELECT * FROM applicants LIMIT 0")
+                _APPLICANTS_COLUMNS_CACHE = [desc[0] for desc in cur.description]
+            all_columns = _APPLICANTS_COLUMNS_CACHE
             
             # Build SELECT list: normal columns + IS NOT NULL checks for blobs
             select_parts = []
