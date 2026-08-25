@@ -101,17 +101,21 @@ def _extract_ink_crop(img_np):
         cx_c = x + w / 2.0
         cy_c = y + h / 2.0
 
-        # 1. Filter out long horizontal underlines (wide & very thin)
-        if w > W * 0.40 and h < 16:
+        # 1. Filter out long horizontal underlines (wide & thin lines)
+        if (w > W * 0.30 and h <= 10) or (w / float(h) > 6.0 and h <= 8):
             continue
 
-        # 2. Filter out printed "Signature" / "Date" text labels.
+        # 2. Filter out thin vertical border lines / tape edges
+        if (h / float(w) > 5.0 and w <= 8) or (h > H * 0.40 and w <= 10):
+            continue
+
+        # 3. Filter out printed "Signature" / "Date" text labels.
         #    These appear in the lower ~45% of the crop and are either
         #    very short or much wider than they are tall.
         if cy_c > H * 0.58 and (h < 30 or w > 2.0 * h):
             continue
 
-        # 3. Filter out top header logos (star, seal, etc.).
+        # 4. Filter out top header logos (star, seal, etc.).
         #    Logo blobs sit entirely in the top 35% of the image AND
         #    are compact/square (aspect ratio < 2.5) — unlike the
         #    wide, sweeping strokes of a handwritten signature.
@@ -120,7 +124,7 @@ def _extract_ink_crop(img_np):
             if ar < 2.5:
                 continue
 
-        # 4. Drop isolated tiny dots far from the image centre
+        # 5. Drop isolated tiny dots far from the image centre
         cx_img, cy_img = W / 2.0, H / 2.0
         dist = ((cx_c - cx_img) ** 2 + (cy_c - cy_img) ** 2) ** 0.5
         max_dist = (cx_img ** 2 + cy_img ** 2) ** 0.5

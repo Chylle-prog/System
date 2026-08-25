@@ -114,7 +114,7 @@ function formatScholarshipLabel(value) {
   return isNoScholarshipAssignment(value) ? 'No Scholarship' : value;
 }
 
-function matchesProgramFilter(scholarship, filterValue, providerName = '') {
+function matchesProgramFilter(scholarship, filterValue, accountProviderName = '') {
   if (!filterValue || filterValue === 'All' || filterValue === 'all') {
     return true;
   }
@@ -122,33 +122,36 @@ function matchesProgramFilter(scholarship, filterValue, providerName = '') {
     return isNoScholarshipAssignment(scholarship);
   }
 
-  if (isNoScholarshipAssignment(scholarship)) {
+  if (isNoScholarshipAssignment(scholarship) && (!accountProviderName || isNoScholarshipAssignment(accountProviderName))) {
     return false;
   }
 
   const schClean = String(scholarship || '').trim().toLowerCase();
   const filterClean = String(filterValue || '').trim().toLowerCase();
-  const provClean = String(providerName || '').trim().toLowerCase();
+  const accProvClean = String(accountProviderName || '').trim().toLowerCase();
 
   // Exact match
-  if (schClean === filterClean || provClean === filterClean) {
+  if (schClean === filterClean || (accProvClean && accProvClean === filterClean)) {
     return true;
   }
 
   // Substring match
-  if (schClean.includes(filterClean) || filterClean.includes(schClean)) {
+  if (schClean && (schClean.includes(filterClean) || filterClean.includes(schClean))) {
     return true;
   }
 
-  if (provClean && (provClean.includes(filterClean) || filterClean.includes(provClean))) {
+  if (accProvClean && (accProvClean.includes(filterClean) || filterClean.includes(accProvClean))) {
     return true;
   }
 
   // Provider keyword matching:
-  if (filterClean.includes('africa') && (schClean.includes('africa') || provClean.includes('africa'))) {
+  if (filterClean.includes('africa') && (schClean.includes('africa') || accProvClean.includes('africa'))) {
     return true;
   }
-  if (filterClean.includes('vilma') && (schClean.includes('vilma') || provClean.includes('vilma'))) {
+  if (filterClean.includes('vilma') && (schClean.includes('vilma') || accProvClean.includes('vilma'))) {
+    return true;
+  }
+  if (filterClean.includes('ched') && (schClean.includes('ched') || accProvClean.includes('ched'))) {
     return true;
   }
 
@@ -156,7 +159,7 @@ function matchesProgramFilter(scholarship, filterValue, providerName = '') {
   const filterTokens = filterClean.split(/\s+/).filter(w => w.length > 2);
   if (filterTokens.length > 0) {
     const schTokens = schClean.split(/\s+/);
-    const provTokens = provClean.split(/\s+/);
+    const provTokens = accProvClean.split(/\s+/);
     if (filterTokens.some(ft => schTokens.includes(ft) || provTokens.includes(ft))) {
       return true;
     }
@@ -253,19 +256,38 @@ export default function Dash() {
     const totalApplicantsInSystem = accounts.filter(a => a.type === 'Applicant').length;
 
     return actualPrograms.map((provider) => {
+      const pNo = Number(provider.pro_no);
+      const pName = (provider.provider_name || '').trim().toLowerCase();
+
       const usersCount = accounts.filter((a) => {
         if (a.type !== 'Admin') return false;
-        if (a.providerNo && provider.pro_no && Number(a.providerNo) === Number(provider.pro_no)) return true;
-        return matchesProgramFilter(a.scholarship, provider.provider_name, provider.provider_name);
+        if (a.providerNo !== null && a.providerNo !== undefined && a.providerNo !== '') {
+          return Number(a.providerNo) === pNo;
+        }
+        const sch = (a.scholarship || '').trim().toLowerCase();
+        if (isNoScholarshipAssignment(sch) || sch === 'all') return false;
+        if (pName.includes('africa') && sch.includes('africa')) return true;
+        if (pName.includes('vilma') && sch.includes('vilma')) return true;
+        if (pName.includes('ched') && sch.includes('ched')) return true;
+        return sch === pName || sch.includes(pName);
       }).length;
 
       const applicantsCount = accounts.filter((a) => {
         if (a.type !== 'Applicant') return false;
-        if (a.providerNo && provider.pro_no && Number(a.providerNo) === Number(provider.pro_no)) return true;
-        return matchesProgramFilter(a.scholarship, provider.provider_name, provider.provider_name);
+        if (a.providerNo !== null && a.providerNo !== undefined && a.providerNo !== '') {
+          return Number(a.providerNo) === pNo;
+        }
+        const sch = (a.scholarship || '').trim().toLowerCase();
+        if (isNoScholarshipAssignment(sch) || sch === 'all') return false;
+        if (pName.includes('africa') && sch.includes('africa')) return true;
+        if (pName.includes('vilma') && sch.includes('vilma')) return true;
+        if (pName.includes('ched') && sch.includes('ched')) return true;
+        return sch === pName || sch.includes(pName);
       }).length;
 
       const totalAccounts = usersCount + applicantsCount;
+      const staffPercentage = totalAccounts > 0 ? (usersCount / totalAccounts) * 100 : 0;
+      const applicantPercentage = totalAccounts > 0 ? (applicantsCount / totalAccounts) * 100 : 0;
       const percentage = totalApplicantsInSystem > 0
         ? (applicantsCount / totalApplicantsInSystem) * 100
         : (accounts.length > 0 ? (totalAccounts / accounts.length) * 100 : 0);
@@ -275,6 +297,8 @@ export default function Dash() {
         usersCount,
         applicantsCount,
         totalAccounts,
+        staffPercentage,
+        applicantPercentage,
         percentage: Math.min(100, Math.round(percentage)),
       };
     });
@@ -894,14 +918,6 @@ export default function Dash() {
                             <h4 className="font-black text-gray-900 uppercase tracking-widest text-xs border-l-4 border-[#800020] pl-4">
                               Program Distribution
                             </h4>
-                            <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider">
-                              <span className="flex items-center gap-1 text-[#800020]">
-                                <span className="w-2 h-2 rounded-full bg-[#800020]"></span> Staff
-                              </span>
-                              <span className="flex items-center gap-1 text-emerald-600">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Applicants
-                              </span>
-                            </div>
                           </div>
                           <div className="space-y-4 max-h-[350px] overflow-y-auto custom-scrollbar pr-2">
                             {providerStats.length === 0 ? (
@@ -913,19 +929,31 @@ export default function Dash() {
                                     <span className="uppercase tracking-wider truncate">{provider.provider_name}</span>
                                     <div className="flex items-center gap-1.5 flex-shrink-0">
                                       <span className="text-[10px] font-black text-[#800020] bg-rose-50 border border-rose-200/60 px-2 py-0.5 rounded-lg" title="Assigned Admins/Staff">
-                                        {provider.usersCount} {provider.usersCount === 1 ? 'Staff' : 'Staff'}
+                                        {provider.usersCount} Staff
                                       </span>
                                       <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded-lg" title="Registered Applicant Students">
                                         {provider.applicantsCount} {provider.applicantsCount === 1 ? 'Applicant' : 'Applicants'}
                                       </span>
                                     </div>
                                   </div>
-                                  <div className="w-full bg-gray-200/70 h-2 rounded-full overflow-hidden flex">
-                                    <div
-                                      className="bg-emerald-600 h-full rounded-full transition-all duration-500"
-                                      style={{ width: `${Math.max(provider.percentage, (provider.applicantsCount > 0 ? 5 : 0))}%` }}
-                                      title={`${provider.percentage}% of applicants`}
-                                    ></div>
+                                  <div className="w-full bg-gray-200/70 h-2.5 rounded-full overflow-hidden flex gap-0.5">
+                                    {provider.usersCount > 0 && (
+                                      <div
+                                        className="bg-[#800020] h-full transition-all duration-500 rounded-l-full"
+                                        style={{ width: `${provider.staffPercentage}%` }}
+                                        title={`${provider.usersCount} Staff (${Math.round(provider.staffPercentage)}%)`}
+                                      ></div>
+                                    )}
+                                    {provider.applicantsCount > 0 && (
+                                      <div
+                                        className={`bg-emerald-600 h-full transition-all duration-500 ${provider.usersCount === 0 ? 'rounded-l-full' : ''} rounded-r-full`}
+                                        style={{ width: `${provider.applicantPercentage}%` }}
+                                        title={`${provider.applicantsCount} Applicants (${Math.round(provider.applicantPercentage)}%)`}
+                                      ></div>
+                                    )}
+                                    {provider.totalAccounts === 0 && (
+                                      <div className="w-full h-full bg-gray-200/50 rounded-full" title="No accounts assigned"></div>
+                                    )}
                                   </div>
                                 </div>
                               ))
