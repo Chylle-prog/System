@@ -374,6 +374,8 @@ const EMPTY_ADVANCED_SEARCH = {
   applicantSchool: '',
   applicantGpa: '',
   year: '',
+  dateApplied: '',
+  appliedDate: '',
   appliedToDate: '',
   accompliteToDate: ''
 };
@@ -449,8 +451,8 @@ const applicantMatchesAdvancedScholarshipFilters = (applicant, advanced, scholar
     return false;
   }
 
-  const dateCutoffValue = advanced.appliedToDate || advanced.accompliteToDate || advanced.applicationDateTo || advanced.dateTo;
-  if (dateCutoffValue) {
+  const selectedAppliedDate = advanced.dateApplied || advanced.appliedDate || advanced.appliedToDate || advanced.accompliteToDate || advanced.applicationDateTo || advanced.dateTo;
+  if (selectedAppliedDate) {
     const rawAppliedDate = applicant.status_created_at || applicant.created_at || applicant.createdAt || applicant.dateApplied || applicant.date_applied || applicant.status_updated || applicant.statusUpdated;
     if (!rawAppliedDate) {
       return false;
@@ -461,16 +463,19 @@ const applicantMatchesAdvancedScholarshipFilters = (applicant, advanced, scholar
       return false;
     }
 
-    const cutoffParts = String(dateCutoffValue).split('-');
-    let cutoff;
-    if (cutoffParts.length === 3) {
-      cutoff = new Date(Number(cutoffParts[0]), Number(cutoffParts[1]) - 1, Number(cutoffParts[2]), 23, 59, 59, 999);
-    } else {
-      cutoff = new Date(dateCutoffValue);
-      cutoff.setHours(23, 59, 59, 999);
-    }
+    const targetDateStr = String(selectedAppliedDate).trim().slice(0, 10);
 
-    if (appDate.getTime() > cutoff.getTime()) {
+    const localYear = appDate.getFullYear();
+    const localMonth = String(appDate.getMonth() + 1).padStart(2, '0');
+    const localDay = String(appDate.getDate()).padStart(2, '0');
+    const localDateStr = `${localYear}-${localMonth}-${localDay}`;
+
+    const utcYear = appDate.getUTCFullYear();
+    const utcMonth = String(appDate.getUTCMonth() + 1).padStart(2, '0');
+    const utcDay = String(appDate.getUTCDate()).padStart(2, '0');
+    const utcDateStr = `${utcYear}-${utcMonth}-${utcDay}`;
+
+    if (localDateStr !== targetDateStr && utcDateStr !== targetDateStr) {
       return false;
     }
   }
@@ -968,14 +973,20 @@ export default function ScholarshipDashboard({
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Applied Up to Date</label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Date Applied</label>
             <input
               type="date"
-              name="appliedToDate"
-              value={filters.appliedToDate || filters.accompliteToDate || ''}
+              name="dateApplied"
+              value={filters.dateApplied || filters.appliedDate || filters.appliedToDate || filters.accompliteToDate || ''}
               onChange={(e) => {
                 const val = e.target.value;
-                setFilters((prev) => ({ ...prev, appliedToDate: val, accompliteToDate: val }));
+                setFilters((prev) => ({
+                  ...prev,
+                  dateApplied: val,
+                  appliedDate: val,
+                  appliedToDate: val,
+                  accompliteToDate: val
+                }));
               }}
               className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
             />
