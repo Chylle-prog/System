@@ -3123,9 +3123,10 @@ def update_profile():
             # 2. Parallel upload to storage
             if upload_tasks:
                 import concurrent.futures
+                current_user_no = request.user_no
                 def _do_upload(task):
                     f_key, d_col, b_bytes = task
-                    uploaded_url = upload_image_to_storage(b_bytes, request.user_no, d_col, is_update=True)
+                    uploaded_url = upload_image_to_storage(b_bytes, current_user_no, d_col, is_update=True)
                     return f_key, d_col, uploaded_url
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(upload_tasks))) as executor:
