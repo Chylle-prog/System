@@ -3743,9 +3743,10 @@ def get_applicants(current_user_id, pro_no, role, program):
                            ELSE 'Pending'
                        END as status,
                        esc.scholarship_name as "scholarshipName",
-                        COALESCE(s.created_at, s.status_updated, CURRENT_TIMESTAMP) as "createdAt",
-                        COALESCE(s.created_at, s.status_updated, CURRENT_TIMESTAMP) as "dateApplied",
+                        COALESCE(s.created_at, s.status_updated, a.verification_timestamp) as "createdAt",
+                        COALESCE(s.created_at, s.status_updated, a.verification_timestamp) as "dateApplied",
                         s.created_at as "status_created_at",
+                        s.status_updated as "status_updated",
                         ({applicant_document_expr(cursor, 'indigency_doc', 'a', 'ad')} IS NOT NULL) as "has_indigency_doc",
                         ({applicant_document_expr(cursor, 'enrollment_certificate_doc', 'a', 'ad')} IS NOT NULL) as "has_enrollment_certificate_doc",
                         ({applicant_document_expr(cursor, 'grades_doc', 'a', 'ad')} IS NOT NULL) as "has_grades_doc",

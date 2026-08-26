@@ -374,6 +374,7 @@ const EMPTY_ADVANCED_SEARCH = {
   applicantSchool: '',
   applicantGpa: '',
   year: '',
+  appliedToDate: '',
   accompliteToDate: ''
 };
 
@@ -448,13 +449,29 @@ const applicantMatchesAdvancedScholarshipFilters = (applicant, advanced, scholar
     return false;
   }
 
-  if (advanced.accompliteToDate) {
-    const appliedDate = applicant.createdAt || applicant.created_at || applicant.dateApplied || applicant.date_applied;
-    if (appliedDate) {
-      const appDate = new Date(appliedDate);
-      const cutoff = new Date(advanced.accompliteToDate);
+  const dateCutoffValue = advanced.appliedToDate || advanced.accompliteToDate || advanced.applicationDateTo || advanced.dateTo;
+  if (dateCutoffValue) {
+    const rawAppliedDate = applicant.status_created_at || applicant.created_at || applicant.createdAt || applicant.dateApplied || applicant.date_applied || applicant.status_updated || applicant.statusUpdated;
+    if (!rawAppliedDate) {
+      return false;
+    }
+
+    const appDate = new Date(rawAppliedDate);
+    if (isNaN(appDate.getTime())) {
+      return false;
+    }
+
+    const cutoffParts = String(dateCutoffValue).split('-');
+    let cutoff;
+    if (cutoffParts.length === 3) {
+      cutoff = new Date(Number(cutoffParts[0]), Number(cutoffParts[1]) - 1, Number(cutoffParts[2]), 23, 59, 59, 999);
+    } else {
+      cutoff = new Date(dateCutoffValue);
       cutoff.setHours(23, 59, 59, 999);
-      if (appDate > cutoff) return false;
+    }
+
+    if (appDate.getTime() > cutoff.getTime()) {
+      return false;
     }
   }
 
@@ -951,12 +968,15 @@ export default function ScholarshipDashboard({
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Accomplite to Date</label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Applied Up to Date</label>
             <input
               type="date"
-              name="accompliteToDate"
-              value={filters.accompliteToDate}
-              onChange={(e) => setFilters((prev) => ({ ...prev, accompliteToDate: e.target.value }))}
+              name="appliedToDate"
+              value={filters.appliedToDate || filters.accompliteToDate || ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFilters((prev) => ({ ...prev, appliedToDate: val, accompliteToDate: val }));
+              }}
               className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
             />
           </div>
@@ -1405,7 +1425,7 @@ export default function ScholarshipDashboard({
           const isActiveRoom = currentInboxRoomRef.current === normRoom || currentInboxRoomRef.current === msg.room;
           const isAdminMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
           const isPreviouslyRead = (msg.m_id && readMessageIdsRef.current.has(String(msg.m_id))) ||
-                                   (readRoomsRef.current.has(normRoom) || readRoomsRef.current.has(msg.room));
+            (readRoomsRef.current.has(normRoom) || readRoomsRef.current.has(msg.room));
           const isRead = isActiveRoom || isAdminMessage || isPreviouslyRead;
           if (isRead && msg.m_id) {
             readMessageIdsRef.current.add(String(msg.m_id));
@@ -1457,7 +1477,7 @@ export default function ScholarshipDashboard({
             const isSelfMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
             const isRoomMarkedRead = readRoomsRef.current.has(normRoom) || readRoomsRef.current.has(roomId);
             const isPreviouslyRead = (msg.m_id && readMessageIdsRef.current.has(String(msg.m_id))) ||
-                                     (msg.id && readMessageIdsRef.current.has(String(msg.id)));
+              (msg.id && readMessageIdsRef.current.has(String(msg.id)));
             const isRead = isActiveRoom || isSelfMessage || isRoomMarkedRead || isPreviouslyRead;
             if (isRead && msg.m_id) {
               readMessageIdsRef.current.add(String(msg.m_id));
@@ -1581,7 +1601,7 @@ export default function ScholarshipDashboard({
             const isActiveRoom = currentInboxRoomRef.current === normRoom || currentInboxRoomRef.current === m.room;
             const isRoomMarkedRead = readRoomsRef.current.has(normRoom) || readRoomsRef.current.has(m.room);
             const isPreviouslyRead = (m.m_id && readMessageIdsRef.current.has(String(m.m_id))) ||
-                                     (m.id && readMessageIdsRef.current.has(String(m.id)));
+              (m.id && readMessageIdsRef.current.has(String(m.id)));
             const isRead = isActiveRoom || isSelfMessage || isRoomMarkedRead || isPreviouslyRead;
             if (isRead && m.m_id) {
               readMessageIdsRef.current.add(String(m.m_id));
@@ -1637,13 +1657,14 @@ export default function ScholarshipDashboard({
 
   // Calculate Financial Status based on Income
   const getFinancialStatusLabel = (incomeVal) => {
-    const income = parseFloat((incomeVal || "0").toString().replace(/,/g, ''));
-    if (isNaN(income)) return incomeVal || 'Unknown';
+    if (incomeVal === null || incomeVal === undefined || incomeVal === '') return 'Unspecified';
+    const income = parseFloat(String(incomeVal).replace(/,/g, ''));
+    if (isNaN(income)) return String(incomeVal);
 
-    if (income <= 30000) return "Very Low";
-    if (income <= 70000) return "Low";
-    if (income <= 100000) return "High";
-    return "Very High";
+    if (income <= 60000) return 'Low Income (≤ ₱60k)';
+    if (income <= 150000) return 'Lower-Middle (₱60k - ₱150k)';
+    if (income <= 250000) return 'Middle Income (₱150k - ₱250k)';
+    return 'Upper-Middle (Above ₱250k)';
   };
 
   const parseNumericValue = (value) => {
@@ -1699,77 +1720,163 @@ export default function ScholarshipDashboard({
   }, [data.applicants, trackScholarshipFilter, recommendCount, recommendationModal]);
 
   const calculateHistoricalData = (applicants) => {
-    // Attempt to get the current expected limit from the active scholarship post if any
-    const activePost = data.scholarshipPosts?.find(p => p.status === 'Active' || p.status === 'Ongoing');
-    const incomeLimit = activePost?.parentFinance || 0;
+    const list = Array.isArray(applicants) ? applicants : [];
+    const total = list.length || 1;
 
-    const monthlyData = {};
-    const courses = {};
-    const grades = { '95-100': 0, '90-94': 0, '85-89': 0, '80-84': 0, 'Below 80': 0 };
-    const financial = {};
-    const locations = {};
-    const schools = {};
+    const monthlyMap = new Map();
+    const coursesMap = new Map();
+    const grades = { '95 - 100%': 0, '90 - 94%': 0, '85 - 89%': 0, '80 - 84%': 0, 'Below 80%': 0 };
+    const financial = {
+      'Low Income (≤ ₱60k)': 0,
+      'Lower-Middle (₱60k - ₱150k)': 0,
+      'Middle Income (₱150k - ₱250k)': 0,
+      'Upper-Middle (Above ₱250k)': 0
+    };
+    const locationsMap = new Map();
+    const schoolsMap = new Map();
 
-    (applicants || []).forEach(a => {
+    let acceptedCount = 0;
+    let rejectedCount = 0;
+    let cancelledCount = 0;
+    let pendingCount = 0;
+    let completedDocsCount = 0;
+    let totalProcessingDays = 0;
+    let processedCount = 0;
+
+    list.forEach(a => {
       if (!a) return;
-      // Monthly
-      const dateStr = a.dateApplied || a.createdAt;
-      const date = new Date(dateStr);
-      let month = 'Unknown';
-      if (!isNaN(date.getTime())) {
-        month = date.toLocaleString('default', { month: 'short', year: 'numeric' });
+      const status = a.status || 'Pending';
+      if (status === 'Accepted') acceptedCount++;
+      else if (status === 'Rejected' || status === 'Declined') rejectedCount++;
+      else if (status === 'Cancelled') cancelledCount++;
+      else pendingCount++;
+
+      // Monthly aggregation
+      const rawDate = a.status_created_at || a.created_at || a.createdAt || a.dateApplied || a.date_applied || a.status_updated || a.statusUpdated;
+      let monthLabel = 'Recent';
+      let sortKey = '9999-99';
+      if (rawDate) {
+        const d = new Date(rawDate);
+        if (!isNaN(d.getTime())) {
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          sortKey = `${y}-${m}`;
+          monthLabel = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+        }
       }
-      if (!monthlyData[month]) monthlyData[month] = { month, applications: 0, accepted: 0, declined: 0, rejected: 0, cancelled: 0 };
-      monthlyData[month].applications++;
-      if (a.status === 'Accepted') monthlyData[month].accepted++;
-      if (a.status === 'Rejected' || a.status === 'Declined') {
-        monthlyData[month].declined++;
-        monthlyData[month].rejected++;
+
+      if (!monthlyMap.has(sortKey)) {
+        monthlyMap.set(sortKey, {
+          sortKey,
+          month: monthLabel,
+          applications: 0,
+          accepted: 0,
+          declined: 0,
+          rejected: 0,
+          cancelled: 0
+        });
       }
-      if (a.status === 'Cancelled') monthlyData[month].cancelled++;
+      const mEntry = monthlyMap.get(sortKey);
+      mEntry.applications++;
+      if (status === 'Accepted') mEntry.accepted++;
+      if (status === 'Rejected' || status === 'Declined') {
+        mEntry.declined++;
+        mEntry.rejected++;
+      }
+      if (status === 'Cancelled') mEntry.cancelled++;
+
+      // Processing days calculation
+      if ((status === 'Accepted' || status === 'Rejected') && rawDate) {
+        const startDate = new Date(rawDate);
+        const endDate = a.status_updated ? new Date(a.status_updated) : new Date();
+        if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+          const diffDays = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+          totalProcessingDays += Math.min(30, diffDays);
+          processedCount++;
+        }
+      }
+
+      // Documentation completion check
+      if (a.has_indigency_doc || a.has_grades_doc || a.has_enrollment_certificate_doc || (a.indigencyFiles && a.indigencyFiles.length > 0)) {
+        completedDocsCount++;
+      }
 
       // Course
-      const course = a.course || 'Unknown';
-      courses[course] = (courses[course] || 0) + 1;
+      const course = String(a.course || 'Unspecified').trim();
+      coursesMap.set(course, (coursesMap.get(course) || 0) + 1);
 
       // Grade
-      const convertedGrade = convertGpaToPercentage(a.grade || a.overall_gpa || a.gpa, a.school);
-      const g = convertedGrade !== null ? convertedGrade : parseFloat(a.grade);
-      if (!isNaN(g)) {
-        if (g >= 95) grades['95-100']++;
-        else if (g >= 90) grades['90-94']++;
-        else if (g >= 85) grades['85-89']++;
-        else if (g >= 80) grades['80-84']++;
-        else grades['Below 80']++;
+      const convertedGrade = convertGpaToPercentage(a.grade ?? a.overall_gpa ?? a.gpa, a.school);
+      const g = convertedGrade !== null ? convertedGrade : parseFloat(String(a.grade || '0'));
+      if (!isNaN(g) && g > 0) {
+        if (g >= 95) grades['95 - 100%']++;
+        else if (g >= 90) grades['90 - 94%']++;
+        else if (g >= 85) grades['85 - 89%']++;
+        else if (g >= 80) grades['80 - 84%']++;
+        else grades['Below 80%']++;
       }
 
-      // Financial
-      const income = a.income || a.family?.grossIncome || '0';
-      const fin = getFinancialStatusLabel(income);
-      financial[fin] = (financial[fin] || 0) + 1;
+      // Financial status
+      const incomeVal = a.income ?? a.financial_income_of_parents ?? a.parentFinance ?? a.family?.grossIncome ?? 0;
+      const finLabel = getFinancialStatusLabel(incomeVal);
+      if (financial[finLabel] !== undefined) {
+        financial[finLabel]++;
+      } else {
+        financial[finLabel] = (financial[finLabel] || 0) + 1;
+      }
 
-      // Location
-      const loc = a.location || 'Unknown';
-      locations[loc] = (locations[loc] || 0) + 1;
+      // Clean Barangay / Location extraction
+      let loc = String(a.street_brgy || a.streetBrgy || a.barangay || '').trim();
+      if (!loc && a.location) {
+        loc = String(a.location).split(',')[0].trim();
+      }
+      if (!loc && (a.municipality || a.town_city_municipality)) {
+        loc = String(a.municipality || a.town_city_municipality).trim();
+      }
+      if (!loc) loc = 'Unspecified';
+      locationsMap.set(loc, (locationsMap.get(loc) || 0) + 1);
 
       // School
-      const sch = a.school || 'Unknown';
-      schools[sch] = (schools[sch] || 0) + 1;
+      const sch = String(a.school || 'Unspecified').trim();
+      schoolsMap.set(sch, (schoolsMap.get(sch) || 0) + 1);
     });
 
-    const total = applicants.length || 1;
+    const monthlyApplications = Array.from(monthlyMap.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+    const courseDistribution = Array.from(coursesMap.entries())
+      .map(([course, count]) => ({ course, count, percentage: Math.round((count / total) * 100) }))
+      .sort((a, b) => b.count - a.count);
+    const gradeRanges = Object.entries(grades).map(([range, count]) => ({
+      range,
+      count,
+      percentage: Math.round((count / total) * 100)
+    }));
+    const financialBreakdown = Object.entries(financial).map(([level, count]) => ({
+      level,
+      count,
+      percentage: Math.round((count / total) * 100)
+    }));
+    const locationStats = Array.from(locationsMap.entries())
+      .map(([location, count]) => ({ location, count, percentage: Math.round((count / total) * 100) }))
+      .sort((a, b) => b.count - a.count);
+    const schoolStats = Array.from(schoolsMap.entries())
+      .map(([school, count]) => ({ school, count, percentage: Math.round((count / total) * 100) }))
+      .sort((a, b) => b.count - a.count);
+
+    const avgTime = processedCount > 0 ? Math.max(1, Math.round(totalProcessingDays / processedCount)) : 3;
+    const completionRate = list.length > 0 ? Math.round((completedDocsCount / total) * 100) : 100;
+    const acceptRate = list.length > 0 ? Math.round((acceptedCount / total) * 100) : 0;
 
     return {
-      monthlyApplications: Object.values(monthlyData).sort((a, b) => new Date(a.month) - new Date(b.month)),
-      courseDistribution: Object.entries(courses).map(([course, count]) => ({ course, count, percentage: Math.round((count / total) * 100) })).sort((a, b) => b.count - a.count),
-      gradeRanges: Object.entries(grades).map(([range, count]) => ({ range, count, percentage: Math.round((count / total) * 100) })),
-      financialBreakdown: Object.entries(financial).map(([level, count]) => ({ level, count, percentage: Math.round((count / total) * 100) })),
-      locationStats: Object.entries(locations).map(([location, count]) => ({ location, count, percentage: Math.round((count / total) * 100) })).sort((a, b) => b.count - a.count),
-      schoolStats: Object.entries(schools).map(([school, count]) => ({ school, count, percentage: Math.round((count / total) * 100) })).sort((a, b) => b.count - a.count),
+      monthlyApplications,
+      courseDistribution,
+      gradeRanges,
+      financialBreakdown,
+      locationStats,
+      schoolStats,
       performanceMetrics: {
-        averageProcessingTime: 5,
-        acceptanceRate: Math.round((applicants.filter(a => a.status === 'Accepted').length / total) * 100),
-        applicationCompletionRate: 100,
+        averageProcessingTime: avgTime,
+        acceptanceRate: acceptRate,
+        applicationCompletionRate: completionRate,
         satisfactionScore: 4.8
       }
     };
@@ -2652,6 +2759,11 @@ export default function ScholarshipDashboard({
       if (locationChartInstance.current) { locationChartInstance.current.destroy(); locationChartInstance.current = null; }
     };
 
+    const CHART_PALETTE = [
+      '#800020', '#198754', '#0d6efd', '#ffc107', '#6f42c1', '#fd7e14', '#20c997', '#d63384',
+      '#0dcaf0', '#6c757d', '#b02a37', '#146c43', '#0a58ca', '#997404', '#491217', '#59359a'
+    ];
+
     // Pie Chart for Status Overview
     if (pieRef.current) {
       const ctx = pieRef.current.getContext('2d');
@@ -2685,28 +2797,28 @@ export default function ScholarshipDashboard({
               data: filteredHistoricalData.monthlyApplications.map(m => m.applications),
               borderColor: '#800020',
               backgroundColor: 'rgba(128, 0, 32, 0.1)',
-              tension: 0.4
+              tension: 0.3
             },
             {
               label: 'Accepted',
               data: filteredHistoricalData.monthlyApplications.map(m => m.accepted),
               borderColor: '#198754',
               backgroundColor: 'rgba(25, 135, 84, 0.1)',
-              tension: 0.4
+              tension: 0.3
             },
             {
               label: 'Rejected',
               data: filteredHistoricalData.monthlyApplications.map(m => m.rejected),
               borderColor: '#dc3545',
               backgroundColor: 'rgba(220, 53, 69, 0.1)',
-              tension: 0.4
+              tension: 0.3
             },
             {
               label: 'Cancelled',
               data: filteredHistoricalData.monthlyApplications.map(m => m.cancelled),
               borderColor: '#6c757d',
               backgroundColor: 'rgba(108, 117, 125, 0.1)',
-              tension: 0.4
+              tension: 0.3
             }
           ]
         },
@@ -2736,13 +2848,14 @@ export default function ScholarshipDashboard({
     if (courseChartRef.current) {
       const ctx = courseChartRef.current.getContext('2d');
       if (courseChartInstance.current) courseChartInstance.current.destroy();
+      const topCourses = filteredHistoricalData.courseDistribution.slice(0, 8);
       courseChartInstance.current = new Chart(ctx, {
         type: 'doughnut',
         data: {
-          labels: filteredHistoricalData.courseDistribution.map(c => c.course),
+          labels: topCourses.map(c => c.course),
           datasets: [{
-            data: filteredHistoricalData.courseDistribution.map(c => c.count),
-            backgroundColor: ['#800020', '#650018', '#a00028', '#c44569'],
+            data: topCourses.map(c => c.count),
+            backgroundColor: topCourses.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
           }]
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } },
@@ -2753,13 +2866,14 @@ export default function ScholarshipDashboard({
     if (financialChartRef.current) {
       const ctx = financialChartRef.current.getContext('2d');
       if (financialChartInstance.current) financialChartInstance.current.destroy();
+      const finColors = ['#198754', '#0d6efd', '#ffc107', '#800020', '#6c757d'];
       financialChartInstance.current = new Chart(ctx, {
         type: 'doughnut',
         data: {
           labels: filteredHistoricalData.financialBreakdown.map(f => f.level),
           datasets: [{
             data: filteredHistoricalData.financialBreakdown.map(f => f.count),
-            backgroundColor: ['#198754', '#ffc107', '#fd7e14', '#dc3545'],
+            backgroundColor: filteredHistoricalData.financialBreakdown.map((_, i) => finColors[i % finColors.length]),
           }]
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } },
@@ -2770,13 +2884,14 @@ export default function ScholarshipDashboard({
     if (schoolChartRef.current) {
       const ctx = schoolChartRef.current.getContext('2d');
       if (schoolChartInstance.current) schoolChartInstance.current.destroy();
+      const topSchools = filteredHistoricalData.schoolStats.slice(0, 8);
       schoolChartInstance.current = new Chart(ctx, {
         type: 'doughnut',
         data: {
-          labels: filteredHistoricalData.schoolStats.map(s => s.school),
+          labels: topSchools.map(s => s.school),
           datasets: [{
-            data: filteredHistoricalData.schoolStats.map(s => s.count),
-            backgroundColor: ['#800020', '#198754', '#0d6efd', '#ffc107', '#6c757d'],
+            data: topSchools.map(s => s.count),
+            backgroundColor: topSchools.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
           }]
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } },
@@ -2787,13 +2902,14 @@ export default function ScholarshipDashboard({
     if (locationChartRef.current) {
       const ctx = locationChartRef.current.getContext('2d');
       if (locationChartInstance.current) locationChartInstance.current.destroy();
+      const topLocations = filteredHistoricalData.locationStats.slice(0, 8);
       locationChartInstance.current = new Chart(ctx, {
         type: 'doughnut',
         data: {
-          labels: filteredHistoricalData.locationStats.map(loc => loc.location),
+          labels: topLocations.map(loc => loc.location),
           datasets: [{
-            data: filteredHistoricalData.locationStats.map(loc => loc.count),
-            backgroundColor: ['#800020', '#198754', '#0d6efd', '#ffc107', '#6c757d'],
+            data: topLocations.map(loc => loc.count),
+            backgroundColor: topLocations.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
           }]
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } },
@@ -3160,10 +3276,10 @@ export default function ScholarshipDashboard({
           if (!isDuplicate) {
             roomMsgs.push(m);
             const isMsgRead = m.read ||
-                              (m.m_id && readMessageIdsRef.current.has(String(m.m_id))) ||
-                              (m.id && readMessageIdsRef.current.has(String(m.id))) ||
-                              (targetRoom && (readRoomsRef.current.has(targetRoom.room) || currentInboxRoomRef.current === targetRoom.room)) ||
-                              (m.room && (readRoomsRef.current.has(m.room) || currentInboxRoomRef.current === m.room));
+              (m.m_id && readMessageIdsRef.current.has(String(m.m_id))) ||
+              (m.id && readMessageIdsRef.current.has(String(m.id))) ||
+              (targetRoom && (readRoomsRef.current.has(targetRoom.room) || currentInboxRoomRef.current === targetRoom.room)) ||
+              (m.room && (readRoomsRef.current.has(m.room) || currentInboxRoomRef.current === m.room));
             if (!isMsgRead) grouped[targetRoom.applicant_no].unreadCount += 1;
             grouped[targetRoom.applicant_no].lastMessage = m;
           }
@@ -3300,10 +3416,10 @@ export default function ScholarshipDashboard({
         if (!exists) {
           grouped[key].messages.push(m);
           const isMsgRead = m.read ||
-                            (m.m_id && readMessageIdsRef.current.has(String(m.m_id))) ||
-                            (m.id && readMessageIdsRef.current.has(String(m.id))) ||
-                            (m.room && (readRoomsRef.current.has(m.room) || currentInboxRoomRef.current === m.room)) ||
-                            (key && readRoomsRef.current.has(String(key)));
+            (m.m_id && readMessageIdsRef.current.has(String(m.m_id))) ||
+            (m.id && readMessageIdsRef.current.has(String(m.id))) ||
+            (m.room && (readRoomsRef.current.has(m.room) || currentInboxRoomRef.current === m.room)) ||
+            (key && readRoomsRef.current.has(String(key)));
           if (!isMsgRead) grouped[key].unreadCount += 1;
           grouped[key].lastMessage = m;
         }
@@ -4973,13 +5089,15 @@ export default function ScholarshipDashboard({
     const { pending: filteredPending, accepted: filteredAccepted, rejected: filteredRejected, cancelled: filteredCancelled, all: filteredApplicants } = filteredReportApplicants;
     const monthlyStats = generateMonthlyStats(filteredApplicants);
 
+    const totalApplicantsCount = filteredApplicants.length;
+    const totalSafe = totalApplicantsCount || 1;
     const kpiCards = [
-      { label: 'Total Applicants', value: filteredApplicants.length.toLocaleString(), trend: '+12.5%', color: 'blue' },
-      { label: 'New Applicants', value: filteredPending.length.toLocaleString(), trend: '+5.2%', color: 'green' },
-      { label: 'Accepted', value: filteredAccepted.length.toLocaleString(), trend: '+8.1%', color: 'purple' },
-      { label: 'Rejected', value: filteredRejected.length.toLocaleString(), trend: '-2.4%', color: 'red' },
-      { label: 'Cancelled', value: filteredCancelled.length.toLocaleString(), trend: '0.0%', color: 'gray' },
-      { label: 'Avg. Processing', value: `${historicalData.performanceMetrics?.averageProcessingTime || 0}d`, trend: '-0.5d', color: 'amber' },
+      { label: 'Total Applicants', value: totalApplicantsCount.toLocaleString(), trend: `${totalApplicantsCount} total`, color: 'blue' },
+      { label: 'New Applicants', value: filteredPending.length.toLocaleString(), trend: `${Math.round((filteredPending.length / totalSafe) * 100)}% of total`, color: 'green' },
+      { label: 'Accepted', value: filteredAccepted.length.toLocaleString(), trend: `${Math.round((filteredAccepted.length / totalSafe) * 100)}% of total`, color: 'purple' },
+      { label: 'Rejected', value: filteredRejected.length.toLocaleString(), trend: `${Math.round((filteredRejected.length / totalSafe) * 100)}% of total`, color: 'red' },
+      { label: 'Cancelled', value: filteredCancelled.length.toLocaleString(), trend: `${Math.round((filteredCancelled.length / totalSafe) * 100)}% of total`, color: 'gray' },
+      { label: 'Avg. Processing', value: `${historicalData.performanceMetrics?.averageProcessingTime || 0}d`, trend: `${historicalData.performanceMetrics?.acceptanceRate || 0}% accept rate`, color: 'amber' },
     ];
 
     return (
@@ -5802,12 +5920,12 @@ export default function ScholarshipDashboard({
     const meritFiles = (a.meritFiles && a.meritFiles.length > 0)
       ? a.meritFiles
       : (a.merit_proofs || []).map((mp, idx) => ({
-          src: mp.merit_document,
-          type: 'image/jpeg',
-          name: mp.merit_title || `Merit Document #${idx + 1}`,
-          title: mp.merit_title || `Merit Document #${idx + 1}`,
-          id: mp.merit_id
-        })).filter(f => Boolean(f.src));
+        src: mp.merit_document,
+        type: 'image/jpeg',
+        name: mp.merit_title || `Merit Document #${idx + 1}`,
+        title: mp.merit_title || `Merit Document #${idx + 1}`,
+        id: mp.merit_id
+      })).filter(f => Boolean(f.src));
 
     // Preload document images when applicant dossier opens so photos appear immediately
     if (a) {
@@ -6096,7 +6214,7 @@ export default function ScholarshipDashboard({
                   <div className="flex items-center gap-1.5">
                     <FaRobot className="text-amber-600 text-xs sm:text-sm" />
                     <span className="text-[10px] sm:text-xs font-black text-amber-900 uppercase tracking-wider">
-                      AI Score Explanation (Merits / Awards)
+                      Score Explanation for Merits / Awards
                     </span>
                   </div>
                   <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-bold border border-amber-300 shadow-xs">
@@ -6359,8 +6477,8 @@ export default function ScholarshipDashboard({
               setViewMessage(null);
             }}
             className={`px-3 py-2 sm:px-5 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-1.5 sm:gap-2.5 ${inboxMode === 'applicants'
-                ? 'bg-[#800020] text-white shadow-lg shadow-rose-900/20 ring-2 ring-[#800020]/30'
-                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
+              ? 'bg-[#800020] text-white shadow-lg shadow-rose-900/20 ring-2 ring-[#800020]/30'
+              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
               }`}
           >
             <FaUsers className="text-xs sm:text-sm" /> <span>Applicant Messages</span>
@@ -6373,8 +6491,8 @@ export default function ScholarshipDashboard({
             setViewMessage(null);
           }}
           className={`px-3 py-2 sm:px-5 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-1.5 sm:gap-2.5 ${inboxMode === 'admin_rooms'
-              ? 'bg-[#800020] text-white shadow-lg shadow-rose-900/20 ring-2 ring-[#800020]/30'
-              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
+            ? 'bg-[#800020] text-white shadow-lg shadow-rose-900/20 ring-2 ring-[#800020]/30'
+            : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
             }`}
         >
           <FaInbox className="text-xs sm:text-sm" /> <span>Super Admin Chat</span>
@@ -6476,7 +6594,7 @@ export default function ScholarshipDashboard({
                                 ])
                               }));
                             }
-                          }).catch(() => {});
+                          }).catch(() => { });
                         }
                       }}
                       className={`p-3 sm:p-4 cursor-pointer transition-colors border-l-4 ${isActive
@@ -6503,12 +6621,12 @@ export default function ScholarshipDashboard({
                           </div>
                           <div className="flex items-center gap-2">
                             <span className={`px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold uppercase flex-shrink-0 ${conv.isAdminRoom
-                                ? 'bg-rose-50 text-[#800020] border border-rose-100'
-                                : status === 'Accepted'
-                                  ? 'bg-green-100 text-green-700 border border-green-200'
-                                  : status === 'Pending'
-                                    ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
-                                    : 'bg-gray-100 text-gray-700 border border-gray-200'
+                              ? 'bg-rose-50 text-[#800020] border border-rose-100'
+                              : status === 'Accepted'
+                                ? 'bg-green-100 text-green-700 border border-green-200'
+                                : status === 'Pending'
+                                  ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                                  : 'bg-gray-100 text-gray-700 border border-gray-200'
                               }`}>
                               {conv.isAdminRoom ? conv.badge : status}
                             </span>
