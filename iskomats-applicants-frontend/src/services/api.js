@@ -970,81 +970,60 @@ export const applicantAPI = {
       console.log(`[VIDEO-UPLOAD] Ultra-fast direct uploading ${fieldName}: ${file.name || 'video'} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
 
       const uploadFile = file;
-      if (onProgress) onProgress(5);
+      if (onProgress) onProgress(10);
 
-      let response = null;
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://choqncwkxobwsouyotih.supabase.co';
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const folderMap = {
+        'mayorIndigency_video': 'indigency',
+        'indigency_vid_url': 'indigency',
+        'mayorCOE_video': 'coe',
+        'enrollment_certificate_vid_url': 'coe',
+        'mayorGrades_video': 'grades',
+        'grades_vid_url': 'grades',
+        'schoolIdFront_video': 'school_id',
+        'schoolIdBack_video': 'school_id',
+        'face_video': 'id_verification',
+        'id_vid_url': 'id_verification'
+      };
+      const folder = folderMap[fieldName] || 'others';
+      const bucketName = 'document_videos';
+      const ext = uploadFile.name && uploadFile.name.includes('.') ? uploadFile.name.slice(uploadFile.name.lastIndexOf('.')) : (uploadFile.type === 'video/mp4' ? '.mp4' : '.webm');
+      const userNo = localStorage.getItem('applicantNo') || 'user';
+      const fileName = `${userNo}_${Date.now()}${ext}`;
+      const filePath = `videos/${folder}/${fileName}`;
 
-      // 2. Direct Supabase Storage upload (0 hops to backend for maximum upload line speed)
-      if (supabaseUrl && supabaseAnonKey) {
+      // 1. Direct Supabase SDK upload (Fast, zero-hop, direct CDN)
+      if (typeof supabase !== 'undefined' && supabase.storage) {
         try {
-          const folderMap = {
-            'mayorIndigency_video': 'indigency',
-            'mayorCOE_video': 'coe',
-            'mayorGrades_video': 'grades',
-            'schoolIdFront_video': 'school_id',
-            'schoolIdBack_video': 'school_id',
-            'face_video': 'id_verification',
-            'id_vid_url': 'id_verification'
-          };
-          const folder = folderMap[fieldName] || 'others';
-          const bucketName = 'document_videos';
-          const ext = uploadFile.name ? uploadFile.name.slice(uploadFile.name.lastIndexOf('.')) : (uploadFile.type === 'video/mp4' ? '.mp4' : '.webm');
-          const userNo = localStorage.getItem('applicantNo') || 'user';
-          const fileName = `${userNo}_${Date.now()}${ext}`;
-          const filePath = `videos/${folder}/${fileName}`;
-          const directUrl = `${supabaseUrl}/storage/v1/object/${bucketName}/${filePath}`;
-
-          response = await new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.upload.addEventListener('progress', (e) => {
-              if (e.lengthComputable && onProgress) {
-                const percent = Math.round((e.loaded / e.total) * 100);
-                onProgress(Math.min(99, percent));
-              }
+          if (onProgress) onProgress(35);
+          const { error } = await supabase.storage
+            .from(bucketName)
+            .upload(filePath, uploadFile, {
+              upsert: true,
+              contentType: uploadFile.type || 'video/webm',
+              cacheControl: '31536000'
             });
 
-            xhr.addEventListener('load', () => {
-              if (xhr.status >= 200 && xhr.status < 300) {
-                if (onProgress) onProgress(100);
-                const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${filePath}`;
-                resolve({ success: true, publicUrl });
-              } else {
-                reject(new Error(`Direct storage upload returned ${xhr.status}`));
-              }
-            });
+          if (error) throw error;
 
-            xhr.addEventListener('error', () => reject(new Error('Direct storage upload error')));
-            xhr.addEventListener('abort', () => reject(new Error('Direct storage upload aborted')));
-
-            xhr.open('POST', directUrl);
-            xhr.setRequestHeader('apikey', supabaseAnonKey);
-            xhr.setRequestHeader('Authorization', `Bearer ${supabaseAnonKey}`);
-            xhr.setRequestHeader('x-upsert', 'true');
-            xhr.setRequestHeader('Content-Type', uploadFile.type || 'video/mp4');
-            xhr.send(uploadFile);
-          });
-          console.log('[VIDEO-UPLOAD] Direct CDN upload completed:', response.publicUrl);
-        } catch (directError) {
-          console.warn('[VIDEO-UPLOAD] Direct upload fallback to backend:', directError.message);
+          if (onProgress) onProgress(90);
+          const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+          if (urlData?.publicUrl) {
+            if (onProgress) onProgress(100);
+            console.log('[VIDEO-UPLOAD] Direct Supabase storage upload succeeded:', urlData.publicUrl);
+            return { success: true, publicUrl: urlData.publicUrl };
+          }
+        } catch (storageErr) {
+          console.warn('[VIDEO-UPLOAD] Direct Supabase SDK upload failed, falling back to backend:', storageErr.message);
         }
       }
 
-      // 3. Fallback to backend route if direct upload not possible
-      if (!response || !response.publicUrl) {
-        const formData = new FormData();
-        formData.append('video', uploadFile);
-        formData.append('field_name', fieldName);
+      // 2. Fallback to backend route if direct storage fails
+      const formData = new FormData();
+      formData.append('video', uploadFile);
+      formData.append('field_name', fieldName);
 
-        response = await uploadWithProgress('/student/videos/convert-and-upload', formData, onProgress);
-      }
-
-      if (!response || (!response.publicUrl && !response.success)) {
-        throw new Error(response?.message || 'Upload failed');
-      }
-
-      return { publicUrl: response.publicUrl };
+      const response = await uploadWithProgress('/student/videos/convert-and-upload', formData, onProgress);
+      return response;
     } catch (err) {
       console.error('[VIDEO-UPLOAD] Error:', err);
       throw err;
