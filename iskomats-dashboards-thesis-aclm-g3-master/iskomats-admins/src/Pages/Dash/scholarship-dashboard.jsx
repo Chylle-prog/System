@@ -2368,24 +2368,36 @@ export default function ScholarshipDashboard({
     );
   }, [data.announcements, manageSearch]);
 
-  const scholarshipFilterOptions = useMemo(() => {
-    const options = (data.scholarshipPosts || [])
+  const activeScholarshipOptions = useMemo(() => {
+    return (data.scholarshipPosts || [])
+      .filter((post) => !(post.isRemoved || post.is_removed))
       .map((post) => {
         const value = String(post.reqNo || post.id || post.scholarshipName || post.title || '').trim();
-        let label = post.scholarshipName || post.title || 'Untitled Scholarship';
-
-        if (post.isRemoved || post.is_removed) {
-          label = `${label} (Deleted)`;
-        }
-
-        return value ? { value, label } : null;
-      }).filter(Boolean);
-
-    return [
-      { value: 'deleted', label: 'Deleted Scholarships' },
-      ...options
-    ];
+        const label = post.scholarshipName || post.title || 'Untitled Scholarship';
+        return value ? { value, label, isDeleted: false } : null;
+      })
+      .filter(Boolean);
   }, [data.scholarshipPosts]);
+
+  const deletedScholarshipOptions = useMemo(() => {
+    return (data.scholarshipPosts || [])
+      .filter((post) => Boolean(post.isRemoved || post.is_removed))
+      .map((post) => {
+        const value = String(post.reqNo || post.id || post.scholarshipName || post.title || '').trim();
+        const rawLabel = post.scholarshipName || post.title || 'Untitled Scholarship';
+        const label = `${rawLabel} (Deleted)`;
+        return value ? { value, label, isDeleted: true } : null;
+      })
+      .filter(Boolean);
+  }, [data.scholarshipPosts]);
+
+  const scholarshipFilterOptions = useMemo(() => {
+    return [
+      ...activeScholarshipOptions,
+      { value: 'deleted', label: 'Deleted Scholarships', isDeleted: true },
+      ...deletedScholarshipOptions
+    ];
+  }, [activeScholarshipOptions, deletedScholarshipOptions]);
 
   const matchesScholarshipSelection = (applicant, selectedValue) => {
     if (!applicant) return false;
@@ -4531,11 +4543,25 @@ export default function ScholarshipDashboard({
               className="flex-1 min-w-[120px] px-2.5 py-2 sm:px-4 sm:py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs sm:text-sm outline-none font-bold text-[#800020] shadow-sm focus:ring-2 focus:ring-[#800020] transition-all"
             >
               <option value="all">All Scholarships</option>
-              {scholarshipFilterOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
+              {activeScholarshipOptions.length > 0 && (
+                <optgroup label="Active Scholarships">
+                  {activeScholarshipOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {deletedScholarshipOptions.length > 0 && (
+                <optgroup label="Deleted Scholarships">
+                  <option value="deleted">All Deleted Scholarships</option>
+                  {deletedScholarshipOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
 
             <button
@@ -4987,9 +5013,21 @@ export default function ScholarshipDashboard({
               className="w-full sm:w-auto px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-[#800020] shadow-sm focus:ring-2 focus:ring-[#800020] transition-all outline-none"
             >
               <option value="all">All Scholarship Types</option>
-              {scholarshipFilterOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
+              {activeScholarshipOptions.length > 0 && (
+                <optgroup label="Active Scholarships">
+                  {activeScholarshipOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </optgroup>
+              )}
+              {deletedScholarshipOptions.length > 0 && (
+                <optgroup label="Deleted Scholarships">
+                  <option value="deleted">All Deleted Scholarships</option>
+                  {deletedScholarshipOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
             <div className="flex flex-row items-center gap-2 w-full sm:w-auto">
               <button
