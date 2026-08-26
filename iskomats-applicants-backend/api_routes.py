@@ -1238,7 +1238,7 @@ def send_announcement_emails(
     subject_prefix='New Announcement from',
     intro_prefix='You have received a new announcement from',
 ):
-    """Send announcement emails to applicants via Gmail API (runs asynchronously with parallel worker threads)."""
+    """Send announcement emails to applicants (OAuth + SMTP fallback, parallel worker threads)."""
     sender_email = (
         os.environ.get('GMAIL_SENDER_EMAIL')
         or os.environ.get('SMTP_SENDER_EMAIL')
@@ -1246,14 +1246,14 @@ def send_announcement_emails(
         or (globals().get('GMAIL_SENDER_EMAIL'))
     )
     if not sender_email:
-        print("[EMAIL ERROR] Gmail sender email is not configured")
+        print("[EMAIL ERROR] Sender email is not configured (GMAIL_SENDER_EMAIL / SMTP_SENDER_EMAIL missing)", flush=True)
         return False
-    
+
     try:
         with get_db() as conn:
             cur = conn.cursor()
             applicant_email_table = get_applicant_email_table(cur)
-        
+
             if send_to_all:
                 cur.execute(f"""
                     SELECT DISTINCT e.applicant_no, a.first_name, a.last_name, e.email_address
@@ -1270,27 +1270,24 @@ def send_announcement_emails(
                     LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
                     WHERE s.pro_no = %s AND COALESCE(e.email_address, a.email) IS NOT NULL
                 """, (provider_no,))
-        
-            applicants = cur.fetchall()
-        
-            if not applicants:
-                print(f"[EMAIL INFO] No applicants found to send announcement, provider {provider_no}")
-                return True
-        
-            print(f"[EMAIL BACKGROUND] Starting parallel email batch job for announcement - {len(applicants)} recipients", flush=True)
-        
-            provider_label = provider_name or 'ISKOMATS'
-            access_token = fetch_google_access_token()
-            if not access_token:
-                print("[EMAIL ERROR] Failed to obtain access token for announcement email dispatch", flush=True)
-                return False
 
-            def send_single_email(applicant):
-                try:
-                    email_address = applicant['email_address']
-                    first_name = applicant['first_name'] or 'Applicant'
-                
-                    body = f"""Hello {first_name},
+            applicants = cur.fetchall()
+
+        if not applicants:
+            print(f"[EMAIL INFO] No applicants found to send announcement, provider {provider_no}", flush=True)
+            return True
+
+        print(f"[EMAIL BACKGROUND] Starting parallel email batch for announcement - {len(applicants)} recipients", flush=True)
+
+        provider_label = provider_name or 'ISKOMATS'
+
+        def send_single_email(applicant):
+            email_address = applicant['email_address']
+            first_name = applicant['first_name'] or 'Applicant'
+            if not email_address:
+                return False
+            try:
+                body = f"""Hello {first_name},
 
 {intro_prefix} {provider_label}:
 
@@ -1304,43 +1301,27 @@ Please log in to your ISKOMATS account for more details.
 Best regards,
 ISKOMATS Team
 """
-                    msg = MIMEText(body)
-                    msg['Subject'] = f'{subject_prefix} {provider_label}'
-                    msg['From'] = sender_email
-                    msg['To'] = email_address
-                    
-                    raw_bytes = msg.as_bytes().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
-                    encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
-                    gmail_request_body = json.dumps({'raw': encoded_message}).encode('utf-8')
-                    
-                    gmail_request = urllib_request.Request(
-                        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-                        data=gmail_request_body,
-                        headers={
-                            'Authorization': f'Bearer {access_token}',
-                            'Content-Type': 'application/json',
-                        },
-                        method='POST',
-                    )
-                    
-                    with urllib_request.urlopen(gmail_request, timeout=15) as response:
-                        response.read()
-                    return True
-                except Exception as e:
-                    print(f"[EMAIL ERROR] Failed to send to {applicant.get('email_address')}: {e}", flush=True)
-                    return False
+                msg = MIMEText(body, 'plain', 'utf-8')
+                msg['Subject'] = f'{subject_prefix} {provider_label}'
+                msg['From'] = sender_email
+                msg['To'] = email_address
+                # Use send_email_message which tries OAuth first, then falls back to SMTP
+                return send_email_message(msg)
+            except Exception as e:
+                print(f"[EMAIL ERROR] Failed to send to {email_address}: {e}", flush=True)
+                return False
 
-            from concurrent.futures import ThreadPoolExecutor
-            success_count = 0
-            fail_count = 0
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                results = list(executor.map(send_single_email, applicants))
-                success_count = sum(1 for r in results if r)
-                fail_count = len(results) - success_count
-        
-            print(f"[EMAIL COMPLETE] Sent {success_count}/{len(applicants)} announcement emails (failed: {fail_count}) for provider {provider_no}", flush=True)
-            return True
-        
+        from concurrent.futures import ThreadPoolExecutor
+        success_count = 0
+        fail_count = 0
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(send_single_email, applicants))
+            success_count = sum(1 for r in results if r)
+            fail_count = len(results) - success_count
+
+        print(f"[EMAIL COMPLETE] Sent {success_count}/{len(applicants)} announcement emails (failed: {fail_count}) for provider {provider_no}", flush=True)
+        return True
+
     except Exception as e:
         print(f"[EMAIL ERROR] Critical error in background email job: {str(e)}", flush=True)
         traceback.print_exc()

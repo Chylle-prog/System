@@ -411,8 +411,21 @@ const Portal = () => {
       });
 
       // Live real-time updates for announcements
-      const unsubAnnounce = socketService.subscribe('announcement_update', () => {
-        console.log('[LIVE SYNC] Announcement update received live');
+      const unsubAnnounce = socketService.subscribe('announcement_update', (data) => {
+        console.log('[LIVE SYNC] Announcement update received live:', data);
+        if (data && data.action === 'delete') {
+          if (data.ann_no) {
+            setDbAnnouncements(prev => prev.filter(a => String(a.ann_no || a.id) !== String(data.ann_no)));
+          }
+          if (data.title) {
+            const deleteTitleLower = String(data.title).toLowerCase().trim();
+            setNotifications(prev => prev.filter(n => {
+              const notifTitle = String(n.title || '').toLowerCase();
+              const notifMsg = String(n.message || '').toLowerCase();
+              return !notifTitle.includes(deleteTitleLower) && !notifMsg.includes(deleteTitleLower);
+            }));
+          }
+        }
         fetchAnnouncements();
         fetchNotifications();
       });
@@ -425,11 +438,28 @@ const Portal = () => {
       // Live real-time updates for scholarships
       const unsubScholar = socketService.subscribe('scholarship_update', (data) => {
         console.log('[LIVE SYNC] Scholarship update received live:', data);
+        if (data && data.action === 'delete') {
+          if (data.req_no) {
+            setResources(prev => prev.filter(r => String(r.req_no || r.id || r.reqNo) !== String(data.req_no)));
+          }
+          const deleteTitle = data.scholarship_name || data.title || data.scholarshipName;
+          if (deleteTitle) {
+            const deleteTitleLower = String(deleteTitle).toLowerCase().trim();
+            setNotifications(prev => prev.filter(n => {
+              const notifTitle = String(n.title || '').toLowerCase();
+              const notifMsg = String(n.message || '').toLowerCase();
+              return !notifTitle.includes(deleteTitleLower) && !notifMsg.includes(deleteTitleLower);
+            }));
+          }
+        }
         fetchResources();
         fetchNotifications();
       });
       const unsubScholarChange = socketService.subscribe('scholarship_change', (data) => {
         console.log('[LIVE SYNC] Scholarship change received live:', data);
+        if (data && data.action === 'delete' && data.req_no) {
+          setResources(prev => prev.filter(r => String(r.req_no || r.id || r.reqNo) !== String(data.req_no)));
+        }
         fetchResources();
         fetchNotifications();
       });
@@ -443,6 +473,14 @@ const Portal = () => {
       });
       const unsubNotifUpdate = socketService.subscribe('notification_update', (data) => {
         console.log('[LIVE SYNC] Notification update received live:', data);
+        if (data && data.action === 'delete' && data.title) {
+          const deleteTitleLower = String(data.title).toLowerCase().trim();
+          setNotifications(prev => prev.filter(n => {
+            const notifTitle = String(n.title || '').toLowerCase();
+            const notifMsg = String(n.message || '').toLowerCase();
+            return !notifTitle.includes(deleteTitleLower) && !notifMsg.includes(deleteTitleLower);
+          }));
+        }
         fetchNotifications();
         fetchApplications(false);
       });

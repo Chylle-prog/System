@@ -2410,7 +2410,9 @@ export default function ScholarshipDashboard({
 
   const executeDeleteDirectly = async (type, id) => {
     if (type === 'scholarship') {
+      const targetPost = (data.scholarshipPosts || []).find(p => String(p.reqNo || p.id) === String(id));
       const previousPosts = data.scholarshipPosts;
+      const targetTitle = targetPost?.scholarshipName || targetPost?.title || '';
       // Instant optimistic UI update (0ms latency for user)
       setData(prev => ({
         ...prev,
@@ -2423,6 +2425,23 @@ export default function ScholarshipDashboard({
 
       try {
         await scholarshipAPI.deleteScholarship(id);
+        socketService.emit('scholarship_update', {
+          program: providerKey,
+          action: 'delete',
+          reqNo: id,
+          req_no: id,
+          scholarshipName: targetTitle,
+          scholarship_name: targetTitle,
+          title: targetTitle,
+          adminName: userName,
+          timestamp: new Date().toISOString()
+        });
+        socketService.emit('notification_update', {
+          type: 'scholarship',
+          action: 'delete',
+          req_no: id,
+          title: targetTitle
+        });
       } catch (error) {
         console.error('Failed to delete scholarship:', error);
         // Rollback state if delete failed
@@ -2430,7 +2449,9 @@ export default function ScholarshipDashboard({
         alert(getRequestErrorMessage(error, 'Error deleting scholarship'));
       }
     } else if (type === 'announcement') {
+      const targetAnn = (data.announcements || []).find(a => String(a.ann_no || a.id) === String(id));
       const previousAnnouncements = data.announcements;
+      const targetTitle = targetAnn?.ann_title || targetAnn?.title || '';
       // Instant optimistic UI update (0ms latency for user)
       setData(prev => ({
         ...prev,
@@ -2443,6 +2464,19 @@ export default function ScholarshipDashboard({
 
       try {
         await announcementService.delete(id);
+        socketService.emit('announcement_update', {
+          action: 'delete',
+          ann_no: id,
+          title: targetTitle,
+          adminName: userName,
+          timestamp: new Date().toISOString()
+        });
+        socketService.emit('notification_update', {
+          type: 'announcement',
+          action: 'delete',
+          ann_no: id,
+          title: targetTitle
+        });
       } catch (error) {
         console.error('Failed to delete announcement:', error);
         // Rollback state if delete failed
