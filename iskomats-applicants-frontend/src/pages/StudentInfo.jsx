@@ -2808,6 +2808,8 @@ const StudentInfo = () => {
   const [isInitialLoading, setIsInitialLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState({ title: '', message: '' });
   const [currentStep, setCurrentStep] = useState(1);
+  const lastSaveStepPromiseRef = useRef(null);
+  const lastSavedStepSignaturesRef = useRef({});
 
   const [schoolIdPhotos, setSchoolIdPhotos] = useState({
     front: null,
@@ -6128,6 +6130,12 @@ const StudentInfo = () => {
       return;
     }
 
+    // Step fingerprint to skip duplicate uploads of unchanged data
+    const stepFingerprint = JSON.stringify(jsonData) + '_' + Array.from(payload.keys()).join(',');
+    if (lastSavedStepSignaturesRef.current[stepNumber] === stepFingerprint) {
+      return;
+    }
+
     let saveResult = null;
     if (Object.keys(jsonData).length > 0 && Array.from(payload.entries()).length === 0) {
       saveResult = await applicantAPI.updateProfile(jsonData);
@@ -6139,6 +6147,8 @@ const StudentInfo = () => {
     } else {
       saveResult = await applicantAPI.updateProfile(payload);
     }
+
+    lastSavedStepSignaturesRef.current[stepNumber] = stepFingerprint;
 
     // Replace uploaded base64 data with permanent storage URLs to prevent duplicate uploads on next steps
     if (saveResult && saveResult.document_urls) {
@@ -7409,8 +7419,8 @@ const StudentInfo = () => {
     setCurrentStep(prev => Math.min(prev + 1, 4));
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
-    // Non-blocking background save to database & storage
-    saveCurrentStepProgress(stepCompleted).catch(err => {
+    // Non-blocking background save to database & storage tracked via ref
+    lastSaveStepPromiseRef.current = saveCurrentStepProgress(stepCompleted).catch(err => {
       console.warn(`[Background Save Step ${stepCompleted}] Warning:`, err);
     });
   };
@@ -7426,13 +7436,19 @@ const StudentInfo = () => {
   const handleApplicationSubmit = async (e) => {
     e.preventDefault();
 
-    // Safety check: wait for background uploads
-    const pendingUploads = Object.values(uploadingFields);
+    // Fast Safety Check: Parallel wait for any active background uploads / step sync
+    const pendingUploads = [...Object.values(uploadingFields)];
+    if (lastSaveStepPromiseRef.current) {
+      pendingUploads.push(lastSaveStepPromiseRef.current);
+    }
     if (pendingUploads.length > 0) {
-      setLoadingMessage({ title: 'Completing Uploads', message: 'Finalizing your video uploads before submission...' });
-      setIsSavingStep(true);
-      try { await Promise.all(pendingUploads); } catch (err) { console.error("Delayed wait failed:", err); }
-      setIsSavingStep(false);
+      setLoadingMessage({ title: 'Finalizing Submission', message: 'Completing pending uploads. Please wait a moment...' });
+      setIsSubmitting(true);
+      try { 
+        await Promise.all(pendingUploads); 
+      } catch (err) { 
+        console.warn("Background upload sync warning:", err); 
+      }
     }
 
     const requiredFields = [
@@ -7533,8 +7549,6 @@ const StudentInfo = () => {
 
       console.log(`Submitting application (faceVerified: ${faceVerified})...`);
 
-      await saveCurrentStepProgress(4);
-
       const submissionData = new FormData();
 
       const fullAddress = formData.barangay || formData.streetBarangay || '';
@@ -7552,28 +7566,43 @@ const StudentInfo = () => {
         }
       });
 
+      // Smart URL prioritized selector to minimize upload size & speed up submission
+      const appendSmartDocPhoto = (formKey, photoCandidates = []) => {
+        for (const c of photoCandidates) {
+          if (c && typeof c === 'string' && (c.startsWith('http://') || c.startsWith('https://'))) {
+            submissionData.append(formKey, c);
+            return;
+          }
+        }
+        for (const c of photoCandidates) {
+          if (c) {
+            submissionData.append(formKey, c);
+            return;
+          }
+        }
+      };
+
       // Upload profile picture to Supabase Storage and send only the URL to the backend.
-      // This matches how the profile-update flow works and prevents bytea storage.
       if (rawProfilePictureFile) {
         try {
           console.log('[SUBMIT] Uploading profile picture to storage...');
           const profilePicUrl = await uploadProfilePicture(rawProfilePictureFile);
-          console.log('[SUBMIT] Profile picture URL:', profilePicUrl);
           submissionData.append('profile_picture', profilePicUrl);
         } catch (uploadErr) {
           console.error('[SUBMIT] Failed to upload profile picture:', uploadErr);
           throw new Error(`Profile picture upload failed: ${uploadErr.message}`);
         }
       } else if (idPicturePreview && (idPicturePreview.startsWith('http://') || idPicturePreview.startsWith('https://'))) {
-        // Pre-existing picture already stored as a URL — send it as-is
         submissionData.append('profile_picture', idPicturePreview);
       } else if (userProfile?.profile_picture && (userProfile.profile_picture.startsWith('http://') || userProfile.profile_picture.startsWith('https://'))) {
-        // Reuse the existing profile picture URL from the user's profile
         submissionData.append('profile_picture', userProfile.profile_picture);
+      } else if (idPicturePreview) {
+        submissionData.append('profile_picture', idPicturePreview);
       }
-      if (photos.id_front || schoolIdPhotos.front) submissionData.append('id_front', photos.id_front || schoolIdPhotos.front);
-      if (photos.id_back || schoolIdPhotos.back) submissionData.append('id_back', photos.id_back || schoolIdPhotos.back);
-      if (photos.face_photo) submissionData.append('face_photo', photos.face_photo);
+
+      appendSmartDocPhoto('id_front', [photos.id_front, schoolIdPhotos.front, formData.schoolIdFront, formData.id_front]);
+      appendSmartDocPhoto('id_back', [photos.id_back, schoolIdPhotos.back, formData.schoolIdBack, formData.id_back]);
+      appendSmartDocPhoto('face_photo', [photos.face_photo, formData.face_photo, formData.id_pic]);
 
       const finalSignature = signaturePreview || drawnSignature || formData.applicantSignatureName;
       if (finalSignature) {
@@ -7600,17 +7629,14 @@ const StudentInfo = () => {
         }
       };
 
-      const docKeys = ['mayorCOE', 'mayorGrades', 'mayorIndigency'];
-      docKeys.forEach(key => {
-        const fileKey = `${key}_photo`;
-        if (photos[fileKey]) {
-          submissionData.append(fileKey, photos[fileKey]);
-        } else if (formData[fileKey] && typeof formData[fileKey] === 'string') {
-          submissionData.append(fileKey, formData[fileKey]);
-        }
+      appendSmartDocPhoto('mayorCOE_photo', [photos.mayorCOE_photo, photos.enrollment, formData.mayorCOE_photo, formData.enrollment]);
+      appendSmartVideo('mayorCOE_video');
 
-        appendSmartVideo(`${key}_video`);
-      });
+      appendSmartDocPhoto('mayorGrades_photo', [photos.mayorGrades_photo, photos.grades, formData.mayorGrades_photo, formData.grades]);
+      appendSmartVideo('mayorGrades_video');
+
+      appendSmartDocPhoto('mayorIndigency_photo', [photos.mayorIndigency_photo, photos.indigency, formData.mayorIndigency_photo, formData.indigency]);
+      appendSmartVideo('mayorIndigency_video');
 
       appendSmartVideo('face_video');
 

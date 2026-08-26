@@ -3648,6 +3648,7 @@ def submit_application():
                 'schoolID_photo': doc_bytes['schoolID_photo'],
             }
 
+            submit_upload_tasks = []
             for column_name, value in binary_map.items():
                 # If we already have a URL (from profile_pic_url etc), use it directly
                 if column_name == 'profile_picture' and profile_pic_url:
@@ -3658,21 +3659,28 @@ def submit_application():
                     continue
 
                 if value is not None:
-                    print(f"[SUBMIT] Processing {column_name}: {len(value) if isinstance(value, (bytes, bytearray)) else 'scalar'} data. Cloud? {use_storage()}", flush=True)
-                    try:
-                        url = upload_image_to_storage(value, current_user_id, column_name, is_update=False)
+                    submit_upload_tasks.append((column_name, value))
+
+            if submit_upload_tasks:
+                import concurrent.futures
+                def _do_submit_upload(task):
+                    col_name, val_bytes = task
+                    uploaded_url = upload_image_to_storage(val_bytes, current_user_id, col_name, is_update=False)
+                    return col_name, uploaded_url
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(submit_upload_tasks))) as executor:
+                    futures = [executor.submit(_do_submit_upload, t) for t in submit_upload_tasks]
+                    for fut in concurrent.futures.as_completed(futures):
+                        col_name, url = fut.result()
                         if url:
-                            print(f"[SUBMIT] SUCCESS: {column_name} uploaded to {url[:50]}...", flush=True)
-                            if column_name == 'profile_picture' and has_profile_picture_column:
-                                add_update(column_name, url)
+                            print(f"[SUBMIT] SUCCESS: {col_name} uploaded to {url[:50]}...", flush=True)
+                            if col_name == 'profile_picture' and has_profile_picture_column:
+                                add_update(col_name, url)
                             else:
-                                document_updates[column_name] = url
+                                document_updates[col_name] = url
                         else:
-                            print(f"[SUBMIT] ERROR: Cloud upload failed for {column_name}. Refusing BYTEA fallback.", flush=True)
-                            raise ValueError(f"Failed to upload {column_name} to cloud storage.")
-                    except Exception as e:
-                        print(f"[SUBMIT] CRITICAL STORAGE ERROR for {column_name}: {e}", flush=True)
-                        raise ValueError(f"Storage System Error: {str(e)}")
+                            print(f"[SUBMIT] ERROR: Cloud upload failed for {col_name}. Refusing BYTEA fallback.", flush=True)
+                            raise ValueError(f"Failed to upload {col_name} to cloud storage.")
 
             if updates_dict:
                 cols = list(updates_dict.keys())
