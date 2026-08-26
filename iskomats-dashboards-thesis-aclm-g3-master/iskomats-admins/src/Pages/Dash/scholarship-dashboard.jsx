@@ -2309,7 +2309,9 @@ export default function ScholarshipDashboard({
         response = await scholarshipAPI.createScholarship(postData);
       }
 
-      if (response.data.success) {
+      if (response.data.success || response.status === 200 || response.status === 201) {
+        setIsSaving(false);
+        hideActionOverlay();
         resetForm();
         setManageMode('list');
         loadScholarships(false);
@@ -2324,10 +2326,14 @@ export default function ScholarshipDashboard({
           timestamp: new Date().toISOString()
         });
       } else {
+        setIsSaving(false);
+        hideActionOverlay();
         alert('Error: ' + (response.data.message || 'Unknown error occurred'));
       }
     } catch (error) {
       console.error('Failed to save scholarship:', error);
+      setIsSaving(false);
+      hideActionOverlay();
       alert(getRequestErrorMessage(error, 'Error saving scholarship'));
     } finally {
       setIsSaving(false);
@@ -2496,7 +2502,9 @@ export default function ScholarshipDashboard({
         response = await announcementService.create(fData);
       }
 
-      if (response.data.message || response.data.success) {
+      if (response.data.message || response.data.success || response.status === 200 || response.status === 201) {
+        setIsSaving(false);
+        hideActionOverlay();
         resetForm();
         setManageMode('list');
         loadAnnouncements();
@@ -2513,6 +2521,8 @@ export default function ScholarshipDashboard({
       }
     } catch (error) {
       console.error('Failed to save announcement:', error);
+      setIsSaving(false);
+      hideActionOverlay();
       alert(getRequestErrorMessage(error, 'Error saving announcement'));
     } finally {
       setIsSaving(false);

@@ -226,7 +226,7 @@ def get_storage_bucket(default='document_images'):
 
 _SUPABASE_CLIENT = None
 _SUPABASE_LOCK = threading.Lock()
-_VERIFIED_BUCKETS = set()
+_VERIFIED_BUCKETS = {'announcement_images', 'scholarship_images', 'applicant_documents', 'documents', 'document_images'}
 
 def get_supabase_client():
     global _SUPABASE_CLIENT
