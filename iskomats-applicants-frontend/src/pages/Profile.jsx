@@ -926,10 +926,23 @@ const Profile = () => {
             <div className="profile-identity">
               <div className="avatar-box">
                 {(showEditForm ? formData.profile_picture : (userProfile?.profile_picture || userProfile?.id_pic || userProfile?.face_photo)) ? (
-                  <img src={showEditForm ? formData.profile_picture : (userProfile?.profile_picture || userProfile?.id_pic || userProfile?.face_photo)} alt="Profile Avatar" />
-                ) : (
-                  <i className="fas fa-user"></i>
-                )}
+                  <img
+                    src={showEditForm ? formData.profile_picture : (userProfile?.profile_picture || userProfile?.id_pic || userProfile?.face_photo)}
+                    alt="Profile Avatar"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      if (e.currentTarget.nextElementSibling) {
+                        e.currentTarget.nextElementSibling.style.display = 'inline-block';
+                      }
+                    }}
+                  />
+                ) : null}
+                <i
+                  className="fas fa-user"
+                  style={{
+                    display: (showEditForm ? formData.profile_picture : (userProfile?.profile_picture || userProfile?.id_pic || userProfile?.face_photo)) ? 'none' : 'inline-block'
+                  }}
+                ></i>
               </div>
               <div className="identity-text">
                 <h3>{getFullName()}</h3>

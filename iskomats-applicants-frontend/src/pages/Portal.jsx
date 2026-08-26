@@ -423,13 +423,15 @@ const Portal = () => {
       });
 
       // Live real-time updates for scholarships
-      const unsubScholar = socketService.subscribe('scholarship_update', () => {
-        console.log('[LIVE SYNC] Scholarship update received live');
+      const unsubScholar = socketService.subscribe('scholarship_update', (data) => {
+        console.log('[LIVE SYNC] Scholarship update received live:', data);
         fetchResources();
+        fetchNotifications();
       });
-      const unsubScholarChange = socketService.subscribe('scholarship_change', () => {
-        console.log('[LIVE SYNC] Scholarship change received live');
+      const unsubScholarChange = socketService.subscribe('scholarship_change', (data) => {
+        console.log('[LIVE SYNC] Scholarship change received live:', data);
         fetchResources();
+        fetchNotifications();
       });
 
       // Live real-time updates for applicant status changes & notifications
@@ -3276,10 +3278,21 @@ const Portal = () => {
                   src={globalProfile?.profile_picture || userProfile?.profile_picture}
                   alt="Avatar"
                   className="nav-profile-avatar"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    if (e.currentTarget.nextElementSibling) {
+                      e.currentTarget.nextElementSibling.style.display = 'inline-block';
+                    }
+                  }}
                 />
-              ) : (
-                <i className="fas fa-user-circle" style={{ marginRight: '6px' }}></i>
-              )}
+              ) : null}
+              <i
+                className="fas fa-user-circle"
+                style={{
+                  marginRight: '6px',
+                  display: (globalProfile?.profile_picture || userProfile?.profile_picture) ? 'none' : 'inline-block'
+                }}
+              ></i>
               Profile
             </button>
             <button className="logout-btn" onClick={() => { setMobileMenuOpen(false); logout(); }}>
@@ -3314,10 +3327,21 @@ const Portal = () => {
                 src={globalProfile?.profile_picture || userProfile?.profile_picture}
                 alt="Avatar"
                 className="nav-profile-avatar"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  if (e.currentTarget.nextElementSibling) {
+                    e.currentTarget.nextElementSibling.style.display = 'inline-block';
+                  }
+                }}
               />
-            ) : (
-              <i className="fas fa-user-circle" style={{ marginRight: '6px' }}></i>
-            )}
+            ) : null}
+            <i
+              className="fas fa-user-circle"
+              style={{
+                marginRight: '6px',
+                display: (globalProfile?.profile_picture || userProfile?.profile_picture) ? 'none' : 'inline-block'
+              }}
+            ></i>
             Profile
           </button>
           <button className="logout-btn" onClick={() => { setMobileMenuOpen(false); logout(); }}>

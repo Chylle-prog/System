@@ -1363,6 +1363,8 @@ def notify_all_applicants(title, message, notif_type='scholarship'):
             )
             conn.commit()
             print(f"[NOTIF BATCH] Fast batch notification sent to all applicants (title='{title}')", flush=True)
+            safe_emit('notification_update', {'type': notif_type, 'title': title}, broadcast=True)
+            safe_emit('new_notification', {'title': title, 'message': message, 'type': notif_type}, broadcast=True)
     except Exception as exc:
         print(f"[NOTIF ERROR] Failed to batch notify applicants: {exc}", flush=True)
 
@@ -4401,6 +4403,20 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
                     return jsonify({'message': 'Unauthorized'}), 401
             
             cursor.execute("UPDATE scholarships SET is_removed = TRUE WHERE req_no = %s", (req_no,))
+            
+            # Remove active in-app notifications for this deleted scholarship
+            try:
+                cursor.execute(
+                    """
+                    DELETE FROM notifications
+                    WHERE type = 'scholarship'
+                      AND (title ILIKE %s OR message ILIKE %s)
+                    """,
+                    (f"%{scholarship_name}%", f"%{scholarship_name}%")
+                )
+            except Exception as notif_del_err:
+                print(f"[SCHOLARSHIP NOTIF DELETE WARN] {notif_del_err}", flush=True)
+
             conn.commit()
             
             record_admin_activity(
@@ -4419,6 +4435,7 @@ def delete_scholarship(current_user_id, pro_no, role, req_no):
                 'pro_no': resolved_provider_no
             }, broadcast=True)
             safe_emit('scholarship_change', {'action': 'delete', 'req_no': req_no}, broadcast=True)
+            safe_emit('notification_update', {'type': 'scholarship', 'action': 'delete', 'req_no': req_no, 'title': scholarship_name}, broadcast=True)
             safe_emit('account_change', {'type': 'scholarship_delete'}, broadcast=True)
             safe_invalidate_public_caches()
             return jsonify({'success': True, 'message': 'Scholarship removed'}), 200
@@ -5300,6 +5317,20 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
                     return jsonify({'message': 'Unauthorized to delete this announcement'}), 403
 
             cur.execute("UPDATE announcements SET is_removed = TRUE WHERE ann_no = %s", (ann_no,))
+            
+            # Remove active in-app notifications for this deleted announcement
+            try:
+                cur.execute(
+                    """
+                    DELETE FROM notifications
+                    WHERE type = 'announcement'
+                      AND (title ILIKE %s OR message ILIKE %s)
+                    """,
+                    (f"%{title}%", f"%{title}%")
+                )
+            except Exception as notif_del_err:
+                print(f"[ANNOUNCEMENT NOTIF DELETE WARN] {notif_del_err}", flush=True)
+
             conn.commit()
         
             record_admin_activity(
@@ -5317,7 +5348,7 @@ def delete_announcement(current_user_id, pro_no, role, ann_no):
                 'title': title,
                 'pro_no': ann_provider_no
             }, broadcast=True)
-            safe_emit('notification_update', {'type': 'announcement', 'ann_no': ann_no}, broadcast=True)
+            safe_emit('notification_update', {'type': 'announcement', 'action': 'delete', 'ann_no': ann_no, 'title': title}, broadcast=True)
             safe_invalidate_public_caches()
         
             return jsonify({'success': True, 'message': 'Announcement deleted'}), 200

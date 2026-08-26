@@ -8863,9 +8863,9 @@ const StudentInfo = () => {
                       style={{ position: 'absolute', width: '100%', height: '100%', opacity: '0', cursor: 'pointer', zIndex: '5' }}
                     />
                     <div style={{ textAlign: 'center', color: '#999', fontSize: '0.85rem', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                      {((idPicturePreview && (idPicturePreview.startsWith('blob:') || idPicturePreview.startsWith('data:'))) || (formData.profile_picture && (formData.profile_picture.startsWith('blob:') || formData.profile_picture.startsWith('data:'))) || (photos.profile_picture && (photos.profile_picture.startsWith('blob:') || photos.profile_picture.startsWith('data:')))) ? (
+                      {(idPicturePreview || formData.profile_picture || photos.profile_picture) ? (
                         <img
-                          src={(idPicturePreview && (idPicturePreview.startsWith('blob:') || idPicturePreview.startsWith('data:'))) ? idPicturePreview : (formData.profile_picture && (formData.profile_picture.startsWith('blob:') || formData.profile_picture.startsWith('data:'))) ? formData.profile_picture : photos.profile_picture}
+                          src={idPicturePreview || formData.profile_picture || photos.profile_picture}
                           style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px', display: 'block' }}
                           alt="ID Preview"
                           onError={() => setIdPicturePreview(null)}

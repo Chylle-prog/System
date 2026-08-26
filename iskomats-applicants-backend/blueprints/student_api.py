@@ -2595,10 +2595,7 @@ def get_profile():
                     applicant['has_profile_picture'] = bool(has_pic)
                     if has_pic:
                         raw_field = 'profile_picture' if (document_values.get('profile_picture') is not None or applicant.get('profile_picture')) else 'id_pic'
-                        val_str = str(document_values.get(raw_field) or applicant.get(raw_field) or '')
-                        if val_str.startswith('http'):
-                            applicant['profile_picture'] = val_str
-                        elif token_str:
+                        if token_str:
                             applicant['profile_picture'] = url_for('student_api.get_applicant_document_raw', field_name=raw_field, token=token_str, _external=True)
                         else:
                             applicant['profile_picture'] = url_for('student_api.get_applicant_document_raw', field_name=raw_field, _external=True)
@@ -2607,10 +2604,7 @@ def get_profile():
                 else:
                     applicant[flag_name] = doc_val is not None
                     if applicant.get(flag_name):
-                        val_str = str(doc_val or applicant.get(key) or '')
-                        if val_str.startswith('http'):
-                            applicant[key] = val_str
-                        elif token_str:
+                        if token_str:
                             applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, token=token_str, _external=True)
                         else:
                             applicant[key] = url_for('student_api.get_applicant_document_raw', field_name=key, _external=True)
