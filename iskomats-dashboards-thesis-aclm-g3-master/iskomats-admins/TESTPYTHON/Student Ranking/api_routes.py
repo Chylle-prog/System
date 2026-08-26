@@ -3601,6 +3601,11 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 
+# In-memory cache for AI merit evaluations so each unique merits text is only
+# evaluated once per server lifetime (avoids re-calling Gemini for every applicant).
+_MERIT_EVAL_CACHE = {}
+_MERIT_EVAL_CACHE_MAX = 2000  # Limit memory footprint
+
 def analyze_merits_onthefly(merits_text):
     """
     Parses merits_text using Gemini API if GEMINI_API_KEY is present in env,
@@ -3610,12 +3615,16 @@ def analyze_merits_onthefly(merits_text):
     import os
     import json
     import requests
-    
+
     if not merits_text or not merits_text.strip():
         return 0, "No merits or awards provided."
 
     text_clean = merits_text.strip().lower()
 
+    # --- Cache hit: return previously computed result instantly ---
+    cache_key = text_clean[:500]  # cap key length
+    if cache_key in _MERIT_EVAL_CACHE:
+        return _MERIT_EVAL_CACHE[cache_key]
     academic_keywords = [
         'summa', 'magna', 'cum laude', 'laude', 'valedictorian', 'salutatorian',
         'first honor', '1st honor', 'second honor', '2nd honor', 'third honor', '3rd honor',
@@ -3787,14 +3796,30 @@ Return ONLY a valid JSON object. No markdown, no extra text.
                     score = 0
                 score = max(0, min(20, score))
                 reason = str(parsed.get('reason', 'Evaluated by AI based on holistic merit profile.'))
-                return score, reason
+                # Cache the AI result so we don't re-call for the same text
+                ai_result = (score, reason)
+                if len(_MERIT_EVAL_CACHE) >= _MERIT_EVAL_CACHE_MAX:
+                    try:
+                        del _MERIT_EVAL_CACHE[next(iter(_MERIT_EVAL_CACHE))]
+                    except StopIteration:
+                        pass
+                _MERIT_EVAL_CACHE[cache_key] = ai_result
+                return ai_result
             else:
                 print(f"[AI MERITS ERROR] API call returned status {response.status_code}: {response.text}", flush=True)
         except Exception as e:
             print(f"[AI MERITS ERROR] API call failed: {e}", flush=True)
 
     # Calibrated rule-based academic evaluation fallback
-    return base_score, base_reason
+    result = base_score, base_reason
+    # Store in cache (evict oldest entry if at max capacity)
+    if len(_MERIT_EVAL_CACHE) >= _MERIT_EVAL_CACHE_MAX:
+        try:
+            del _MERIT_EVAL_CACHE[next(iter(_MERIT_EVAL_CACHE))]
+        except StopIteration:
+            pass
+    _MERIT_EVAL_CACHE[cache_key] = result
+    return result
 
 @api_bp.route('/test-ai', methods=['GET'])
 def test_ai():
@@ -5156,23 +5181,30 @@ def create_announcement(current_user_id, pro_no, role):
 
         if image_attachments:
             _, foreign_key_column = get_entity_image_columns(cur, 'announcement')
-            for i, img_bytes in enumerate(image_attachments):
-                # Upload to Supabase bucket 'announcement_images'
+
+            def _upload_image(args):
+                i, img_bytes = args
                 file_path = f"ann_{ann_no}_img_{i}_{int(datetime.now().timestamp())}.jpg"
                 url = upload_to_supabase(img_bytes, 'announcement_images', file_path)
-                
-                if url:
-                    cur.execute(
-                        f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
-                        (ann_no, url)
-                    )
-                else:
-                    print(f"[ANNOUNCEMENT ERROR] Storage failed for image {i}. Check Supabase credentials/bucket.", flush=True)
-                    raise ValueError("Failed to upload announcement image to cloud storage bucket 'announcement_images'.")
+                if not url:
+                    raise ValueError(f"Failed to upload announcement image {i} to cloud storage bucket 'announcement_images'.")
+                return url
+
+            # Upload all images in parallel
+            import concurrent.futures as _cf
+            with _cf.ThreadPoolExecutor(max_workers=min(6, len(image_attachments))) as pool:
+                uploaded_urls = list(pool.map(_upload_image, enumerate(image_attachments)))
+
+            for url in uploaded_urls:
+                cur.execute(
+                    f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
+                    (ann_no, url)
+                )
 
         conn.commit()
-        
-        record_admin_activity(
+
+        run_background_task(
+            record_admin_activity,
             actor_user_no=current_user_id,
             action='create_announcement',
             target_type='announcement',
@@ -5313,40 +5345,58 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
                     if file:
                         new_sequence.append(file.read())
 
-        # 4. Sync image table using a temporary staging table to avoid DB round-trips for blobs
-        cur.execute("CREATE TEMP TABLE temp_ann_imgs (img text)")
+        # 4. Sync image table — parallel upload of new images
+        import concurrent.futures as _cf
+        new_items_to_upload = [(i, item) for i, item in enumerate(new_sequence) if isinstance(item, bytes)]
+        existing_items = [(i, item) for i, item in enumerate(new_sequence) if not isinstance(item, bytes)]
+
+        def _upload_update_image(args):
+            i, item = args
+            file_path = f"ann_{ann_no}_upd_{i}_{int(datetime.now().timestamp())}.jpg"
+            try:
+                url = upload_to_supabase(item, 'announcement_images', file_path)
+                if url:
+                    return (i, url)
+                # Fallback: store as base64 if upload fails
+                b64 = base64.b64encode(item).decode('utf-8')
+                return (i, f"data:image/jpeg;base64,{b64}")
+            except Exception as e:
+                print(f"[ANNOUNCEMENT UPDATE] Cloud upload error: {e}", flush=True)
+                b64 = base64.b64encode(item).decode('utf-8')
+                return (i, f"data:image/jpeg;base64,{b64}")
+
+        # Upload new images in parallel
+        uploaded = {}
+        if new_items_to_upload:
+            with _cf.ThreadPoolExecutor(max_workers=min(6, len(new_items_to_upload))) as pool:
+                for idx, url in pool.map(_upload_update_image, new_items_to_upload):
+                    uploaded[idx] = url
+
+        # Build final ordered URL list matching new_sequence order
+        cur.execute("CREATE TEMP TABLE temp_ann_imgs (seq INT, img text)")
         for i, item in enumerate(new_sequence):
             if isinstance(item, bytes):
-                # New image - ALWAYS cloud storage for announcements
-                file_path = f"ann_{ann_no}_upd_{i}_{int(datetime.now().timestamp())}.jpg"
-                try:
-                    url = upload_to_supabase(item, 'announcement_images', file_path)
-                    if url:
-                        cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (url,))
-                    else:
-                        print(f"[ANNOUNCEMENT UPDATE] Cloud storage failed for image {i}. Falling back to Base64 to prevent 500.", flush=True)
-                        b64 = base64.b64encode(item).decode('utf-8')
-                        cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (f"data:image/jpeg;base64,{b64}",))
-                except Exception as e:
-                    print(f"[ANNOUNCEMENT UPDATE] Cloud upload error: {e}", flush=True)
-                    b64 = base64.b64encode(item).decode('utf-8')
-                    cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (f"data:image/jpeg;base64,{b64}",))
+                url = uploaded.get(i)
+                if url:
+                    cur.execute("INSERT INTO temp_ann_imgs (seq, img) VALUES (%s, %s)", (i, url))
+            elif isinstance(item, str) and item.startswith('http'):
+                cur.execute("INSERT INTO temp_ann_imgs (seq, img) VALUES (%s, %s)", (i, item))
             else:
-                # Existing image (either a URL string or an ID int)
-                if isinstance(item, str) and item.startswith('http'):
-                    cur.execute("INSERT INTO temp_ann_imgs (img) VALUES (%s)", (item,))
-                else:
-                    # Copy from DB (might be BYTEA or URL)
-                    cur.execute(f"INSERT INTO temp_ann_imgs (img) SELECT img FROM announcement_images WHERE {primary_key_column} = %s", (item,))
+                # Copy existing DB image by ID
+                cur.execute(
+                    f"INSERT INTO temp_ann_imgs (seq, img) SELECT %s, img FROM announcement_images WHERE {primary_key_column} = %s",
+                    (i, item)
+                )
         
-        # Replace the original image set
+        # Replace the original image set (ordered by seq)
         cur.execute(f"DELETE FROM announcement_images WHERE {foreign_key_column} = %s", (ann_no,))
-        cur.execute(f"INSERT INTO announcement_images ({foreign_key_column}, img) SELECT %s, img FROM temp_ann_imgs", (ann_no,))
+        cur.execute(f"INSERT INTO announcement_images ({foreign_key_column}, img) SELECT %s, img FROM temp_ann_imgs ORDER BY seq", (ann_no,))
         cur.execute("DROP TABLE temp_ann_imgs")
 
         conn.commit()
-        
-        record_admin_activity(
+
+        run_background_task(
+            record_admin_activity,
             actor_user_no=current_user_id,
             action='update_announcement',
             target_type='announcement',

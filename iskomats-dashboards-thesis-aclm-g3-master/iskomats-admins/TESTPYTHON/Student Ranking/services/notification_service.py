@@ -137,6 +137,78 @@ The ISKOMATS Team
         raise e
 
 
+def send_email_message(msg):
+    """
+    Reliable email dispatcher. Tries SMTP (App Password) first as it is not
+    subject to Gmail API rate limits. Falls back to OAuth (Gmail REST API)
+    if SMTP is not configured.
+    """
+    import smtplib
+    import re
+
+    receiver_email = msg['To']
+    sender_email = msg['From'] or os.environ.get('GMAIL_SENDER_EMAIL', '').strip()
+
+    # Suppress test/dummy emails
+    if not receiver_email or re.search(
+        r'^(dlsl\.applicant|applicant\d*|test_?applicant\d*|dummy|fake|mock)@'
+        r'|@(example\.com|test\.com|sample\.com|invalid|localhost)$',
+        receiver_email.strip().lower()
+    ):
+        print(f"[EMAIL SKIP] Suppressed email to test address '{receiver_email}'.", flush=True)
+        return True
+
+    # 1. Try SMTP first (App Password) — reliable, no API rate limits
+    app_password = (
+        os.environ.get('GMAIL_APP_PASSWORD', '').strip() or
+        os.environ.get('SMTP_PASSWORD', '').strip() or
+        os.environ.get('SMTP_PASS', '').strip()
+    )
+    smtp_user = os.environ.get('SMTP_USER', '').strip() or sender_email
+    smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
+    smtp_port = int(os.environ.get('SMTP_PORT', '587'))
+
+    if app_password and smtp_user:
+        try:
+            print(f"[EMAIL SMTP] Sending to {receiver_email} via {smtp_host}:{smtp_port}...", flush=True)
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+                server.starttls()
+                server.login(smtp_user, app_password)
+                server.send_message(msg)
+            print(f"[EMAIL SMTP SUCCESS] Sent to {receiver_email}", flush=True)
+            return True
+        except Exception as smtp_err:
+            print(f"[EMAIL SMTP ERROR] SMTP failed for {receiver_email}: {smtp_err}. Trying OAuth...", flush=True)
+
+    # 2. Fallback: Gmail REST API via OAuth
+    has_oauth = bool(
+        os.environ.get('GOOGLE_CLIENT_ID', '').strip() and
+        os.environ.get('GOOGLE_CLIENT_SECRET', '').strip() and
+        os.environ.get('GOOGLE_REFRESH_TOKEN', '').strip()
+    )
+    if has_oauth:
+        try:
+            access_token = fetch_google_access_token()
+            raw_bytes = msg.as_bytes().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+            encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
+            req = urllib_request.Request(
+                'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+                data=json.dumps({'raw': encoded_message}).encode('utf-8'),
+                headers={
+                    'Authorization': f'Bearer {access_token}',
+                    'Content-Type': 'application/json',
+                },
+                method='POST',
+            )
+            with urllib_request.urlopen(req, timeout=15) as response:
+                print(f"[EMAIL OAUTH SUCCESS] Sent to {receiver_email} via OAuth", flush=True)
+                return True
+        except Exception as oauth_err:
+            print(f"[EMAIL OAUTH ERROR] OAuth failed for {receiver_email}: {oauth_err}", flush=True)
+
+    raise RuntimeError(f"Email delivery to {receiver_email} failed via both SMTP and OAuth.")
+
+
 def send_sms_logic(number, message):
     """Sends SMS to a mobile number using Semaphore or Twilio."""
     import urllib.parse

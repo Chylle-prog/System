@@ -206,10 +206,13 @@ def get_supabase_client():
     return create_client(url, service_role_key)
 
 
+# Cache of bucket names already confirmed to exist — avoids an API call on every upload
+_VERIFIED_BUCKETS = set()
+
 def upload_to_supabase(image_data, bucket_name, file_path, content_type='image/jpeg'):
     """
     General helper to upload binary data to a Supabase storage bucket.
-    Ensures bucket exists before upload.
+    Ensures bucket exists before upload (cached after first check).
     Returns the public URL on success, or None on failure.
     """
     supabase = get_supabase_client()
@@ -228,25 +231,26 @@ def upload_to_supabase(image_data, bucket_name, file_path, content_type='image/j
         else:
             binary_data = bytes(image_data)
 
-        # 1. Ensure bucket exists
-        try:
-            supabase.storage.get_bucket(bucket_name)
-        except Exception:
+        # 1. Ensure bucket exists (cached after first successful check)
+        if bucket_name not in _VERIFIED_BUCKETS:
             try:
-                # List available buckets for diagnostic purposes
-                all_buckets = [b.name for b in supabase.storage.list_buckets()]
-                print(f"[STORAGE] Bucket '{bucket_name}' not found. Available buckets: {all_buckets}", flush=True)
-                
-                print(f"[STORAGE] Attempting to create bucket '{bucket_name}'...", flush=True)
-                supabase.storage.create_bucket(bucket_name, {"public": True})
-            except Exception as e:
-                # Refresh list after failed create
-                available = []
+                supabase.storage.get_bucket(bucket_name)
+                _VERIFIED_BUCKETS.add(bucket_name)
+            except Exception:
                 try:
-                    available = [b.name for b in supabase.storage.list_buckets()]
-                except: pass
-                print(f"[STORAGE ERROR] Could not create bucket '{bucket_name}': {e}. Visible buckets: {available}", flush=True)
-                raise RuntimeError(f"Storage Error: Bucket '{bucket_name}' not found and creation failed. Visible buckets: {available}. Error: {str(e)}")
+                    all_buckets = [b.name for b in supabase.storage.list_buckets()]
+                    print(f"[STORAGE] Bucket '{bucket_name}' not found. Available buckets: {all_buckets}", flush=True)
+
+                    print(f"[STORAGE] Attempting to create bucket '{bucket_name}'...", flush=True)
+                    supabase.storage.create_bucket(bucket_name, {"public": True})
+                    _VERIFIED_BUCKETS.add(bucket_name)
+                except Exception as e:
+                    available = []
+                    try:
+                        available = [b.name for b in supabase.storage.list_buckets()]
+                    except: pass
+                    print(f"[STORAGE ERROR] Could not create bucket '{bucket_name}': {e}. Visible buckets: {available}", flush=True)
+                    raise RuntimeError(f"Storage Error: Bucket '{bucket_name}' not found and creation failed. Visible buckets: {available}. Error: {str(e)}")
 
         # 2. Upload using service role key (bypasses RLS)
         supabase.storage.from_(bucket_name).upload(
