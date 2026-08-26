@@ -23,6 +23,7 @@ from cryptography.fernet import Fernet
 from io import BytesIO
 import traceback
 import threading
+import concurrent.futures
 from services.applicant_document_service import normalize_supabase_url
 
 # Global SocketIO instance to avoid circular imports with app.py
@@ -508,7 +509,7 @@ def ensure_schema_integrity(cursor):
             cursor.execute(f"ALTER TABLE scholarships ADD COLUMN {col} {col_type}")
         else:
             current_type = (res['data_type'] if isinstance(res, dict) else res[0]).lower()
-            if 'int' in current_type:
+            if col_type.startswith('VARCHAR') and 'int' in current_type:
                 print(f"[MIGRATION] Converting scholarships.{col} from {current_type} to {col_type}")
                 try:
                     cursor.execute(f"ALTER TABLE scholarships ALTER COLUMN {col} TYPE {col_type} USING {col}::text")
@@ -4203,18 +4204,6 @@ def create_scholarship(current_user_id, pro_no, role):
             # Isolation: Use pro_no from token if not superadmin
             if role != 'Admin' and target_pro_no is None:
                  return jsonify({'message': 'User not associated with a scholarship provider'}), 403
-        
-            # Auto-ensure required columns exist in scholarships table if missing
-            try:
-                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS units INTEGER")
-                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS residency_doc_type VARCHAR(100) DEFAULT 'Indigency Document'")
-                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS id_type VARCHAR(100) DEFAULT 'School ID'")
-                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS course VARCHAR(255)")
-                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS program_type VARCHAR(100)")
-                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS grades_sem VARCHAR(50)")
-                cursor.execute("ALTER TABLE scholarships ADD COLUMN IF NOT EXISTS grades_year VARCHAR(50)")
-            except Exception as schema_err:
-                print(f"[SCHEMA AUTO-MIGRATION WARNING]: {schema_err}")
 
             units_val = int(data.get('units')) if data.get('units') not in (None, '', 'null') else None
             res_doc_type = data.get('residencyDocType', 'Indigency Document')
@@ -5035,18 +5024,31 @@ def create_announcement(current_user_id, pro_no, role):
 
             if image_attachments:
                 _, foreign_key_column = get_entity_image_columns(cur, 'announcement')
-                for i, img_bytes in enumerate(image_attachments):
-                    # Upload to Supabase bucket 'announcement_images'
-                    file_path = f"ann_{ann_no}_img_{i}_{int(datetime.now().timestamp())}.jpg"
+                timestamp_prefix = int(datetime.now().timestamp())
+
+                def _upload_single(item):
+                    idx, img_bytes = item
+                    file_path = f"ann_{ann_no}_img_{idx}_{timestamp_prefix}.jpg"
                     url = upload_to_supabase(img_bytes, 'announcement_images', file_path)
-                
+                    return idx, url
+
+                upload_workers = min(4, len(image_attachments))
+                if upload_workers > 1:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=upload_workers) as executor:
+                        upload_results = list(executor.map(_upload_single, enumerate(image_attachments)))
+                else:
+                    upload_results = [_upload_single((0, image_attachments[0]))]
+
+                # Maintain original upload order
+                upload_results.sort(key=lambda r: r[0])
+                for idx, url in upload_results:
                     if url:
                         cur.execute(
                             f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)",
                             (ann_no, url)
                         )
                     else:
-                        print(f"[ANNOUNCEMENT ERROR] Storage failed for image {i}. Check Supabase credentials/bucket.", flush=True)
+                        print(f"[ANNOUNCEMENT ERROR] Storage failed for image {idx}. Check Supabase credentials/bucket.", flush=True)
                         raise ValueError("Failed to upload announcement image to cloud storage bucket 'announcement_images'.")
 
             conn.commit()
@@ -5210,33 +5212,52 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
                             new_sequence.append(file.read())
 
             # 4. Sync image table directly
-            final_image_urls = []
+            final_image_urls = [None] * len(new_sequence)
+            bytes_to_upload = []
+
             for i, item in enumerate(new_sequence):
                 if isinstance(item, bytes):
-                    file_path = f"ann_{ann_no}_upd_{i}_{int(datetime.now().timestamp())}.jpg"
-                    try:
-                        url = upload_to_supabase(item, 'announcement_images', file_path)
-                        if url:
-                            final_image_urls.append(url)
-                        else:
-                            b64 = base64.b64encode(item).decode('utf-8')
-                            final_image_urls.append(f"data:image/jpeg;base64,{b64}")
-                    except Exception as e:
-                        print(f"[ANNOUNCEMENT UPDATE] Cloud upload error: {e}", flush=True)
-                        b64 = base64.b64encode(item).decode('utf-8')
-                        final_image_urls.append(f"data:image/jpeg;base64,{b64}")
+                    bytes_to_upload.append((i, item))
                 elif isinstance(item, str) and item.startswith('http'):
-                    final_image_urls.append(item)
+                    final_image_urls[i] = item
                 else:
                     cur.execute(f"SELECT img FROM announcement_images WHERE {primary_key_column} = %s", (item,))
                     row = cur.fetchone()
                     if row:
                         val = row['img'] if isinstance(row, dict) else row[0]
-                        if val: final_image_urls.append(val)
+                        if val:
+                            final_image_urls[i] = val
+
+            if bytes_to_upload:
+                upd_timestamp = int(datetime.now().timestamp())
+
+                def _upload_upd_single(item):
+                    idx, b_data = item
+                    file_path = f"ann_{ann_no}_upd_{idx}_{upd_timestamp}.jpg"
+                    try:
+                        url = upload_to_supabase(b_data, 'announcement_images', file_path)
+                        if url:
+                            return idx, url
+                    except Exception as e:
+                        print(f"[ANNOUNCEMENT UPDATE] Cloud upload error: {e}", flush=True)
+                    b64 = base64.b64encode(b_data).decode('utf-8')
+                    return idx, f"data:image/jpeg;base64,{b64}"
+
+                upload_workers = min(4, len(bytes_to_upload))
+                if upload_workers > 1:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=upload_workers) as executor:
+                        for idx, url_val in executor.map(_upload_upd_single, bytes_to_upload):
+                            final_image_urls[idx] = url_val
+                else:
+                    idx, url_val = _upload_upd_single(bytes_to_upload[0])
+                    final_image_urls[idx] = url_val
+
+            # Filter out any None values just in case
+            valid_image_urls = [u for u in final_image_urls if u]
 
             # Replace the original image set in one clean operation
             cur.execute(f"DELETE FROM announcement_images WHERE {foreign_key_column} = %s", (ann_no,))
-            for url in final_image_urls:
+            for url in valid_image_urls:
                 cur.execute(f"INSERT INTO announcement_images ({foreign_key_column}, img) VALUES (%s, %s)", (ann_no, url))
 
             conn.commit()

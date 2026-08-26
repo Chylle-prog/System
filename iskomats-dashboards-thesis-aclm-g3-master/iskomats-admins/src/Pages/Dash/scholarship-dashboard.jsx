@@ -2228,7 +2228,7 @@ export default function ScholarshipDashboard({
       if (response.data.success) {
         resetForm();
         setManageMode('list');
-        await loadScholarships(false);
+        loadScholarships(false);
 
         // Notify other admins of the update via socket
         socketService.emit('scholarship_update', {
@@ -2414,8 +2414,8 @@ export default function ScholarshipDashboard({
 
       if (response.data.message || response.data.success) {
         resetForm();
-        await loadAnnouncements();
         setManageMode('list');
+        loadAnnouncements();
 
         // Notify other admins of the announcement update via socket
         socketService.emit('announcement_update', {
@@ -5069,10 +5069,7 @@ export default function ScholarshipDashboard({
     // Create workbook and append sheets
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, acceptedWS, 'Accepted Scholars');
-    const rejectedWS = XLSX.utils.json_to_sheet(formatTracking(data.rejected));
-    const cancelledWS = XLSX.utils.json_to_sheet(formatTracking(data.cancelled));
-    XLSX.utils.book_append_sheet(wb, rejectedWS, 'Rejected Applicants');
-    XLSX.utils.book_append_sheet(wb, cancelledWS, 'Cancelled Applications');
+    XLSX.utils.book_append_sheet(wb, declinedWS, 'Declined Applicants');
     XLSX.utils.book_append_sheet(wb, pendingWS, 'Pending Applicants');
     XLSX.utils.book_append_sheet(wb, locationWS, 'Location Statistics');
     XLSX.utils.book_append_sheet(wb, courseWS, 'Course Distribution');

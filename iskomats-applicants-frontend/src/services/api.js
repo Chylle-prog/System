@@ -964,6 +964,7 @@ export const applicantAPI = {
    * @param {string} fieldName - Field name
    * @param {File} file - Video file
    * @param {function} onProgress - Progress callback
+   */
   uploadRequirementVideo: async (fieldName, file, onProgress) => {
     try {
       console.log(`[VIDEO-UPLOAD] Ultra-fast direct uploading ${fieldName}: ${file.name || 'video'} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
