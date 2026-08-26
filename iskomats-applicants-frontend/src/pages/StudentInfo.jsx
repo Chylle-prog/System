@@ -6142,12 +6142,6 @@ const StudentInfo = () => {
       return;
     }
 
-    // Step fingerprint to skip duplicate uploads of unchanged data
-    const stepFingerprint = JSON.stringify(jsonData) + '_' + Array.from(payload.keys()).join(',');
-    if (lastSavedStepSignaturesRef.current[stepNumber] === stepFingerprint) {
-      return;
-    }
-
     let saveResult = null;
     if (Object.keys(jsonData).length > 0 && Array.from(payload.entries()).length === 0) {
       saveResult = await applicantAPI.updateProfile(jsonData);
@@ -6159,8 +6153,6 @@ const StudentInfo = () => {
     } else {
       saveResult = await applicantAPI.updateProfile(payload);
     }
-
-    lastSavedStepSignaturesRef.current[stepNumber] = stepFingerprint;
 
     // Replace uploaded base64 data with permanent storage URLs to prevent duplicate uploads on next steps
     if (saveResult && saveResult.document_urls) {
