@@ -1455,43 +1455,103 @@ def notify_announcement_applicants(
             except Exception as bulk_err:
                 print(f"[ANNOUNCEMENT NOTIF BULK ERROR] {bulk_err}")
 
-        # 2. Process emails asynchronously if requested
-        if send_email_alerts and google_access_token:
+        # 2. High-speed Parallel Email Delivery
+        if send_email_alerts:
             GMAIL_SENDER_EMAIL = (
                 os.environ.get('GMAIL_SENDER_EMAIL')
                 or os.environ.get('SMTP_SENDER_EMAIL')
                 or os.environ.get('SMTP_EMAIL')
                 or 'iskomats@gmail.com'
             )
+            seen_emails = set()
+            valid_recipients = []
             for r in recipients:
                 email = r.get('email_address') if hasattr(r, 'get') else (r['email_address'] if isinstance(r, dict) else None)
-                if not email:
-                    continue
+                if email and email.strip() and email.strip().lower() not in seen_emails:
+                    seen_emails.add(email.strip().lower())
+                    valid_recipients.append(r)
+
+            def _send_announcement_batch(batch):
+                if not batch:
+                    return 0
+                import smtplib
+                app_password = (
+                    os.environ.get('GMAIL_APP_PASSWORD', '').strip() or
+                    os.environ.get('SMTP_PASSWORD', '').strip() or
+                    os.environ.get('SMTP_PASS', '').strip()
+                )
+                smtp_user = os.environ.get('SMTP_USER', '').strip() or GMAIL_SENDER_EMAIL
+                smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
+                smtp_port = int(os.environ.get('SMTP_PORT', '587'))
+
+                server = None
+                successes = 0
+                if app_password and smtp_user:
+                    try:
+                        server = smtplib.SMTP(smtp_host, smtp_port, timeout=12)
+                        server.starttls()
+                        server.login(smtp_user, app_password)
+                    except Exception as s_err:
+                        print(f"[ANNOUNCEMENT EMAIL] Batch SMTP connection error: {s_err}", flush=True)
+                        server = None
+
                 try:
-                    msg = MIMEText(f"Hello,\n\nAn announcement has been posted:\n\n{title}\n\n{message}\n\nBest regards,\n{provider_label}")
-                    msg['Subject'] = notification_title
-                    msg['From'] = GMAIL_SENDER_EMAIL
-                    msg['To'] = email
+                    for recipient_row in batch:
+                        email = recipient_row.get('email_address') if hasattr(recipient_row, 'get') else recipient_row['email_address']
+                        first_name = (recipient_row.get('first_name') if hasattr(recipient_row, 'get') else recipient_row['first_name']) or 'Applicant'
+                        if not email:
+                            continue
+                        try:
+                            email_body = f"""Hello {first_name},
 
-                    raw_bytes = msg.as_bytes()
-                    raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
-                    encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
+A new announcement has been published by {provider_label}:
 
-                    email_request = urllib_request.Request(
-                        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-                        data=json.dumps({'raw': encoded_message}).encode('utf-8'),
-                        headers={
-                            'Authorization': f'Bearer {google_access_token}',
-                            'Content-Type': 'application/json',
-                        },
-                        method='POST',
-                    )
-                    with urllib_request.urlopen(email_request, timeout=15) as response:
-                        email_success_count += 1
-                    time.sleep(0.05)
-                except Exception as row_err:
-                    print(f"[ANNOUNCEMENT ERROR] Failed email for {email}: {row_err}")
-                    email_failure_count += 1
+--------------------------------------------------
+{title}
+--------------------------------------------------
+
+{message}
+
+Please log in to your ISKOMATS account to view full announcement details and updates.
+
+Best regards,
+ISKOMATS Team
+"""
+                            msg = MIMEText(email_body, 'plain', 'utf-8')
+                            msg['Subject'] = f"{notification_title_prefix} from {provider_label}: {title}"
+                            msg['From'] = GMAIL_SENDER_EMAIL
+                            msg['To'] = email
+
+                            if server:
+                                try:
+                                    server.send_message(msg)
+                                    successes += 1
+                                    continue
+                                except Exception:
+                                    pass
+
+                            if send_email_message(msg):
+                                successes += 1
+                        except Exception as row_err:
+                            print(f"[ANNOUNCEMENT ERROR] Failed email for {email}: {row_err}", flush=True)
+                finally:
+                    if server:
+                        try:
+                            server.quit()
+                        except Exception:
+                            pass
+                return successes
+
+            if valid_recipients:
+                num_workers = min(6, max(1, len(valid_recipients) // 25 + 1))
+                chunk_size = max(1, (len(valid_recipients) + num_workers - 1) // num_workers)
+                chunks = [valid_recipients[i:i + chunk_size] for i in range(0, len(valid_recipients), chunk_size)]
+
+                import concurrent.futures as _cf
+                with _cf.ThreadPoolExecutor(max_workers=len(chunks)) as pool:
+                    results = list(pool.map(_send_announcement_batch, chunks))
+                    email_success_count = sum(results)
+                    email_failure_count = len(valid_recipients) - email_success_count
 
         if send_email_alerts:
             print(
@@ -5004,6 +5064,7 @@ def get_current_user_info(current_user_id, pro_no, role):
 # ===== ANNOUNCEMENT ENDPOINTS =====
 
 @api_bp.route('/announcements', methods=['GET'])
+@api_bp.route('/admin/announcements', methods=['GET'])
 @token_required
 def get_admin_announcements(current_user_id, pro_no, role):
     try:
@@ -5117,6 +5178,7 @@ def get_admin_announcements(current_user_id, pro_no, role):
         return jsonify({'message': str(e)}), 500
 
 @api_bp.route('/announcements', methods=['POST'])
+@api_bp.route('/admin/announcements', methods=['POST'])
 @token_required
 def create_announcement(current_user_id, pro_no, role):
     # Support both JSON and multipart/form-data
@@ -5249,6 +5311,7 @@ def create_announcement(current_user_id, pro_no, role):
             conn.close()
 
 @api_bp.route('/announcements/<int:ann_no>', methods=['PUT'])
+@api_bp.route('/admin/announcements/<int:ann_no>', methods=['PUT'])
 @token_required
 def update_announcement(current_user_id, pro_no, role, ann_no):
     # Support both JSON and multipart/form-data
@@ -5433,6 +5496,7 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
             conn.close()
 
 @api_bp.route('/announcements/<int:ann_no>', methods=['DELETE'])
+@api_bp.route('/admin/announcements/<int:ann_no>', methods=['DELETE'])
 @token_required
 def delete_announcement(current_user_id, pro_no, role, ann_no):
     conn = None

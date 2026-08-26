@@ -1502,13 +1502,38 @@ def notify_announcement_applicants(
                     seen_emails.add(email.strip().lower())
                     valid_recipients.append(r)
 
-            def _send_single_announcement(recipient_row):
-                email = recipient_row.get('email_address') if hasattr(recipient_row, 'get') else recipient_row['email_address']
-                first_name = (recipient_row.get('first_name') if hasattr(recipient_row, 'get') else recipient_row['first_name']) or 'Applicant'
-                if not email:
-                    return False
+            def _send_announcement_batch(batch):
+                if not batch:
+                    return 0
+                import smtplib
+                app_password = (
+                    os.environ.get('GMAIL_APP_PASSWORD', '').strip() or
+                    os.environ.get('SMTP_PASSWORD', '').strip() or
+                    os.environ.get('SMTP_PASS', '').strip()
+                )
+                smtp_user = os.environ.get('SMTP_USER', '').strip() or GMAIL_SENDER_EMAIL
+                smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
+                smtp_port = int(os.environ.get('SMTP_PORT', '587'))
+
+                server = None
+                successes = 0
+                if app_password and smtp_user:
+                    try:
+                        server = smtplib.SMTP(smtp_host, smtp_port, timeout=12)
+                        server.starttls()
+                        server.login(smtp_user, app_password)
+                    except Exception as s_err:
+                        log(f"[ANNOUNCEMENT EMAIL] Batch SMTP connection error: {s_err}")
+                        server = None
+
                 try:
-                    email_body = f"""Hello {first_name},
+                    for recipient_row in batch:
+                        email = recipient_row.get('email_address') if hasattr(recipient_row, 'get') else recipient_row['email_address']
+                        first_name = (recipient_row.get('first_name') if hasattr(recipient_row, 'get') else recipient_row['first_name']) or 'Applicant'
+                        if not email:
+                            continue
+                        try:
+                            email_body = f"""Hello {first_name},
 
 A new announcement has been published by {provider_label}:
 
@@ -1523,21 +1548,40 @@ Please log in to your ISKOMATS account to view full announcement details and upd
 Best regards,
 ISKOMATS Team
 """
-                    msg = MIMEText(email_body, 'plain', 'utf-8')
-                    msg['Subject'] = f"{notification_title_prefix} from {provider_label}: {title}"
-                    msg['From'] = GMAIL_SENDER_EMAIL
-                    msg['To'] = email
-                    return send_email_message(msg)
-                except Exception as inner_e:
-                    log(f"[ANNOUNCEMENT EMAIL ERROR] Failed for {email}: {inner_e}")
-                    return False
+                            msg = MIMEText(email_body, 'plain', 'utf-8')
+                            msg['Subject'] = f"{notification_title_prefix} from {provider_label}: {title}"
+                            msg['From'] = GMAIL_SENDER_EMAIL
+                            msg['To'] = email
+
+                            if server:
+                                try:
+                                    server.send_message(msg)
+                                    successes += 1
+                                    continue
+                                except Exception:
+                                    pass
+
+                            if send_email_message(msg):
+                                successes += 1
+                        except Exception as row_err:
+                            log(f"[ANNOUNCEMENT EMAIL ERROR] Failed for {email}: {row_err}")
+                finally:
+                    if server:
+                        try:
+                            server.quit()
+                        except Exception:
+                            pass
+                return successes
 
             if valid_recipients:
-                workers = min(10, len(valid_recipients))
-                with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-                    results = list(executor.map(_send_single_announcement, valid_recipients))
-                    email_success_count = sum(1 for res in results if res)
-                    email_failure_count = len(results) - email_success_count
+                num_workers = min(6, max(1, len(valid_recipients) // 25 + 1))
+                chunk_size = max(1, (len(valid_recipients) + num_workers - 1) // num_workers)
+                chunks = [valid_recipients[i:i + chunk_size] for i in range(0, len(valid_recipients), chunk_size)]
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=len(chunks)) as executor:
+                    results = list(executor.map(_send_announcement_batch, chunks))
+                    email_success_count = sum(results)
+                    email_failure_count = len(valid_recipients) - email_success_count
                 
         log(f"[ANNOUNCEMENT NOTIF] Task completed. Total Recipients: {len(recipients)}, Email Success: {email_success_count}, Failure: {email_failure_count}")
 

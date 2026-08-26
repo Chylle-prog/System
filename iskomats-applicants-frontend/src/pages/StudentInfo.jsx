@@ -2839,6 +2839,18 @@ const StudentInfo = () => {
     });
   }, []);
 
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (isSavingStep || isSubmitting) {
+        e.preventDefault();
+        e.returnValue = 'Upload in progress. If you reload or leave now, your uploads may be corrupted or lost.';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isSavingStep, isSubmitting]);
+
   const calculateVerificationPercentage = (results) => {
     if (!results || !Array.isArray(results) || results.length === 0) return null;
     let totalFields = 0;
@@ -7414,15 +7426,22 @@ const StudentInfo = () => {
       return;
     }
 
-    // Advance to next step immediately (0ms instant UI feedback)
-    const stepCompleted = currentStep;
-    setCurrentStep(prev => Math.min(prev + 1, 4));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    try {
+      setLoadingMessage({
+        title: `Saving Step ${currentStep}`,
+        message: 'Uploading step documents and saving your progress... Please wait.'
+      });
+      setIsSavingStep(true);
 
-    // Non-blocking background save to database & storage tracked via ref
-    lastSaveStepPromiseRef.current = saveCurrentStepProgress(stepCompleted).catch(err => {
-      console.warn(`[Background Save Step ${stepCompleted}] Warning:`, err);
-    });
+      await saveCurrentStepProgress(currentStep);
+      setCurrentStep(prev => Math.min(prev + 1, 4));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      console.error(`[Step ${currentStep} Save Error]:`, err);
+      showPromptMessage(`Could not save Step ${currentStep}. ${err.message || 'Please check your connection and try again.'}`);
+    } finally {
+      setIsSavingStep(false);
+    }
   };
 
   const handlePrevStep = () => {
