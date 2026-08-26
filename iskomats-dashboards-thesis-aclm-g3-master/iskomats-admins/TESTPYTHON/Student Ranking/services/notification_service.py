@@ -1,6 +1,8 @@
 import base64
 import json
 import os
+import threading
+import time
 from datetime import datetime
 from email.mime.text import MIMEText
 from urllib import parse, request as urllib_request, error as urllib_error
@@ -15,11 +17,25 @@ def init_socketio(socketio_instance):
     _socketio = socketio_instance
     print("[NOTIF SERVICE] SocketIO instance initialized.")
 
-def fetch_google_access_token():
-    """Exchange the configured refresh token for a Gmail API access token."""
-    GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
-    GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '').strip()
-    GOOGLE_REFRESH_TOKEN = os.environ.get('GOOGLE_REFRESH_TOKEN', '').strip()
+_CACHED_ACCESS_TOKEN = None
+_TOKEN_EXPIRY = 0
+_TOKEN_LOCK = threading.Lock()
+
+def fetch_google_access_token(force_refresh=False):
+    """Exchange the configured refresh token for a Gmail API access token (with caching)."""
+    global _CACHED_ACCESS_TOKEN, _TOKEN_EXPIRY
+
+    now = time.time()
+    if not force_refresh and _CACHED_ACCESS_TOKEN and now < (_TOKEN_EXPIRY - 180):
+        return _CACHED_ACCESS_TOKEN
+
+    with _TOKEN_LOCK:
+        if not force_refresh and _CACHED_ACCESS_TOKEN and now < (_TOKEN_EXPIRY - 180):
+            return _CACHED_ACCESS_TOKEN
+
+        GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
+        GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '').strip()
+        GOOGLE_REFRESH_TOKEN = os.environ.get('GOOGLE_REFRESH_TOKEN', '').strip()
     
     missing_settings = []
     if not GOOGLE_CLIENT_ID: missing_settings.append('GOOGLE_CLIENT_ID')
@@ -57,6 +73,10 @@ def fetch_google_access_token():
         access_token = payload.get('access_token')
         if not access_token:
             raise RuntimeError("Token exchange succeeded but no access_token was returned.")
+        
+        expires_in = int(payload.get('expires_in', 3600))
+        _CACHED_ACCESS_TOKEN = access_token
+        _TOKEN_EXPIRY = now + expires_in
         return access_token
     except urllib_error.HTTPError as e:
         try:
@@ -137,6 +157,33 @@ The ISKOMATS Team
         raise e
 
 
+def is_test_email(email_str):
+    if not email_str:
+        return True
+    import re
+    email = str(email_str).strip().lower()
+    
+    # 1. Standard test prefixes (e.g. dlsl.applicant01@gmail.com, test@..., dummy@...)
+    if re.search(r'^(dlsl\.applicant\d*|applicant\d+|test_?applicant\d*|dummy|fake|mock|test\d*|user\d+)@', email):
+        return True
+    
+    # 2. Fake generated DLSL student emails matching pattern: name.name###@dlsl.edu.ph
+    # Specifically: dot(s) in username part, ending with numbers right before @, and @dlsl.edu.ph domain
+    # Example: alexander.ramos646@dlsl.edu.ph, adrian.ramos190@dlsl.edu.ph, kaitlyn.delrosario120@dlsl.edu.ph
+    if re.search(r'^[a-z]+(?:\.[a-z]+)+\d+@dlsl\.edu\.ph$', email):
+        return True
+        
+    # 3. Invalid/test domains
+    if re.search(r'@(example\.com|test\.com|sample\.com|invalid|localhost)$', email):
+        return True
+        
+    # 4. Incomplete/invalid email strings (e.g., '@gm', '@dlsl')
+    if '@' not in email or not re.search(r'@[a-z0-9.-]+\.[a-z]{2,}$', email):
+        return True
+        
+    return False
+
+
 def send_email_message(msg):
     """
     Reliable email dispatcher. Tries SMTP (App Password) first as it is not
@@ -144,26 +191,22 @@ def send_email_message(msg):
     if SMTP is not configured.
     """
     import smtplib
-    import re
 
     receiver_email = msg['To']
-    sender_email = msg['From'] or os.environ.get('GMAIL_SENDER_EMAIL', '').strip()
+    sender_email = msg['From'] or os.environ.get('GMAIL_SENDER_EMAIL', '').strip() or 'iskomats@gmail.com'
 
     # Suppress test/dummy emails
-    if not receiver_email or re.search(
-        r'^(dlsl\.applicant|applicant\d*|test_?applicant\d*|dummy|fake|mock)@'
-        r'|@(example\.com|test\.com|sample\.com|invalid|localhost)$',
-        receiver_email.strip().lower()
-    ):
+    if is_test_email(receiver_email):
         print(f"[EMAIL SKIP] Suppressed email to test address '{receiver_email}'.", flush=True)
         return True
 
     # 1. Try SMTP first (App Password) — reliable, no API rate limits
-    app_password = (
+    raw_app_pass = (
         os.environ.get('GMAIL_APP_PASSWORD', '').strip() or
         os.environ.get('SMTP_PASSWORD', '').strip() or
         os.environ.get('SMTP_PASS', '').strip()
     )
+    app_password = raw_app_pass.replace(' ', '') if raw_app_pass else ''
     smtp_user = os.environ.get('SMTP_USER', '').strip() or sender_email
     smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
     smtp_port = int(os.environ.get('SMTP_PORT', '587'))

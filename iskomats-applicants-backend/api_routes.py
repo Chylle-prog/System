@@ -1512,11 +1512,12 @@ def notify_announcement_applicants(
                 if not batch:
                     return 0
                 import smtplib
-                app_password = (
+                raw_pass = (
                     os.environ.get('GMAIL_APP_PASSWORD', '').strip() or
                     os.environ.get('SMTP_PASSWORD', '').strip() or
                     os.environ.get('SMTP_PASS', '').strip()
                 )
+                app_password = raw_pass.replace(' ', '') if raw_pass else ''
                 smtp_user = os.environ.get('SMTP_USER', '').strip() or GMAIL_SENDER_EMAIL
                 smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
                 smtp_port = int(os.environ.get('SMTP_PORT', '587'))

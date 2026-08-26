@@ -1282,11 +1282,14 @@ def send_announcement_emails(
 
             applicants = cur.fetchall()
 
-        if not applicants:
-            print(f"[EMAIL INFO] No applicants found to send announcement, provider {provider_no}", flush=True)
+        from services.notification_service import is_test_email
+        valid_applicants = [a for a in applicants if a.get('email_address') and not is_test_email(a['email_address'])]
+
+        if not valid_applicants:
+            print(f"[EMAIL INFO] No valid real applicants found to send announcement (all {len(applicants)} suppressed/test), provider {provider_no}", flush=True)
             return True
 
-        print(f"[EMAIL BACKGROUND] Starting parallel email batch for announcement - {len(applicants)} recipients", flush=True)
+        print(f"[EMAIL BACKGROUND] Starting parallel email batch for announcement - {len(valid_applicants)} real recipients (filtered {len(applicants) - len(valid_applicants)} mock/test addresses)", flush=True)
 
         provider_label = provider_name or 'ISKOMATS'
 
@@ -1394,18 +1397,22 @@ def notify_announcement_applicants(
             applicant_email_table = get_applicant_email_table(cur)
             cur.execute(
                 f"""
-                SELECT DISTINCT applicant_no
-                FROM {applicant_email_table}
-                WHERE is_verified = TRUE AND applicant_no IS NOT NULL
+                SELECT DISTINCT e.applicant_no, a.first_name, a.last_name, e.email_address
+                FROM {applicant_email_table} e
+                LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
+                WHERE e.is_verified = TRUE AND e.email_address IS NOT NULL
                 """
             )
         else:
+            applicant_email_table = get_applicant_email_table(cur)
             cur.execute(
-                """
-                SELECT DISTINCT ast.applicant_no
-                FROM applicant_status ast
-                JOIN scholarships s ON ast.scholarship_no = s.req_no
-                WHERE s.pro_no = %s
+                f"""
+                SELECT DISTINCT a.applicant_no, a.first_name, a.last_name, COALESCE(e.email_address, a.email) AS email_address
+                FROM applicants a
+                INNER JOIN applicant_status ast ON a.applicant_no = ast.applicant_no
+                INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
+                LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
+                WHERE s.pro_no = %s AND COALESCE(e.email_address, a.email) IS NOT NULL
                 """,
                 (provider_no,),
             )
@@ -1463,23 +1470,27 @@ def notify_announcement_applicants(
                 or os.environ.get('SMTP_EMAIL')
                 or 'iskomats@gmail.com'
             )
+            from services.notification_service import is_test_email
             seen_emails = set()
             valid_recipients = []
             for r in recipients:
                 email = r.get('email_address') if hasattr(r, 'get') else (r['email_address'] if isinstance(r, dict) else None)
-                if email and email.strip() and email.strip().lower() not in seen_emails:
-                    seen_emails.add(email.strip().lower())
-                    valid_recipients.append(r)
+                if email and email.strip() and not is_test_email(email.strip()):
+                    clean_email = email.strip().lower()
+                    if clean_email not in seen_emails:
+                        seen_emails.add(clean_email)
+                        valid_recipients.append(r)
 
             def _send_announcement_batch(batch):
                 if not batch:
                     return 0
                 import smtplib
-                app_password = (
+                raw_pass = (
                     os.environ.get('GMAIL_APP_PASSWORD', '').strip() or
                     os.environ.get('SMTP_PASSWORD', '').strip() or
                     os.environ.get('SMTP_PASS', '').strip()
                 )
+                app_password = raw_pass.replace(' ', '') if raw_pass else ''
                 smtp_user = os.environ.get('SMTP_USER', '').strip() or GMAIL_SENDER_EMAIL
                 smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
                 smtp_port = int(os.environ.get('SMTP_PORT', '587'))
