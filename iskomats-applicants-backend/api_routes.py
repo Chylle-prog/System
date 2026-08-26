@@ -1273,11 +1273,14 @@ def send_announcement_emails(
 
             applicants = cur.fetchall()
 
-        if not applicants:
-            print(f"[EMAIL INFO] No applicants found to send announcement, provider {provider_no}", flush=True)
+        from services.notification_service import is_test_email
+        valid_applicants = [a for a in applicants if a.get('email_address') and not is_test_email(a['email_address'])]
+
+        if not valid_applicants:
+            print(f"[EMAIL INFO] No valid real applicants found to send announcement (all {len(applicants)} suppressed/test), provider {provider_no}", flush=True)
             return True
 
-        print(f"[EMAIL BACKGROUND] Starting parallel email batch for announcement - {len(applicants)} recipients", flush=True)
+        print(f"[EMAIL BACKGROUND] Starting parallel email batch for announcement - {len(valid_applicants)} real recipients (filtered {len(applicants) - len(valid_applicants)} mock/test addresses)", flush=True)
 
         provider_label = provider_name or 'ISKOMATS'
 
@@ -1493,14 +1496,17 @@ def notify_announcement_applicants(
                 or 'iskomats@gmail.com'
             )
 
-            # Deduplicate recipients by email address
+            # Deduplicate and filter out test/fake recipients
+            from services.notification_service import is_test_email
             seen_emails = set()
             valid_recipients = []
             for r in recipients:
                 email = (r.get('email_address') if hasattr(r, 'get') else r['email_address']) if r else None
-                if email and email.strip() and email.strip().lower() not in seen_emails:
-                    seen_emails.add(email.strip().lower())
-                    valid_recipients.append(r)
+                if email and email.strip() and not is_test_email(email.strip()):
+                    clean_email = email.strip().lower()
+                    if clean_email not in seen_emails:
+                        seen_emails.add(clean_email)
+                        valid_recipients.append(r)
 
             def _send_announcement_batch(batch):
                 if not batch:

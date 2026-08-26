@@ -111,10 +111,25 @@ def is_test_email(email_str):
         return True
     import re
     email = str(email_str).strip().lower()
-    if re.search(r'^(dlsl\.applicant|applicant\d+|test_?applicant\d*|dummy|fake|mock|test\d*|user\d+)@', email):
+    
+    # 1. Standard test prefixes (e.g. dlsl.applicant01@gmail.com, test@..., dummy@...)
+    if re.search(r'^(dlsl\.applicant\d*|applicant\d+|test_?applicant\d*|dummy|fake|mock|test\d*|user\d+)@', email):
         return True
+    
+    # 2. Fake generated DLSL student emails matching pattern: name.name###@dlsl.edu.ph
+    # Specifically: dot(s) in username part, ending with numbers right before @, and @dlsl.edu.ph domain
+    # Example: alexander.ramos646@dlsl.edu.ph, adrian.ramos190@dlsl.edu.ph, kaitlyn.delrosario120@dlsl.edu.ph
+    if re.search(r'^[a-z]+(?:\.[a-z]+)+\d+@dlsl\.edu\.ph$', email):
+        return True
+        
+    # 3. Invalid/test domains
     if re.search(r'@(example\.com|test\.com|sample\.com|invalid|localhost)$', email):
         return True
+        
+    # 4. Incomplete/invalid email strings (e.g., '@gm', '@dlsl')
+    if '@' not in email or not re.search(r'@[a-z0-9.-]+\.[a-z]{2,}$', email):
+        return True
+        
     return False
 
 def send_email_message(msg):
