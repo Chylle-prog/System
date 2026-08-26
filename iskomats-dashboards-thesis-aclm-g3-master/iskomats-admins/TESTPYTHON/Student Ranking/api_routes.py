@@ -1473,26 +1473,42 @@ def notify_announcement_applicants(
                 print(f"[ANNOUNCEMENT NOTIF BULK ERROR] {bulk_err}")
 
         # 2. Process emails asynchronously if requested
-        if send_email_alerts:
-            for idx, app_no in enumerate(app_ids):
+        if send_email_alerts and google_access_token:
+            GMAIL_SENDER_EMAIL = (
+                os.environ.get('GMAIL_SENDER_EMAIL')
+                or os.environ.get('SMTP_SENDER_EMAIL')
+                or os.environ.get('SMTP_EMAIL')
+                or 'iskomats@gmail.com'
+            )
+            for r in recipients:
+                email = r.get('email_address') if hasattr(r, 'get') else (r['email_address'] if isinstance(r, dict) else None)
+                if not email:
+                    continue
                 try:
-                    result = create_notification(
-                        user_no=app_no,
-                        title=notification_title,
-                        message=notification_message,
-                        notif_type='announcement',
-                        send_email=True,
-                        db_conn=conn,
-                        google_access_token=google_access_token,
-                        sync_email=True
+                    msg = MIMEText(f"Hello,\n\nAn announcement has been posted:\n\n{title}\n\n{message}\n\nBest regards,\n{provider_label}")
+                    msg['Subject'] = notification_title
+                    msg['From'] = GMAIL_SENDER_EMAIL
+                    msg['To'] = email
+
+                    raw_bytes = msg.as_bytes()
+                    raw_bytes = raw_bytes.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+                    encoded_message = base64.urlsafe_b64encode(raw_bytes).decode('utf-8')
+
+                    email_request = urllib_request.Request(
+                        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+                        data=json.dumps({'raw': encoded_message}).encode('utf-8'),
+                        headers={
+                            'Authorization': f'Bearer {google_access_token}',
+                            'Content-Type': 'application/json',
+                        },
+                        method='POST',
                     )
-                    if result and result.get('email_sent'):
+                    with urllib_request.urlopen(email_request, timeout=15) as response:
                         email_success_count += 1
-                    else:
-                        email_failure_count += 1
-                    time.sleep(0.2)
+                    time.sleep(0.05)
                 except Exception as row_err:
-                    print(f"[ANNOUNCEMENT ERROR] Failed email for {app_no}: {row_err}")
+                    print(f"[ANNOUNCEMENT ERROR] Failed email for {email}: {row_err}")
+                    email_failure_count += 1
 
         if send_email_alerts:
             print(

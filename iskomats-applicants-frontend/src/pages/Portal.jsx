@@ -191,18 +191,22 @@ const Portal = () => {
     setCurrentUser(user);
     setUserProfile(profiles[user] || null);
 
-    // Load applications dynamically from DB
-    const fetchApplications = async () => {
+    // Load applications dynamically from DB (only show modal on first initial load)
+    const fetchApplications = async (showLoading = false) => {
       try {
-        setLoadingMessage({ title: 'Loading Applications', message: 'Retrieving your scholarship status and history...' });
-        setShowLoadingOverlay(true);
+        if (showLoading && !hasFetchedApps.current) {
+          setLoadingMessage({ title: 'Loading Applications', message: 'Retrieving your scholarship status and history...' });
+          setShowLoadingOverlay(true);
+        }
         const apps = await applicationAPI.getUserApplications();
         setApplications(apps || []);
         hasFetchedApps.current = true;
       } catch (err) {
         console.error("Failed to load applications:", err);
       } finally {
-        setShowLoadingOverlay(false);
+        if (showLoading) {
+          setShowLoadingOverlay(false);
+        }
       }
     };
 
@@ -216,7 +220,7 @@ const Portal = () => {
     };
 
     if (user) {
-      fetchApplications();
+      fetchApplications(true);
       fetchProfile();
     }
 
@@ -224,8 +228,6 @@ const Portal = () => {
     const fetchResources = async () => {
       try {
         const data = await scholarshipAPI.getAll();
-        // Filter to only show scholarships that have requirements defined
-        // or prioritize the specific ones from the DB
         setResources(data || []);
       } catch (err) {
         console.error("Failed to load resources:", err);
@@ -247,7 +249,19 @@ const Portal = () => {
     const fetchNotifications = async () => {
       try {
         const data = await notificationAPI.getAll();
-        setNotifications(data || []);
+        if (Array.isArray(data)) {
+          // Deduplicate by notif_id or title+message to prevent doubled notifications
+          const seen = new Set();
+          const unique = [];
+          for (const item of data) {
+            const key = item.notif_id || item.id || `${item.title}_${item.message}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              unique.push(item);
+            }
+          }
+          setNotifications(unique);
+        }
       } catch (err) {
         console.error("Failed to load notifications:", err);
       }
@@ -421,14 +435,14 @@ const Portal = () => {
       // Live real-time updates for applicant status changes & notifications
       const unsubStatus = socketService.subscribe('applicant_status_update', (data) => {
         console.log('[LIVE SYNC] Applicant status update received live:', data);
-        fetchApplications();
+        fetchApplications(false);
         fetchProfile();
         fetchNotifications();
       });
       const unsubNotifUpdate = socketService.subscribe('notification_update', (data) => {
         console.log('[LIVE SYNC] Notification update received live:', data);
         fetchNotifications();
-        fetchApplications();
+        fetchApplications(false);
       });
       const unsubNewNotif = socketService.subscribe('new_notification', (data) => {
         console.log('[LIVE SYNC] New notification received live:', data);
@@ -439,8 +453,9 @@ const Portal = () => {
             'scholarship': 'fa-graduation-cap',
             'result': 'fa-file-signature'
           };
+          const notifId = data.id || data.notif_id || `${data.title}_${data.message}`;
           const formattedNotif = {
-            id: data.id || Date.now(),
+            id: notifId,
             title: data.title || 'New Notification',
             message: data.message || '',
             type: data.type || 'message',
@@ -449,13 +464,13 @@ const Portal = () => {
             icon: typeIcons[data.type] || 'fa-bell'
           };
           setNotifications(prev => {
-            const exists = prev.some(n => n.id === formattedNotif.id);
+            const exists = prev.some(n => (n.id && n.id === formattedNotif.id) || (n.notif_id && n.notif_id === formattedNotif.id) || (n.title === formattedNotif.title && n.message === formattedNotif.message));
             if (exists) return prev;
             return [formattedNotif, ...prev];
           });
         }
         fetchNotifications();
-        fetchApplications();
+        fetchApplications(false);
       });
 
       var cleanupLiveSockets = () => {

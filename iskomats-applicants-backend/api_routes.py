@@ -2,6 +2,7 @@ import sys
 import os
 import re
 import json
+import time
 from decimal import Decimal
 from flask import Blueprint, request, jsonify, send_file, url_for, session
 from flask_bcrypt import Bcrypt
@@ -1484,22 +1485,30 @@ def notify_announcement_applicants(
 
         # 2. Asynchronous email delivery in background
         if send_email_alerts:
-            for app_no in app_ids:
+            GMAIL_SENDER_EMAIL = (
+                os.environ.get('GMAIL_SENDER_EMAIL')
+                or os.environ.get('SMTP_SENDER_EMAIL')
+                or os.environ.get('SMTP_EMAIL')
+                or 'iskomats@gmail.com'
+            )
+            for r in recipients:
+                email = r.get('email_address') if hasattr(r, 'get') else (r['email_address'] if isinstance(r, dict) else None)
+                if not email:
+                    continue
                 try:
-                    result = create_notification(
-                        user_no=app_no,
-                        title=notification_title,
-                        message=notification_message,
-                        notif_type='announcement',
-                        send_email=True,
-                        sync_email=False,
-                    )
-                    if result and result.get('email_sent'):
+                    msg = MIMEText(f"Hello,\n\nAn announcement has been posted:\n\n{title}\n\n{message}\n\nBest regards,\n{provider_label}")
+                    msg['Subject'] = notification_title
+                    msg['From'] = GMAIL_SENDER_EMAIL
+                    msg['To'] = email
+                    ok = send_email_message(msg)
+                    if ok:
                         email_success_count += 1
                     else:
                         email_failure_count += 1
+                    time.sleep(0.05)
                 except Exception as inner_e:
-                    log(f"[ANNOUNCEMENT EMAIL ERROR] Failed for user {app_no}: {inner_e}")
+                    log(f"[ANNOUNCEMENT EMAIL ERROR] Failed for {email}: {inner_e}")
+                    email_failure_count += 1
                 
         log(f"[ANNOUNCEMENT NOTIF] Task completed. Total Recipients: {len(recipients)}, Email Success: {email_success_count}, Failure: {email_failure_count}")
 
