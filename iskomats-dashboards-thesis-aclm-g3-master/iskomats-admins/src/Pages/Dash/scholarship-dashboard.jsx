@@ -252,6 +252,60 @@ const normalizeProviderIdentity = (value) => String(value || '').toLowerCase().t
 
 const normalizeSearchText = (value) => String(value ?? '').toLowerCase().trim();
 
+export const normalizeSchoolName = (rawSchool) => {
+  if (!rawSchool) return 'Unspecified';
+  const str = String(rawSchool).trim();
+  if (!str) return 'Unspecified';
+  const lower = str.toLowerCase();
+
+  // De La Salle Lipa / DLSL
+  if (lower.includes('la salle') || lower.includes('dlsl') || lower.includes('de la salle lipa')) {
+    return 'De La Salle Lipa';
+  }
+  // Batangas State University / BatStateU / BSU
+  if (lower.includes('batangas state') || lower.includes('batstateu') || lower.includes('bsu')) {
+    return 'Batangas State University';
+  }
+  // University of Batangas / UB
+  if (lower === 'ub' || lower.includes('university of batangas')) {
+    return 'University of Batangas';
+  }
+  // Lipa City Colleges / LCC
+  if (lower === 'lcc' || lower.includes('lipa city college') || lower.includes('lipa city colleges')) {
+    return 'Lipa City Colleges';
+  }
+  // Kolehiyo ng Lungsod ng Lipa / KLL
+  if (lower === 'kll' || lower.includes('kolehiyo ng lungsod ng lipa')) {
+    return 'Kolehiyo ng Lungsod ng Lipa';
+  }
+  // Polytechnic University of the Philippines / PUP
+  if (lower === 'pup' || lower.includes('polytechnic university of the philippines')) {
+    return 'Polytechnic University of the Philippines';
+  }
+  // University of the Philippines / UP
+  if (lower === 'up' || lower.includes('university of the philippines')) {
+    return 'University of the Philippines';
+  }
+  // Canossa Academy
+  if (lower.includes('canossa')) {
+    return 'Canossa Academy';
+  }
+  // Lipa City National High School
+  if (lower.includes('lipa city national high') || lower.includes('lcnhs')) {
+    return 'Lipa City National High School';
+  }
+
+  // Handle slash formats like "DLSL/De La Salle Lipa" by picking longest descriptive part
+  if (str.includes('/')) {
+    const parts = str.split('/').map(p => p.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      return parts.reduce((a, b) => (b.length > a.length ? b : a), parts[0]);
+    }
+  }
+
+  return str;
+};
+
 /**
  * Official 4.0 GPA to Percentage Conversion Table:
  * 98-100   - 4.00 (midpoint ~99%)
@@ -1746,6 +1800,25 @@ export default function ScholarshipDashboard({
     const locationsMap = new Map();
     const schoolsMap = new Map();
 
+    // Generate a continuous rolling window of the last 6 months so line charts connect across time
+    const referenceDate = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(referenceDate.getFullYear(), referenceDate.getMonth() - i, 1);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const sortKey = `${y}-${m}`;
+      const monthLabel = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+      monthlyMap.set(sortKey, {
+        sortKey,
+        month: monthLabel,
+        applications: 0,
+        accepted: 0,
+        declined: 0,
+        rejected: 0,
+        cancelled: 0
+      });
+    }
+
     let acceptedCount = 0;
     let rejectedCount = 0;
     let cancelledCount = 0;
@@ -1847,8 +1920,8 @@ export default function ScholarshipDashboard({
       if (!loc) loc = 'Unspecified';
       locationsMap.set(loc, (locationsMap.get(loc) || 0) + 1);
 
-      // School
-      const sch = String(a.school || 'Unspecified').trim();
+      // School (normalized)
+      const sch = normalizeSchoolName(a.school);
       schoolsMap.set(sch, (schoolsMap.get(sch) || 0) + 1);
     });
 
@@ -2807,33 +2880,65 @@ export default function ScholarshipDashboard({
               label: 'Applications',
               data: filteredHistoricalData.monthlyApplications.map(m => m.applications),
               borderColor: '#800020',
-              backgroundColor: 'rgba(128, 0, 32, 0.1)',
+              backgroundColor: 'rgba(128, 0, 32, 0.08)',
+              borderWidth: 3,
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              fill: true,
               tension: 0.3
             },
             {
               label: 'Accepted',
               data: filteredHistoricalData.monthlyApplications.map(m => m.accepted),
               borderColor: '#198754',
-              backgroundColor: 'rgba(25, 135, 84, 0.1)',
+              backgroundColor: 'rgba(25, 135, 84, 0.08)',
+              borderWidth: 2.5,
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              fill: false,
               tension: 0.3
             },
             {
               label: 'Rejected',
               data: filteredHistoricalData.monthlyApplications.map(m => m.rejected),
               borderColor: '#dc3545',
-              backgroundColor: 'rgba(220, 53, 69, 0.1)',
+              backgroundColor: 'rgba(220, 53, 69, 0.08)',
+              borderWidth: 2,
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              fill: false,
               tension: 0.3
             },
             {
               label: 'Cancelled',
               data: filteredHistoricalData.monthlyApplications.map(m => m.cancelled),
               borderColor: '#6c757d',
-              backgroundColor: 'rgba(108, 117, 125, 0.1)',
+              backgroundColor: 'rgba(108, 117, 125, 0.08)',
+              borderWidth: 2,
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              fill: false,
               tension: 0.3
             }
           ]
         },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          plugins: {
+            legend: { position: 'bottom' }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { precision: 0 }
+            }
+          }
+        },
       });
     }
 

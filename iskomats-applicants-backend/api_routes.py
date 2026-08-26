@@ -1404,15 +1404,22 @@ def notify_announcement_applicants(
         log(f"[ANNOUNCEMENT NOTIF] Task started. send_to_all={send_to_all_applicants}, provider={provider_no}")
         with get_db() as conn:
             cur = conn.cursor()
+            applicant_email_table = get_applicant_email_table(cur)
             recipients = []
             if not send_to_all_applicants and provider_no:
                 log(f"[ANNOUNCEMENT NOTIF] Mode: Provider-specific ({provider_no}).")
                 cur.execute(
-                    """
-                    SELECT DISTINCT ast.applicant_no
+                    f"""
+                    SELECT DISTINCT 
+                        ast.applicant_no, 
+                        a.first_name, 
+                        a.last_name, 
+                        e.email_address
                     FROM applicant_status ast
                     JOIN scholarships s ON ast.scholarship_no = s.req_no
-                    WHERE s.pro_no = %s AND ast.applicant_no IS NOT NULL
+                    JOIN applicants a ON ast.applicant_no = a.applicant_no
+                    LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
+                    WHERE s.pro_no = %s AND ast.applicant_no IS NOT NULL AND e.email_address IS NOT NULL
                     """,
                     (provider_no,),
                 )
@@ -1420,24 +1427,33 @@ def notify_announcement_applicants(
 
             if not recipients:
                 log("[ANNOUNCEMENT NOTIF] Fetching verified applicants as primary recipients.")
-                applicant_email_table = get_applicant_email_table(cur)
                 cur.execute(
-                    f"SELECT DISTINCT applicant_no FROM {applicant_email_table} WHERE is_verified = TRUE AND applicant_no IS NOT NULL"
+                    f"""
+                    SELECT DISTINCT 
+                        e.applicant_no, 
+                        a.first_name, 
+                        a.last_name, 
+                        e.email_address
+                    FROM {applicant_email_table} e
+                    LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
+                    WHERE e.is_verified = TRUE AND e.applicant_no IS NOT NULL AND e.email_address IS NOT NULL
+                    """
                 )
                 recipients = cur.fetchall()
 
             if not recipients:
                 log("[ANNOUNCEMENT NOTIF] Fallback: Fetching all applicants from email table.")
-                applicant_email_table = get_applicant_email_table(cur)
                 cur.execute(
-                    f"SELECT DISTINCT applicant_no FROM {applicant_email_table} WHERE applicant_no IS NOT NULL"
-                )
-                recipients = cur.fetchall()
-
-            if not recipients:
-                log("[ANNOUNCEMENT NOTIF] Secondary Fallback: Fetching all applicants from applicants table.")
-                cur.execute(
-                    "SELECT DISTINCT applicant_no FROM applicants WHERE applicant_no IS NOT NULL"
+                    f"""
+                    SELECT DISTINCT 
+                        e.applicant_no, 
+                        a.first_name, 
+                        a.last_name, 
+                        e.email_address
+                    FROM {applicant_email_table} e
+                    LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
+                    WHERE e.applicant_no IS NOT NULL AND e.email_address IS NOT NULL
+                    """
                 )
                 recipients = cur.fetchall()
             
@@ -1486,32 +1502,61 @@ def notify_announcement_applicants(
         email_success_count = 0
         email_failure_count = 0
 
-        # 2. Asynchronous email delivery in background
+        # 2. Asynchronous email delivery in background (Parallelized)
         if send_email_alerts:
             GMAIL_SENDER_EMAIL = (
                 os.environ.get('GMAIL_SENDER_EMAIL')
                 or os.environ.get('SMTP_SENDER_EMAIL')
+                or os.environ.get('SMTP_USER')
                 or os.environ.get('SMTP_EMAIL')
                 or 'iskomats@gmail.com'
             )
+
+            # Deduplicate recipients by email address
+            seen_emails = set()
+            valid_recipients = []
             for r in recipients:
-                email = r.get('email_address') if hasattr(r, 'get') else (r['email_address'] if isinstance(r, dict) else None)
+                email = (r.get('email_address') if hasattr(r, 'get') else r['email_address']) if r else None
+                if email and email.strip() and email.strip().lower() not in seen_emails:
+                    seen_emails.add(email.strip().lower())
+                    valid_recipients.append(r)
+
+            def _send_single_announcement(recipient_row):
+                email = recipient_row.get('email_address') if hasattr(recipient_row, 'get') else recipient_row['email_address']
+                first_name = (recipient_row.get('first_name') if hasattr(recipient_row, 'get') else recipient_row['first_name']) or 'Applicant'
                 if not email:
-                    continue
+                    return False
                 try:
-                    msg = MIMEText(f"Hello,\n\nAn announcement has been posted:\n\n{title}\n\n{message}\n\nBest regards,\n{provider_label}")
-                    msg['Subject'] = notification_title
+                    email_body = f"""Hello {first_name},
+
+A new announcement has been published by {provider_label}:
+
+--------------------------------------------------
+{title}
+--------------------------------------------------
+
+{message}
+
+Please log in to your ISKOMATS account to view full announcement details and updates.
+
+Best regards,
+ISKOMATS Team
+"""
+                    msg = MIMEText(email_body, 'plain', 'utf-8')
+                    msg['Subject'] = f"{notification_title_prefix} from {provider_label}: {title}"
                     msg['From'] = GMAIL_SENDER_EMAIL
                     msg['To'] = email
-                    ok = send_email_message(msg)
-                    if ok:
-                        email_success_count += 1
-                    else:
-                        email_failure_count += 1
-                    time.sleep(0.05)
+                    return send_email_message(msg)
                 except Exception as inner_e:
                     log(f"[ANNOUNCEMENT EMAIL ERROR] Failed for {email}: {inner_e}")
-                    email_failure_count += 1
+                    return False
+
+            if valid_recipients:
+                workers = min(10, len(valid_recipients))
+                with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                    results = list(executor.map(_send_single_announcement, valid_recipients))
+                    email_success_count = sum(1 for res in results if res)
+                    email_failure_count = len(results) - email_success_count
                 
         log(f"[ANNOUNCEMENT NOTIF] Task completed. Total Recipients: {len(recipients)}, Email Success: {email_success_count}, Failure: {email_failure_count}")
 
