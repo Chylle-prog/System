@@ -86,6 +86,17 @@ def fetch_google_access_token():
 
 import smtplib
 
+def is_test_email(email_str):
+    if not email_str:
+        return True
+    import re
+    email = str(email_str).strip().lower()
+    if re.search(r'^(dlsl\.applicant|applicant\d+|test_?applicant\d*|dummy|fake|mock|test\d*|user\d+)@', email):
+        return True
+    if re.search(r'@(example\.com|test\.com|sample\.com|invalid|localhost)$', email):
+        return True
+    return False
+
 def send_email_message(msg):
     """
     Reliable email dispatcher.
@@ -94,6 +105,10 @@ def send_email_message(msg):
     """
     receiver_email = msg['To']
     sender_email = msg['From']
+
+    if is_test_email(receiver_email):
+        print(f"[EMAIL SKIP] Suppressed email to test address '{receiver_email}'.", flush=True)
+        return True
 
     # 1. Try Google OAuth via Refresh Token first (REST API via HTTPS port 443 - completely reliable on cloud hosts)
     has_oauth = bool(
