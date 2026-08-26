@@ -7404,27 +7404,19 @@ const StudentInfo = () => {
       return;
     }
 
-    try {
-      setLoadingMessage({ title: `Saving Step ${currentStep}`, message: 'Updating your application progress...' });
-      setIsSavingStep(true);
+    // Advance to next step immediately (0ms instant UI feedback)
+    const stepCompleted = currentStep;
+    setCurrentStep(prev => Math.min(prev + 1, 4));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 
-      if (currentStep === 1) {
-        console.log('[Step 1] Transitioning to Step 2. Manual verification check already passed.');
-      }
-
-      await saveCurrentStepProgress(currentStep);
-      setCurrentStep(prev => Math.min(prev + 1, 4));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (err) {
-      console.error('Save error:', err);
-      showPromptMessage(`Could not save Step ${currentStep}. ${err.message}`);
-    } finally {
-      setIsSavingStep(false);
-    }
+    // Non-blocking background save to database & storage
+    saveCurrentStepProgress(stepCompleted).catch(err => {
+      console.warn(`[Background Save Step ${stepCompleted}] Warning:`, err);
+    });
   };
 
   const handlePrevStep = () => {
-    if (isAnyScanning || isSavingStep) return;
+    if (isAnyScanning) return;
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
       window.scrollTo(0, 0);
