@@ -3336,13 +3336,8 @@ def delete_account(current_user_id, pro_no, role, account_id):
                     f"DELETE FROM {applicant_email_table} WHERE applicant_no = %s OR app_em_no = %s",
                     "DELETE FROM applicant_status WHERE applicant_no = %s",
                     "DELETE FROM merit_proofs WHERE applicant_no = %s",
-                    "DELETE FROM messages WHERE applicant_no = %s",
                     "DELETE FROM message WHERE applicant_no = %s",
                     "DELETE FROM applicant_documents WHERE applicant_no = %s",
-                    "DELETE FROM applicant_family_background WHERE applicant_no = %s",
-                    "DELETE FROM applicant_educational_background WHERE applicant_no = %s",
-                    "DELETE FROM applicant_signatures WHERE applicant_no = %s",
-                    "DELETE FROM applicant_face_encodings WHERE applicant_no = %s",
                     "DELETE FROM notifications WHERE user_no = %s",
                 ]
 
@@ -3461,13 +3456,10 @@ def debug_delete_applicant_by_email(current_user_id, pro_no, role):
             cleanup_statements = [
                 f"DELETE FROM {applicant_email_table} WHERE applicant_no = %s OR app_em_no = %s",
                 "DELETE FROM applicant_status WHERE applicant_no = %s",
-                "DELETE FROM notifications WHERE user_no = %s",
-                "DELETE FROM messages WHERE applicant_no = %s",
+                "DELETE FROM merit_proofs WHERE applicant_no = %s",
+                "DELETE FROM message WHERE applicant_no = %s",
                 "DELETE FROM applicant_documents WHERE applicant_no = %s",
-                "DELETE FROM applicant_family_background WHERE applicant_no = %s",
-                "DELETE FROM applicant_educational_background WHERE applicant_no = %s",
-                "DELETE FROM applicant_signatures WHERE applicant_no = %s",
-                "DELETE FROM applicant_face_encodings WHERE applicant_no = %s",
+                "DELETE FROM notifications WHERE user_no = %s",
                 "DELETE FROM pending_registrations WHERE email_address ILIKE %s",
             ]
 
