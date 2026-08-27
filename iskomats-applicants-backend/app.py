@@ -5,7 +5,10 @@ with warnings.catch_warnings():
     try:
         import eventlet
         eventlet.monkey_patch()
-    except ImportError:
+        # Increase the real OS thread pool size so blocking I/O (e.g. Google Cloud Vision API calls)
+        # can run concurrently without blocking the eventlet event loop for other requests.
+        eventlet.tpool.set_num_threads(20)
+    except Exception:
         pass
 import os
 import sys

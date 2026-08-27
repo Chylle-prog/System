@@ -3876,11 +3876,17 @@ def get_verification_status():
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
+# Module-level backend OCR concurrency semaphore (max 8 concurrent Vision API calls)
+import threading as _threading
+_OCR_BACKEND_SEMAPHORE = _threading.Semaphore(8)
+
 @student_api_bp.route('/verification/ocr-scan', methods=['POST', 'OPTIONS'])
 def ocr_scan():
     """
     High-Precision Document & Frame Scan Endpoint powered by Google Cloud Vision API.
     Accepts raw file uploads, base64 data URIs, or JSON payloads.
+    Runs Vision API call in a real OS thread (via eventlet.tpool) to avoid
+    blocking the eventlet event loop under concurrent usage.
     """
     if request.method == 'OPTIONS':
         return jsonify({'status': 'ok'}), 200
@@ -3906,9 +3912,21 @@ def ocr_scan():
         if not image_bytes:
             return jsonify({'success': False, 'message': 'No image data provided for OCR scan.', 'text': ''}), 400
 
-        from services.ocr_utils import extract_text_with_google_cloud_vision, resolve_verification_image_bytes
+        def _run_ocr_in_thread():
+            """Execute Vision API call inside a real OS thread to avoid blocking eventlet."""
+            with _OCR_BACKEND_SEMAPHORE:
+                return extract_text_with_google_cloud_vision(image_bytes, return_debug=True)
 
-        extracted_text, debug_info = extract_text_with_google_cloud_vision(image_bytes, return_debug=True)
+        # Use eventlet.tpool if available to run blocking I/O in a real OS thread,
+        # freeing the eventlet event loop to serve other concurrent requests.
+        try:
+            import eventlet.tpool as _tpool
+            extracted_text, debug_info = _tpool.execute(_run_ocr_in_thread)
+        except Exception:
+            # Fallback: run directly if tpool unavailable (local dev without eventlet)
+            with _OCR_BACKEND_SEMAPHORE:
+                extracted_text, debug_info = extract_text_with_google_cloud_vision(image_bytes, return_debug=True)
+
         return jsonify({
             'success': True,
             'text': extracted_text or "",
