@@ -1462,15 +1462,16 @@ def notify_announcement_applicants(
             except Exception as bulk_err:
                 print(f"[ANNOUNCEMENT NOTIF BULK ERROR] {bulk_err}")
 
-        # 2. High-speed Parallel Email Delivery
+        # 2. High-speed Parallel Email Delivery (Real-time dispatch)
         if send_email_alerts:
             GMAIL_SENDER_EMAIL = (
                 os.environ.get('GMAIL_SENDER_EMAIL')
                 or os.environ.get('SMTP_SENDER_EMAIL')
+                or os.environ.get('SMTP_USER')
                 or os.environ.get('SMTP_EMAIL')
                 or 'iskomats@gmail.com'
             )
-            from services.notification_service import is_test_email
+            from services.notification_service import is_test_email, fetch_google_access_token, send_email_message
             seen_emails = set()
             valid_recipients = []
             for r in recipients:
@@ -1481,39 +1482,43 @@ def notify_announcement_applicants(
                         seen_emails.add(clean_email)
                         valid_recipients.append(r)
 
-            def _send_announcement_batch(batch):
-                if not batch:
-                    return 0
+            # Pre-warm Google OAuth token in memory
+            try:
+                if os.environ.get('GOOGLE_REFRESH_TOKEN'):
+                    fetch_google_access_token()
+            except Exception:
+                pass
+
+            # Pre-check SMTP connectivity once with a fast timeout (2.5s)
+            smtp_available = False
+            raw_pass = (
+                os.environ.get('GMAIL_APP_PASSWORD', '').strip() or
+                os.environ.get('SMTP_PASSWORD', '').strip() or
+                os.environ.get('SMTP_PASS', '').strip()
+            )
+            app_password = raw_pass.replace(' ', '') if raw_pass else ''
+            smtp_user = os.environ.get('SMTP_USER', '').strip() or GMAIL_SENDER_EMAIL
+            smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
+            smtp_port = int(os.environ.get('SMTP_PORT', '587'))
+
+            if app_password and smtp_user:
                 import smtplib
-                raw_pass = (
-                    os.environ.get('GMAIL_APP_PASSWORD', '').strip() or
-                    os.environ.get('SMTP_PASSWORD', '').strip() or
-                    os.environ.get('SMTP_PASS', '').strip()
-                )
-                app_password = raw_pass.replace(' ', '') if raw_pass else ''
-                smtp_user = os.environ.get('SMTP_USER', '').strip() or GMAIL_SENDER_EMAIL
-                smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
-                smtp_port = int(os.environ.get('SMTP_PORT', '587'))
-
-                server = None
-                successes = 0
-                if app_password and smtp_user:
-                    try:
-                        server = smtplib.SMTP(smtp_host, smtp_port, timeout=12)
-                        server.starttls()
-                        server.login(smtp_user, app_password)
-                    except Exception as s_err:
-                        print(f"[ANNOUNCEMENT EMAIL] Batch SMTP connection error: {s_err}", flush=True)
-                        server = None
-
                 try:
-                    for recipient_row in batch:
-                        email = recipient_row.get('email_address') if hasattr(recipient_row, 'get') else recipient_row['email_address']
-                        first_name = (recipient_row.get('first_name') if hasattr(recipient_row, 'get') else recipient_row['first_name']) or 'Applicant'
-                        if not email:
-                            continue
-                        try:
-                            email_body = f"""Hello {first_name},
+                    with smtplib.SMTP(smtp_host, smtp_port, timeout=3.0) as test_server:
+                        test_server.starttls()
+                        test_server.login(smtp_user, app_password)
+                        smtp_available = True
+                except Exception as test_err:
+                    print(f"[ANNOUNCEMENT EMAIL] SMTP test failed ({test_err}). Fast-falling back to Gmail OAuth.", flush=True)
+                    smtp_available = False
+
+            def _send_single_announcement(recipient_row):
+                email = recipient_row.get('email_address') if hasattr(recipient_row, 'get') else recipient_row['email_address']
+                first_name = (recipient_row.get('first_name') if hasattr(recipient_row, 'get') else recipient_row['first_name']) or 'Applicant'
+                if not email:
+                    return False
+                try:
+                    email_body = f"""Hello {first_name},
 
 A new announcement has been published by {provider_label}:
 
@@ -1528,40 +1533,33 @@ Please log in to your ISKOMATS account to view full announcement details and upd
 Best regards,
 ISKOMATS Team
 """
-                            msg = MIMEText(email_body, 'plain', 'utf-8')
-                            msg['Subject'] = f"{notification_title_prefix} from {provider_label}: {title}"
-                            msg['From'] = GMAIL_SENDER_EMAIL
-                            msg['To'] = email
+                    msg = MIMEText(email_body, 'plain', 'utf-8')
+                    msg['Subject'] = f"{notification_title_prefix} from {provider_label}: {title}"
+                    msg['From'] = GMAIL_SENDER_EMAIL
+                    msg['To'] = email
 
-                            if server:
-                                try:
-                                    server.send_message(msg)
-                                    successes += 1
-                                    continue
-                                except Exception:
-                                    pass
-
-                            if send_email_message(msg):
-                                successes += 1
-                        except Exception as row_err:
-                            print(f"[ANNOUNCEMENT ERROR] Failed email for {email}: {row_err}", flush=True)
-                finally:
-                    if server:
+                    if smtp_available and app_password:
                         try:
-                            server.quit()
+                            import smtplib
+                            with smtplib.SMTP(smtp_host, smtp_port, timeout=5.0) as s:
+                                s.starttls()
+                                s.login(smtp_user, app_password)
+                                s.send_message(msg)
+                            return True
                         except Exception:
                             pass
-                return successes
+
+                    return send_email_message(msg)
+                except Exception as row_err:
+                    print(f"[ANNOUNCEMENT ERROR] Failed email for {email}: {row_err}", flush=True)
+                    return False
 
             if valid_recipients:
-                num_workers = min(6, max(1, len(valid_recipients) // 25 + 1))
-                chunk_size = max(1, (len(valid_recipients) + num_workers - 1) // num_workers)
-                chunks = [valid_recipients[i:i + chunk_size] for i in range(0, len(valid_recipients), chunk_size)]
-
                 import concurrent.futures as _cf
-                with _cf.ThreadPoolExecutor(max_workers=len(chunks)) as pool:
-                    results = list(pool.map(_send_announcement_batch, chunks))
-                    email_success_count = sum(results)
+                worker_count = min(20, max(1, len(valid_recipients)))
+                with _cf.ThreadPoolExecutor(max_workers=worker_count) as pool:
+                    results = list(pool.map(_send_single_announcement, valid_recipients))
+                    email_success_count = sum(1 for r in results if r)
                     email_failure_count = len(valid_recipients) - email_success_count
 
         if send_email_alerts:
@@ -3157,52 +3155,113 @@ def update_account(current_user_id, pro_no, role, account_id):
 @api_bp.route('/accounts/<account_id>', methods=['DELETE'])
 @token_required
 def delete_account(current_user_id, pro_no, role, account_id):
-    """Delete user account"""
+    """Delete user account and all related records from applicants and users tables"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        account_context = fetch_account_activity_context(cursor, account_id)
-        if not account_context:
-            cursor.close()
-            conn.close()
-            return jsonify({'message': 'Account not found'}), 404
-        
-        if account_context['account_type'] == 'Admin':
-            target_table = get_user_email_table(cursor)
-            id_column = 'user_em_no'
-        else:
-            target_table = get_applicant_email_table(cursor)
-            id_column = 'app_em_no'
-
-        cursor.execute(f'DELETE FROM {target_table} WHERE {id_column} = %s RETURNING {id_column}', (account_context['email_id'],))
-        deleted = cursor.fetchone()
-        
-        if deleted and account_context['user_no']:
-            # Also delete from users table
-            cursor.execute('DELETE FROM users WHERE user_no = %s', (account_context['user_no'],))
+        with get_db() as conn:
+            cursor = conn.cursor()
+            account_context = fetch_account_activity_context(cursor, account_id)
+            if not account_context:
+                return jsonify({'message': 'Account not found'}), 404
             
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
-        if not deleted:
-            return jsonify({'message': 'Account not found'}), 404
+            email_addr = account_context.get('email')
+            user_no = account_context.get('user_no')
+            applicant_no = account_context.get('applicant_no')
+            email_id = account_context.get('email_id')
 
-        record_admin_activity(
-            actor_user_no=current_user_id,
-            action='Account Deleted',
-            target_type=account_context['account_type'],
-            target_id=account_id,
-            target_label=account_context['name'],
-            provider_no=account_context['provider_no'],
-            status='success',
-        )
+            if account_context['account_type'] == 'Admin':
+                user_email_table = get_user_email_table(cursor)
+                if email_id:
+                    try:
+                        cursor.execute(f'DELETE FROM {user_email_table} WHERE user_em_no = %s', (email_id,))
+                    except Exception as e:
+                        print(f"[ACCOUNT DELETE NOTICE] {e}", flush=True)
+                if user_no:
+                    try:
+                        cursor.execute('DELETE FROM notifications WHERE user_no = %s', (user_no,))
+                    except Exception:
+                        pass
+                    cursor.execute('DELETE FROM users WHERE user_no = %s', (user_no,))
+            else:
+                applicant_email_table = get_applicant_email_table(cursor)
+
+                # If applicant_no is missing, try looking it up by app_em_no or email
+                if not applicant_no and email_id:
+                    try:
+                        cursor.execute(f"SELECT applicant_no FROM {applicant_email_table} WHERE app_em_no = %s LIMIT 1", (email_id,))
+                        row = cursor.fetchone()
+                        if row:
+                            applicant_no = row['applicant_no'] if isinstance(row, dict) else row[0]
+                    except Exception:
+                        pass
+
+                if not applicant_no and email_addr:
+                    try:
+                        cursor.execute(f"SELECT applicant_no FROM {applicant_email_table} WHERE email_address ILIKE %s LIMIT 1", (email_addr,))
+                        row = cursor.fetchone()
+                        if row:
+                            applicant_no = row['applicant_no'] if isinstance(row, dict) else row[0]
+                    except Exception:
+                        pass
+
+                # 1. Delete dependent/related records in foreign tables
+                cleanup_statements = [
+                    f"DELETE FROM {applicant_email_table} WHERE applicant_no = %s OR app_em_no = %s",
+                    "DELETE FROM applicant_status WHERE applicant_no = %s",
+                    "DELETE FROM merit_proofs WHERE applicant_no = %s",
+                    "DELETE FROM messages WHERE applicant_no = %s",
+                    "DELETE FROM message WHERE applicant_no = %s",
+                    "DELETE FROM applicant_documents WHERE applicant_no = %s",
+                    "DELETE FROM applicant_family_background WHERE applicant_no = %s",
+                    "DELETE FROM applicant_educational_background WHERE applicant_no = %s",
+                    "DELETE FROM applicant_signatures WHERE applicant_no = %s",
+                    "DELETE FROM applicant_face_encodings WHERE applicant_no = %s",
+                    "DELETE FROM notifications WHERE user_no = %s",
+                ]
+
+                for stmt in cleanup_statements:
+                    try:
+                        if 'app_em_no' in stmt:
+                            cursor.execute(stmt, (applicant_no, email_id))
+                        else:
+                            if applicant_no:
+                                cursor.execute(stmt, (applicant_no,))
+                    except Exception as clean_err:
+                        print(f"[ACCOUNT DELETE CLEANUP NOTICE] {clean_err}", flush=True)
+
+                if email_addr:
+                    try:
+                        cursor.execute("DELETE FROM pending_registrations WHERE email_address ILIKE %s", (email_addr,))
+                    except Exception:
+                        pass
+
+                # 2. Delete the entire user from the applicants table!
+                if applicant_no:
+                    cursor.execute("DELETE FROM applicants WHERE applicant_no = %s", (applicant_no,))
+
+                # 3. If there is a corresponding users table record
+                if user_no:
+                    try:
+                        cursor.execute('DELETE FROM users WHERE user_no = %s', (user_no,))
+                    except Exception:
+                        pass
+
+            conn.commit()
+
+            record_admin_activity(
+                actor_user_no=current_user_id,
+                action='Account Deleted',
+                target_type=account_context['account_type'],
+                target_id=account_id,
+                target_label=account_context['name'],
+                provider_no=account_context['provider_no'],
+                status='success',
+            )
+            
+            # Real-time synchronization: Notify connected admins
+            safe_emit('account_change', {'action': 'deleted', 'account_id': account_id, 'applicant_no': applicant_no, 'user_no': user_no}, broadcast=True)
+            
+            return jsonify({'success': True, 'message': 'Account and applicant profile deleted successfully'}), 200
         
-        # Real-time synchronization: Notify connected admins
-        safe_emit('account_change', {'action': 'deleted', 'account_id': account_id}, broadcast=True)
-        
-        return jsonify({'success': True, 'message': 'Account deleted'}), 200
-    
     except Exception as e:
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
@@ -4978,8 +5037,26 @@ def get_applicant_image(applicant_no, column_name):
     try:
         with get_db() as conn:
             cursor = conn.cursor()
+            app_doc_no = request.args.get('app_doc_no')
+            scholarship_no = request.args.get('scholarship_no')
+            
+            if app_doc_no in (None, '', 'null', 'undefined', 'None'):
+                app_doc_no = None
+            if scholarship_no in (None, '', 'null', 'undefined', 'None'):
+                scholarship_no = None
 
-            row = fetch_applicant_document_values(cursor, applicant_no, [column_name])
+            if not app_doc_no and scholarship_no:
+                try:
+                    status_cols = [c.lower() for c in get_table_columns(cursor, 'applicant_status')]
+                    if 'app_doc_no' in status_cols:
+                        cursor.execute("SELECT app_doc_no FROM applicant_status WHERE applicant_no = %s AND scholarship_no = %s LIMIT 1", (applicant_no, scholarship_no))
+                        s_row = cursor.fetchone()
+                        if s_row and (s_row.get('app_doc_no') if isinstance(s_row, dict) else s_row[0]):
+                            app_doc_no = s_row.get('app_doc_no') if isinstance(s_row, dict) else s_row[0]
+                except Exception as s_err:
+                    print(f"[APPLICANT IMAGE] Non-fatal status lookup error: {s_err}", flush=True)
+
+            row = fetch_applicant_document_values(cursor, applicant_no, [column_name], app_doc_no=app_doc_no)
         
             if not row or not row.get(column_name):
                 return jsonify({'message': 'Image not found'}), 404
@@ -5014,7 +5091,7 @@ def get_applicant_image(applicant_no, column_name):
                         if mapped_col in allowed_columns:
                             with get_db() as conn:
                                 cursor = conn.cursor()
-                                re_row = fetch_applicant_document_values(cursor, applicant_no, [mapped_col])
+                                re_row = fetch_applicant_document_values(cursor, applicant_no, [mapped_col], app_doc_no=app_doc_no)
                                 if re_row and re_row.get(mapped_col):
                                     real_val = re_row[mapped_col]
                                     if isinstance(real_val, str) and not ('/applicant/document/raw/' in real_val):

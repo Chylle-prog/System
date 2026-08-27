@@ -177,7 +177,13 @@ def applicant_document_join_sql(cursor, applicant_alias='a', document_alias='ad'
     if not document_table:
         return ''
     if status_alias:
-        return f' LEFT JOIN {document_table} {document_alias} ON ({document_alias}.app_doc_no = {status_alias}.app_doc_no OR ({status_alias}.app_doc_no IS NULL AND {document_alias}.applicant_no = {applicant_alias}.applicant_no)) '
+        try:
+            status_cols = [c.lower() for c in get_table_columns(cursor, 'applicant_status')]
+            doc_cols = [c.lower() for c in get_table_columns(cursor, document_table)]
+            if 'app_doc_no' in status_cols and 'app_doc_no' in doc_cols:
+                return f' LEFT JOIN {document_table} {document_alias} ON ({document_alias}.app_doc_no = {status_alias}.app_doc_no OR ({status_alias}.app_doc_no IS NULL AND {document_alias}.applicant_no = {applicant_alias}.applicant_no)) '
+        except Exception:
+            pass
     return f' LEFT JOIN {document_table} {document_alias} ON {document_alias}.applicant_no = {applicant_alias}.applicant_no '
 
 
@@ -214,12 +220,23 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names, app_doc_
 
     applicant_columns = get_table_columns(cursor, 'applicants')
     
-    if app_doc_no and document_table:
-        joins = f' LEFT JOIN {document_table} ad ON ad.app_doc_no = %s '
-        join_param = int(app_doc_no)
+    join_param = None
+    if app_doc_no is not None and document_table:
+        try:
+            str_doc_no = str(app_doc_no).strip()
+            if str_doc_no and str_doc_no.isdigit():
+                doc_cols = [c.lower() for c in get_table_columns(cursor, document_table)]
+                if 'app_doc_no' in doc_cols:
+                    joins = f' LEFT JOIN {document_table} ad ON ad.app_doc_no = %s '
+                    join_param = int(str_doc_no)
+                else:
+                    joins = applicant_document_join_sql(cursor, 'a', 'ad')
+            else:
+                joins = applicant_document_join_sql(cursor, 'a', 'ad')
+        except (ValueError, TypeError):
+            joins = applicant_document_join_sql(cursor, 'a', 'ad')
     else:
         joins = applicant_document_join_sql(cursor, 'a', 'ad')
-        join_param = None
 
     select_parts = []
     for column_name in requested_columns:

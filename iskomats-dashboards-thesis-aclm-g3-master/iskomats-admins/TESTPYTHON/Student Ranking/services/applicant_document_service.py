@@ -113,14 +113,32 @@ def applicant_document_expr(cursor, column_name, applicant_alias='a', document_a
     return 'NULL'
 
 
-def fetch_applicant_document_values(cursor, applicant_no, column_names):
+def fetch_applicant_document_values(cursor, applicant_no, column_names, app_doc_no=None):
     document_table = get_applicant_document_table(cursor)
     requested_columns = list(dict.fromkeys(column_names))
     if not requested_columns:
         return {}
 
     applicant_columns = get_table_columns(cursor, 'applicants')
-    joins = applicant_document_join_sql(cursor, 'a', 'ad')
+    
+    join_param = None
+    if app_doc_no is not None and document_table:
+        try:
+            str_doc_no = str(app_doc_no).strip()
+            if str_doc_no and str_doc_no.isdigit():
+                doc_cols = [c.lower() for c in get_table_columns(cursor, document_table)]
+                if 'app_doc_no' in doc_cols:
+                    joins = f' LEFT JOIN {document_table} ad ON ad.app_doc_no = %s '
+                    join_param = int(str_doc_no)
+                else:
+                    joins = applicant_document_join_sql(cursor, 'a', 'ad')
+            else:
+                joins = applicant_document_join_sql(cursor, 'a', 'ad')
+        except (ValueError, TypeError):
+            joins = applicant_document_join_sql(cursor, 'a', 'ad')
+    else:
+        joins = applicant_document_join_sql(cursor, 'a', 'ad')
+
     select_parts = []
     for column_name in requested_columns:
         if column_name == 'applicant_no':
@@ -134,8 +152,12 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names):
             continue
         select_parts.append(f'{applicant_document_expr(cursor, column_name, "a", "ad")} AS "{column_name}"')
 
-    query = f'SELECT {", ".join(select_parts)} FROM applicants a{joins}WHERE a.applicant_no = %s LIMIT 1'
-    cursor.execute(query, (applicant_no,))
+    if join_param is not None:
+        query = f'SELECT {", ".join(select_parts)} FROM applicants a{joins}WHERE a.applicant_no = %s LIMIT 1'
+        cursor.execute(query, (join_param, applicant_no))
+    else:
+        query = f'SELECT {", ".join(select_parts)} FROM applicants a{joins}WHERE a.applicant_no = %s LIMIT 1'
+        cursor.execute(query, (applicant_no,))
     row = cursor.fetchone()
     return row or {}
 
