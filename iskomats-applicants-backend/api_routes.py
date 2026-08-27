@@ -3776,7 +3776,7 @@ def get_applicants(current_user_id, pro_no, role, program):
         with get_db() as conn:
             cursor = conn.cursor()
             applicant_email_table = get_applicant_email_table(cursor)
-            document_join = applicant_document_join_sql(cursor, 'a', 'ad')
+            document_join = applicant_document_join_sql(cursor, 'a', 'ad', 's')
             profile_picture_expr = '(a.profile_picture IS NOT NULL)' if applicant_has_column(cursor, 'profile_picture') else '(a.profile_pic IS NOT NULL)' if applicant_has_column(cursor, 'profile_pic') else 'FALSE'
             
             query = f'''
@@ -4748,8 +4748,15 @@ def get_applicant_image(applicant_no, column_name):
     try:
         with get_db() as conn:
             cursor = conn.cursor()
+            app_doc_no = request.args.get('app_doc_no')
+            scholarship_no = request.args.get('scholarship_no')
+            if not app_doc_no and scholarship_no:
+                cursor.execute("SELECT app_doc_no FROM applicant_status WHERE applicant_no = %s AND scholarship_no = %s LIMIT 1", (applicant_no, scholarship_no))
+                s_row = cursor.fetchone()
+                if s_row and (s_row.get('app_doc_no') if isinstance(s_row, dict) else s_row[0]):
+                    app_doc_no = s_row.get('app_doc_no') if isinstance(s_row, dict) else s_row[0]
 
-            row = fetch_applicant_document_values(cursor, applicant_no, [column_name])
+            row = fetch_applicant_document_values(cursor, applicant_no, [column_name], app_doc_no=app_doc_no)
         
             if not row or not row.get(column_name):
                 return jsonify({'message': 'Image not found'}), 404
@@ -4788,7 +4795,7 @@ def get_applicant_image(applicant_no, column_name):
                         if mapped_col in allowed_columns:
                             with get_db() as conn:
                                 cursor = conn.cursor()
-                                re_row = fetch_applicant_document_values(cursor, applicant_no, [mapped_col])
+                                re_row = fetch_applicant_document_values(cursor, applicant_no, [mapped_col], app_doc_no=app_doc_no)
                                 if re_row and re_row.get(mapped_col):
                                     real_val = re_row[mapped_col]
                                     if isinstance(real_val, str) and not ('/applicant/document/raw/' in real_val):

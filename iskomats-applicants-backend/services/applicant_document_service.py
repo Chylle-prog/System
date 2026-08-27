@@ -82,6 +82,89 @@ def get_table_columns(cursor, table_name):
     return columns
 
 
+_SCHEMA_ENSURED = False
+
+
+def ensure_applicant_status_app_doc_no_schema(cursor):
+    """
+    Ensures that applicant_status has an app_doc_no foreign key pointing to applicant_documents,
+    drops the 1:1 UNIQUE(applicant_no) constraint on applicant_documents so multi-application
+    document sets can exist, and backfills all historical applicant_status records.
+    """
+    global _SCHEMA_ENSURED
+    if _SCHEMA_ENSURED:
+        return
+
+    try:
+        # 1. Add app_doc_no column to applicant_status if not present
+        cursor.execute(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'applicant_status' AND column_name = 'app_doc_no'
+                ) THEN
+                    ALTER TABLE applicant_status ADD COLUMN app_doc_no integer;
+                END IF;
+            END $$;
+            """
+        )
+
+        # 2. Drop 1:1 unique constraint on applicant_documents(applicant_no) to allow multi-document snapshots
+        cursor.execute(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.table_constraints 
+                    WHERE table_name = 'applicant_documents' AND constraint_name = 'applicant_documents_applicant_no_key'
+                ) THEN
+                    ALTER TABLE applicant_documents DROP CONSTRAINT applicant_documents_applicant_no_key;
+                END IF;
+            END $$;
+            """
+        )
+
+        # 3. Add Foreign Key constraint from applicant_status.app_doc_no to applicant_documents.app_doc_no
+        cursor.execute(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.table_constraints 
+                    WHERE table_name = 'applicant_status' AND constraint_name = 'fk_applicant_status_app_doc_no'
+                ) THEN
+                    ALTER TABLE applicant_status 
+                    ADD CONSTRAINT fk_applicant_status_app_doc_no 
+                    FOREIGN KEY (app_doc_no) REFERENCES applicant_documents(app_doc_no) 
+                    ON DELETE SET NULL;
+                END IF;
+            END $$;
+            """
+        )
+
+        # 4. Backfill existing historical records: pair applicant_status with existing applicant_documents
+        cursor.execute(
+            """
+            UPDATE applicant_status ast
+            SET app_doc_no = ad.app_doc_no
+            FROM (
+                SELECT applicant_no, MIN(app_doc_no) AS app_doc_no
+                FROM applicant_documents
+                GROUP BY applicant_no
+            ) ad
+            WHERE ast.applicant_no = ad.applicant_no
+              AND ast.app_doc_no IS NULL;
+            """
+        )
+
+        _SCHEMA_ENSURED = True
+        print("[SCHEMA] applicant_status -> applicant_documents FK and historical backfill ensured successfully.", flush=True)
+    except Exception as e:
+        print(f"[SCHEMA ERROR] ensure_applicant_status_app_doc_no_schema error: {e}", flush=True)
+
+
 def get_applicant_document_table(cursor):
     for candidate in APPLICANT_DOCUMENT_TABLE_CANDIDATES:
         if _table_exists(cursor, candidate):
@@ -89,10 +172,12 @@ def get_applicant_document_table(cursor):
     return None
 
 
-def applicant_document_join_sql(cursor, applicant_alias='a', document_alias='ad'):
+def applicant_document_join_sql(cursor, applicant_alias='a', document_alias='ad', status_alias=None):
     document_table = get_applicant_document_table(cursor)
     if not document_table:
         return ''
+    if status_alias:
+        return f' LEFT JOIN {document_table} {document_alias} ON ({document_alias}.app_doc_no = {status_alias}.app_doc_no OR ({status_alias}.app_doc_no IS NULL AND {document_alias}.applicant_no = {applicant_alias}.applicant_no)) '
     return f' LEFT JOIN {document_table} {document_alias} ON {document_alias}.applicant_no = {applicant_alias}.applicant_no '
 
 
@@ -121,14 +206,21 @@ def applicant_document_expr(cursor, column_name, applicant_alias='a', document_a
     return 'NULL'
 
 
-def fetch_applicant_document_values(cursor, applicant_no, column_names):
+def fetch_applicant_document_values(cursor, applicant_no, column_names, app_doc_no=None):
     document_table = get_applicant_document_table(cursor)
     requested_columns = list(dict.fromkeys(column_names))
     if not requested_columns:
         return {}
 
     applicant_columns = get_table_columns(cursor, 'applicants')
-    joins = applicant_document_join_sql(cursor, 'a', 'ad')
+    
+    if app_doc_no and document_table:
+        joins = f' LEFT JOIN {document_table} ad ON ad.app_doc_no = %s '
+        join_param = int(app_doc_no)
+    else:
+        joins = applicant_document_join_sql(cursor, 'a', 'ad')
+        join_param = None
+
     select_parts = []
     for column_name in requested_columns:
         if column_name == 'applicant_no':
@@ -136,13 +228,80 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names):
             continue
         select_parts.append(f'{applicant_document_expr(cursor, column_name, "a", "ad")} AS "{column_name}"')
 
-    query = f'SELECT {", ".join(select_parts)} FROM applicants a{joins}WHERE a.applicant_no = %s LIMIT 1'
-    cursor.execute(query, (applicant_no,))
+    if join_param is not None:
+        query = f'SELECT {", ".join(select_parts)} FROM applicants a{joins}WHERE a.applicant_no = %s LIMIT 1'
+        cursor.execute(query, (join_param, applicant_no))
+    else:
+        query = f'SELECT {", ".join(select_parts)} FROM applicants a{joins}WHERE a.applicant_no = %s LIMIT 1'
+        cursor.execute(query, (applicant_no,))
     row = cursor.fetchone()
     return row or {}
 
 
-def persist_applicant_document_values(cursor, applicant_no, values):
+def create_applicant_document_record(cursor, applicant_no, values):
+    """
+    Creates a new distinct document snapshot record in applicant_documents for a new application.
+    Returns the newly created app_doc_no.
+    """
+    ensure_applicant_status_app_doc_no_schema(cursor)
+
+    is_cloud = os.environ.get('STORE_FILES_IN', 'database').strip().lower() == 'storage'
+    doc_cols_lower = {col.lower(): col for col in APPLICANT_DOCUMENT_COLUMNS}
+    
+    document_values = {}
+    for key, value in values.items():
+        key_lower = key.lower()
+        if key_lower in doc_cols_lower:
+            document_values[key] = value
+
+    if is_cloud:
+        cleaned_values = {}
+        for k, v in document_values.items():
+            if isinstance(v, str):
+                s = v.strip()
+                if s.startswith('blob:') or s.startswith('data:video'):
+                    continue
+                cleaned_values[k] = s
+            else:
+                pass
+        document_values = cleaned_values
+
+    document_table = get_applicant_document_table(cursor)
+    if not document_table:
+        return None
+
+    document_columns = get_table_columns(cursor, document_table)
+    doc_col_map = {col.lower(): col for col in document_columns}
+    filtered_values = {}
+    for key, value in document_values.items():
+        real_key = doc_col_map.get(key.lower())
+        if real_key:
+            filtered_values[real_key] = value
+
+    # Generate next app_doc_no
+    cursor.execute(f'SELECT COALESCE(MAX(app_doc_no), 0) + 1 AS next_id FROM {document_table}')
+    res = cursor.fetchone()
+    next_app_doc_no = res['next_id'] if isinstance(res, dict) else res[0]
+
+    insert_cols = ['"app_doc_no"', '"applicant_no"', *[f'"{col}"' for col in filtered_values.keys()]]
+    val_placeholders = ['%s'] * len(insert_cols)
+    insert_params = [next_app_doc_no, applicant_no, *filtered_values.values()]
+
+    cursor.execute(
+        f'INSERT INTO {document_table} ({", ".join(insert_cols)}) VALUES ({", ".join(val_placeholders)}) RETURNING app_doc_no',
+        tuple(insert_params)
+    )
+    inserted_row = cursor.fetchone()
+    app_doc_no = inserted_row['app_doc_no'] if isinstance(inserted_row, dict) else (inserted_row[0] if inserted_row else next_app_doc_no)
+    print(f"[DOCUMENT SERVICE] Created separate document snapshot app_doc_no={app_doc_no} for applicant_no={applicant_no}", flush=True)
+
+    # Also keep base profile documents updated for backward compatibility
+    persist_applicant_document_values(cursor, applicant_no, values, update_base_profile=True)
+
+    return app_doc_no
+
+
+def persist_applicant_document_values(cursor, applicant_no, values, app_doc_no=None, update_base_profile=True):
     is_cloud = os.environ.get('STORE_FILES_IN', 'database').strip().lower() == 'storage'
     
     doc_cols_lower = {col.lower(): col for col in APPLICANT_DOCUMENT_COLUMNS}
@@ -156,8 +315,6 @@ def persist_applicant_document_values(cursor, applicant_no, values):
     if not document_values:
         return
 
-    # If cloud storage is enabled, we MUST NOT save raw bytes/blobs to the document columns.
-    # We only allow URLs or Data URIs.
     if is_cloud:
         cleaned_values = {}
         for k, v in document_values.items():
@@ -185,50 +342,39 @@ def persist_applicant_document_values(cursor, applicant_no, values):
                 filtered_values[real_key] = value
 
         if filtered_values:
-            # Detect primary key identifier column (e.g. app_doc_no) that may lack default auto-increment
-            pk_col = None
-            for pk_name in ('app_doc_no', 'doc_no', 'document_no', 'id'):
-                if pk_name in doc_col_map and doc_col_map[pk_name] not in filtered_values and doc_col_map[pk_name] != 'applicant_no':
-                    pk_col = doc_col_map[pk_name]
-                    break
-
-            # 1. Try UPDATE first for existing row to avoid touching app_doc_no
-            update_assignments = ', '.join(f'"{col}" = %s' for col in filtered_values.keys())
-            update_params = [*filtered_values.values(), applicant_no]
-            cursor.execute(
-                f'UPDATE {document_table} SET {update_assignments} WHERE applicant_no = %s',
-                tuple(update_params),
-            )
-
-            # 2. If no existing row was updated, INSERT new record with generated app_doc_no
-            if cursor.rowcount == 0:
-                if pk_col:
-                    insert_columns = [f'"{pk_col}"', '"applicant_no"', *[f'"{col}"' for col in filtered_values.keys()]]
-                    val_exprs = [f'(SELECT COALESCE(MAX("{pk_col}"), 0) + 1 FROM {document_table})', '%s', *['%s'] * len(filtered_values)]
-                    insert_params = [applicant_no, *filtered_values.values()]
-                else:
-                    insert_columns = ['"applicant_no"', *[f'"{col}"' for col in filtered_values.keys()]]
-                    val_exprs = ['%s'] * len(insert_columns)
-                    insert_params = [applicant_no, *filtered_values.values()]
-
-                conflict_assignments = ', '.join(f'"{column}" = EXCLUDED."{column}"' for column in filtered_values.keys())
-                try:
+            if app_doc_no:
+                # Update specific application document record
+                update_assignments = ', '.join(f'"{col}" = %s' for col in filtered_values.keys())
+                update_params = [*filtered_values.values(), app_doc_no]
+                cursor.execute(
+                    f'UPDATE {document_table} SET {update_assignments} WHERE app_doc_no = %s',
+                    tuple(update_params),
+                )
+            elif update_base_profile:
+                # Update latest existing row or insert default
+                update_assignments = ', '.join(f'"{col}" = %s' for col in filtered_values.keys())
+                cursor.execute(
+                    f'SELECT app_doc_no FROM {document_table} WHERE applicant_no = %s ORDER BY app_doc_no DESC LIMIT 1',
+                    (applicant_no,)
+                )
+                existing = cursor.fetchone()
+                if existing:
+                    target_doc_no = existing['app_doc_no'] if isinstance(existing, dict) else existing[0]
+                    update_params = [*filtered_values.values(), target_doc_no]
                     cursor.execute(
-                        f'''
-                        INSERT INTO {document_table} ({', '.join(insert_columns)})
-                        VALUES ({', '.join(val_exprs)})
-                        ON CONFLICT (applicant_no)
-                        DO UPDATE SET {conflict_assignments}
-                        ''',
-                        tuple(insert_params),
+                        f'UPDATE {document_table} SET {update_assignments} WHERE app_doc_no = %s',
+                        tuple(update_params),
                     )
-                except Exception:
+                else:
+                    cursor.execute(f'SELECT COALESCE(MAX(app_doc_no), 0) + 1 AS next_id FROM {document_table}')
+                    next_res = cursor.fetchone()
+                    next_doc_no = next_res['next_id'] if isinstance(next_res, dict) else next_res[0]
+                    insert_columns = ['"app_doc_no"', '"applicant_no"', *[f'"{col}"' for col in filtered_values.keys()]]
+                    val_exprs = ['%s'] * len(insert_columns)
+                    insert_params = [next_doc_no, applicant_no, *filtered_values.values()]
                     cursor.execute(
-                        f'''
-                        INSERT INTO {document_table} ({', '.join(insert_columns)})
-                        VALUES ({', '.join(val_exprs)})
-                        ''',
-                        tuple(insert_params),
+                        f'INSERT INTO {document_table} ({", ".join(insert_columns)}) VALUES ({", ".join(val_exprs)})',
+                        tuple(insert_params)
                     )
     
     applicant_columns = get_table_columns(cursor, 'applicants')

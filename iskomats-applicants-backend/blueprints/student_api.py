@@ -36,6 +36,8 @@ from services.applicant_document_service import (
     fetch_applicant_document_values,
     get_applicant_document_table,
     persist_applicant_document_values,
+    create_applicant_document_record,
+    ensure_applicant_status_app_doc_no_schema,
     normalize_supabase_url
 )
 
@@ -2670,7 +2672,15 @@ def get_applicant_document(field_name):
     try:
         with get_db() as conn:
             cur = conn.cursor()
-            row = fetch_applicant_document_values(cur, request.user_no, [field_name])
+            app_doc_no = request.args.get('app_doc_no')
+            scholarship_no = request.args.get('scholarship_no')
+            if not app_doc_no and scholarship_no:
+                cur.execute("SELECT app_doc_no FROM applicant_status WHERE applicant_no = %s AND scholarship_no = %s LIMIT 1", (request.user_no, scholarship_no))
+                s_row = cur.fetchone()
+                if s_row and (s_row.get('app_doc_no') if isinstance(s_row, dict) else s_row[0]):
+                    app_doc_no = s_row.get('app_doc_no') if isinstance(s_row, dict) else s_row[0]
+
+            row = fetch_applicant_document_values(cur, request.user_no, [field_name], app_doc_no=app_doc_no)
             
             if not row or not row[field_name]:
                 return jsonify({'message': 'Document not found'}), 404
@@ -2779,6 +2789,14 @@ def get_applicant_document_raw(field_name):
     try:
         with get_db() as conn:
             cur = conn.cursor()
+            app_doc_no = request.args.get('app_doc_no')
+            scholarship_no = request.args.get('scholarship_no')
+            if not app_doc_no and scholarship_no:
+                cur.execute("SELECT app_doc_no FROM applicant_status WHERE applicant_no = %s AND scholarship_no = %s LIMIT 1", (request.user_no, scholarship_no))
+                s_row = cur.fetchone()
+                if s_row and (s_row.get('app_doc_no') if isinstance(s_row, dict) else s_row[0]):
+                    app_doc_no = s_row.get('app_doc_no') if isinstance(s_row, dict) else s_row[0]
+
             if is_merit:
                 idx_match = re.search(r'\d+', field_name)
                 target_idx = int(idx_match.group(0)) - 1 if idx_match else 0
@@ -2789,16 +2807,16 @@ def get_applicant_document_raw(field_name):
                 else:
                     return "Not found", 404
             else:
-                row = fetch_applicant_document_values(cur, request.user_no, [db_field])
+                row = fetch_applicant_document_values(cur, request.user_no, [db_field], app_doc_no=app_doc_no)
                 if not row or not row.get(db_field):
                     if db_field == 'profile_picture':
-                        row = fetch_applicant_document_values(cur, request.user_no, ['id_pic'])
+                        row = fetch_applicant_document_values(cur, request.user_no, ['id_pic'], app_doc_no=app_doc_no)
                         db_field = 'id_pic'
                     if not row or not row.get(db_field):
-                        row = fetch_applicant_document_values(cur, request.user_no, ['face_photo'])
+                        row = fetch_applicant_document_values(cur, request.user_no, ['face_photo'], app_doc_no=app_doc_no)
                         db_field = 'face_photo'
                     if not row or not row.get(db_field):
-                        row = fetch_applicant_document_values(cur, request.user_no, ['id_img_front'])
+                        row = fetch_applicant_document_values(cur, request.user_no, ['id_img_front'], app_doc_no=app_doc_no)
                         db_field = 'id_img_front'
             if not row or not row.get(db_field):
                 return "Not found", 404
@@ -3346,8 +3364,9 @@ def submit_application():
             cur = conn.cursor()
             has_profile_picture_column = applicant_has_column(cur, 'profile_picture')
         
-            # Ensure the created_at support column exists only once per process.
+            # Ensure the created_at and app_doc_no support columns exist only once per process.
             ensure_applicant_status_created_at_column(cur)
+            ensure_applicant_status_app_doc_no_schema(cur)
             conn.commit()
         
             # Get applicant data
@@ -3697,9 +3716,6 @@ def submit_application():
                 params = [updates_dict[c] for c in cols]
                 params.append(current_user_id)
                 cur.execute(sql, tuple(params))
-            if document_updates:
-                persist_applicant_document_values(cur, current_user_id, document_updates)
-
             # ── MERIT PROOFS PERSISTENCE ON SUBMISSION (1NF merit_proofs table) ──
             merit_entries_to_save = None
             if 'meritList' in request_payload and isinstance(request_payload['meritList'], list):
@@ -3748,15 +3764,29 @@ def submit_application():
             if merit_entries_to_save is not None:
                 save_merit_proofs(cur, current_user_id, merit_entries_to_save)
 
+            # Create a dedicated separate document snapshot for this scholarship application
+            all_submitted_docs = dict(document_updates) if document_updates else {}
+            base_docs = fetch_applicant_document_values(cur, current_user_id, [
+                'signature_image_data', 'id_img_front', 'id_img_back', 'schoolID_photo',
+                'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic',
+                'id_vid_url', 'indigency_vid_url', 'grades_vid_url',
+                'enrollment_certificate_vid_url', 'schoolid_front_vid_url', 'schoolid_back_vid_url'
+            ])
+            for k, v in base_docs.items():
+                if v and k not in all_submitted_docs:
+                    all_submitted_docs[k] = v
+
+            application_doc_no = create_applicant_document_record(cur, current_user_id, all_submitted_docs) if all_submitted_docs else None
+
             # ── CREATE/UPDATE STATUS ──────────────────────────────────────────────
             cur.execute(
                 """
-                INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, created_at)
-                VALUES (%s, %s, 'Pending', NOW())
+                INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, app_doc_no, created_at)
+                VALUES (%s, %s, 'Pending', %s, NOW())
                 ON CONFLICT (scholarship_no, applicant_no) 
-                DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = 'Pending'
+                DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = 'Pending', app_doc_no = COALESCE(EXCLUDED.app_doc_no, applicant_status.app_doc_no)
                 """,
-                (scholarship_id, current_user_id),
+                (scholarship_id, current_user_id, application_doc_no),
             )
 
             # Ensure the initial system message is created so the chat room immediately exists in DB
