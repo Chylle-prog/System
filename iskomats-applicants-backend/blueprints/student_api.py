@@ -698,8 +698,10 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
             print(f"[STORAGE ERROR] Supabase client unavailable for {field_name}", flush=True)
             return None
 
-        # Generate unique path: {folder}/{applicant_no}-{field_name}.jpg (upsert handles overwriting in-place)
-        file_path = f"{folder}/{applicant_no}-{field_name}.jpg"
+        # Generate unique path with timestamp to keep separate documents per application snapshot
+        import uuid
+        unique_token = f"{int(time.time() * 1000)}-{uuid.uuid4().hex[:6]}"
+        file_path = f"{folder}/{applicant_no}-{field_name}-{unique_token}.jpg"
         mime_type = "image/jpeg"
         
         # Ensure we have bytes

@@ -87,7 +87,8 @@ export const uploadDocumentImageDirect = async (fieldName, fileOrDataUrl, onProg
     folder = 'merit_documents';
   }
   const dbCol = canonicalFieldMap[fieldName] || fieldName;
-  const objectPath = `${folder}/${applicantNo}-${dbCol}.jpg`;
+  const uniqueToken = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const objectPath = `${folder}/${applicantNo}-${dbCol}-${uniqueToken}.jpg`;
 
   let blob = null;
   if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
@@ -137,7 +138,8 @@ export const uploadProfilePicture = async (file) => {
   const applicantNo = sanitizeStorageSegment(localStorage.getItem('applicantNo'), 'unknown-applicant');
   const currentUser = sanitizeStorageSegment(localStorage.getItem('currentUser'), 'unknown-user');
   const ext = resolveImageUploadExtension(file);
-  const objectPath = `profile_pictures/${applicantNo}-${currentUser}${ext}`;
+  const uniqueToken = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const objectPath = `profile_pictures/${applicantNo}-${currentUser}-${uniqueToken}${ext}`;
 
   const { encryptDocument } = await import('./CryptoService');
   const encryptedFile = await encryptDocument(file);
@@ -270,7 +272,8 @@ const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
   const currentUser = sanitizeStorageSegment(localStorage.getItem('currentUser'), 'unknown-user');
   const folder = folderMap[fieldName] || 'others';
   const ext = resolveVideoUploadExtension(file);
-  const objectPath = `videos/${folder}/${applicantNo}-${currentUser}/${fieldName}${ext}`;
+  const uniqueToken = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const objectPath = `videos/${folder}/${applicantNo}-${currentUser}/${fieldName}-${uniqueToken}${ext}`;
 
   const { encryptDocument } = await import('./CryptoService');
   const encryptedFile = await encryptDocument(file);

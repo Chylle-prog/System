@@ -638,8 +638,10 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
         mime_type = 'application/octet-stream'
 
         # Upload
-        file_name = f"{applicant_no}_{int(time.time())}.{ext}"
-        file_path = f"{folder}/{file_name}"
+        # Generate unique path with timestamp to keep separate documents per application snapshot
+        import uuid
+        unique_token = f"{int(time.time() * 1000)}-{uuid.uuid4().hex[:6]}"
+        file_path = f"{folder}/{applicant_no}-{field_name}-{unique_token}.jpg"
         
         print(f"[STORAGE] Uploading encrypted {field_name} for applicant {applicant_no} to {bucket_name}/{file_path}", flush=True)
         res = supabase.storage.from_(bucket_name).upload(
