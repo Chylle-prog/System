@@ -1,24 +1,28 @@
-
 /**
- * CryptoService for ISKOMATS
- * Provides client-side encryption and decryption for sensitive documents and videos.
- * Uses AES-GCM (authenticated encryption) with a shared system key.
+ * CryptoService for ISKOMATS (Applicant Site)
+ * Provides client-side encryption and high-performance decryption for sensitive documents and videos.
+ * Features instant video stream passthrough, persistent Object URL caching, and parallel preloading.
  */
 
 const ENCRYPTION_KEY_STR = import.meta.env.VITE_ENCRYPTION_KEY || 'iskomats-system-secret-key-2024';
 const MAGIC_PREFIX = 'ENC:';
 
+const urlCache = new Map();
+let cryptoKeyPromise = null;
+
 const getCryptoKey = async () => {
-  const enc = new TextEncoder();
-  // Ensure key is exactly 32 bytes for AES-256
-  const keyData = enc.encode(ENCRYPTION_KEY_STR.padEnd(32, '0').slice(0, 32));
-  return crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'AES-GCM' },
-    false,
-    ['encrypt', 'decrypt']
-  );
+  if (!cryptoKeyPromise) {
+    const enc = new TextEncoder();
+    const keyData = enc.encode(ENCRYPTION_KEY_STR.padEnd(32, '0').slice(0, 32));
+    cryptoKeyPromise = crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'AES-GCM' },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+  return cryptoKeyPromise;
 };
 
 /**
@@ -49,7 +53,7 @@ export const encryptDocument = async (data) => {
     return new Blob([combined], { type: 'application/octet-stream' });
   } catch (error) {
     console.error('[CRYPTO] Encryption failed:', error);
-    return data; // Fallback to raw
+    return data;
   }
 };
 
@@ -64,7 +68,8 @@ export const decryptDocument = async (blob, originalType = 'image/jpeg') => {
     const buffer = await blob.arrayBuffer();
     const prefixBytes = new TextEncoder().encode(MAGIC_PREFIX);
     
-    // Check if starts with ENC:
+    if (buffer.byteLength < prefixBytes.length + 12) return blob;
+
     const potentialPrefix = new Uint8Array(buffer.slice(0, prefixBytes.length));
     const isEncrypted = prefixBytes.every((val, i) => val === potentialPrefix[i]);
 
@@ -82,51 +87,43 @@ export const decryptDocument = async (blob, originalType = 'image/jpeg') => {
 
     return new Blob([decrypted], { type: originalType });
   } catch (error) {
-    // Unencrypted file or key mismatch - return raw blob safely without alarming console warnings
     return blob;
   }
 };
 
-// Simple Request Queue Limiter for decryptUrl to prevent flooding Render backend connection limits
-let activeDecryptFetches = 0;
-const decryptQueue = [];
-
-const processDecryptQueue = () => {
-  if (decryptQueue.length === 0 || activeDecryptFetches >= 2) return;
-  const next = decryptQueue.shift();
-  if (next) {
-    activeDecryptFetches++;
-    next().finally(() => {
-      activeDecryptFetches--;
-      processDecryptQueue();
-    });
-  }
-};
-
-const enqueueDecryptFetch = (fn, fallbackUrl) => {
-  return new Promise((resolve) => {
-    decryptQueue.push(async () => {
-      try {
-        const res = await fn();
-        resolve(res || fallbackUrl);
-      } catch (err) {
-        resolve(fallbackUrl);
-      }
-    });
-    processDecryptQueue();
-  });
-};
-
 /**
- * Helper to decrypt a URL (fetches, decrypts, and returns a local object URL)
+ * Helper to decrypt a URL (fetches, decrypts, and returns a local object URL with persistent caching)
  */
-export const decryptUrl = async (url, type = 'image/jpeg') => {
-  if (!url || typeof url !== 'string' || !url.startsWith('http')) return url;
-  
-  return enqueueDecryptFetch(async () => {
+export const decryptUrl = (url, type = 'image/jpeg') => {
+  if (!url || typeof url !== 'string' || !url.startsWith('http')) return Promise.resolve(url);
+
+  const isVideo = Boolean(
+    (type && type.startsWith('video')) ||
+    url.toLowerCase().includes('.mp4') ||
+    url.toLowerCase().includes('.webm') ||
+    url.toLowerCase().includes('.mov') ||
+    url.toLowerCase().includes('/video/') ||
+    url.toLowerCase().includes('video') ||
+    url.toLowerCase().includes('_vid_url') ||
+    url.toLowerCase().includes('face_video') ||
+    url.toLowerCase().includes('mayorindigency_video') ||
+    url.toLowerCase().includes('mayorgrades_video') ||
+    url.toLowerCase().includes('mayorcoe_video') ||
+    url.toLowerCase().includes('schoolidfront_video') ||
+    url.toLowerCase().includes('schoolidback_video')
+  );
+
+  // All video streams play immediately via native browser HTML5 player (zero blocking blob downloads)
+  if (isVideo) {
+    return Promise.resolve(url);
+  }
+
+  if (urlCache.has(url)) {
+    return urlCache.get(url);
+  }
+
+  const decryptPromise = (async () => {
     try {
-      const separator = url.includes('?') ? '&' : '?';
-      const fetchUrl = `${url}${separator}_cb=${Date.now()}`;
       const headers = {};
       const token = localStorage.getItem('authToken');
       if (token && !url.includes('supabase.co')) {
@@ -134,21 +131,15 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
       }
 
       let response = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          response = await fetch(fetchUrl, { headers });
-          if (!response.ok && Object.keys(headers).length > 0) {
-            response = await fetch(fetchUrl);
-          }
-          if (response && response.ok) break;
-        } catch (fetchErr) {
-          if (attempt < 2) await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
-        }
+      try {
+        response = await fetch(url, { headers, cache: 'default' });
+      } catch (e) {
+        response = await fetch(url).catch(() => null);
       }
 
       if (!response || !response.ok) return url;
       const blob = await response.blob();
-      if (blob.size === 0) return url;
+      if (!blob || blob.size === 0) return url;
 
       // Check if the payload is a base64 Data URI string
       const sampleBuffer = await blob.slice(0, 100).arrayBuffer();
@@ -160,7 +151,7 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
         return URL.createObjectURL(decBlob);
       }
 
-      // Check if the payload is already an unencrypted image, video, or PDF
+      // Check magic headers
       const headerBuffer = await blob.slice(0, 16).arrayBuffer();
       const headerBytes = new Uint8Array(headerBuffer);
       const isMkvWebm = headerBytes[0] === 0x1a && headerBytes[1] === 0x45 && headerBytes[2] === 0xdf && headerBytes[3] === 0xa3;
@@ -170,26 +161,52 @@ export const decryptUrl = async (url, type = 'image/jpeg') => {
       const isPdf = headerBytes[0] === 0x25 && headerBytes[1] === 0x50 && headerBytes[2] === 0x44 && headerBytes[3] === 0x46;
 
       let targetMimeType = type || 'image/jpeg';
-      if (url.includes('video') || url.includes('_vid')) {
-        targetMimeType = isMkvWebm ? 'video/webm' : 'video/mp4';
-      } else if (isPdf) {
-        targetMimeType = 'application/pdf';
-      } else if (isPng) {
-        targetMimeType = 'image/png';
-      } else if (isJpg) {
-        targetMimeType = 'image/jpeg';
+      if (isPdf) targetMimeType = 'application/pdf';
+      else if (isPng) targetMimeType = 'image/png';
+      else if (isJpg) targetMimeType = 'image/jpeg';
+
+      const prefixBytes = new TextEncoder().encode(MAGIC_PREFIX);
+      if (blob.size >= prefixBytes.length + 12) {
+        const potentialPrefix = new Uint8Array(sampleBuffer.slice(0, prefixBytes.length));
+        const isEncrypted = prefixBytes.every((val, i) => val === potentialPrefix[i]);
+
+        if (isEncrypted) {
+          const decryptedBlob = await decryptDocument(blob, targetMimeType);
+          if (decryptedBlob && decryptedBlob !== blob) {
+            return URL.createObjectURL(decryptedBlob);
+          }
+        }
       }
 
-      let decryptedBlob = blob;
-      if (!isMkvWebm && !isMp4 && !isPng && !isJpg && !isPdf) {
-        decryptedBlob = await decryptDocument(blob, targetMimeType);
-      } else {
-        const correctType = isMkvWebm ? 'video/webm' : (isMp4 ? 'video/mp4' : (isPng ? 'image/png' : (isJpg ? 'image/jpeg' : (isPdf ? 'application/pdf' : targetMimeType))));
-        decryptedBlob = new Blob([blob], { type: correctType });
+      if (isPng || isJpg || isPdf) {
+        return URL.createObjectURL(new Blob([blob], { type: targetMimeType }));
       }
-      return URL.createObjectURL(decryptedBlob);
+
+      return url;
     } catch (error) {
       return url;
     }
+  })();
+
+  urlCache.set(url, decryptPromise);
+  return decryptPromise;
+};
+
+/**
+ * Preload media URLs concurrently in the background
+ */
+export const preloadMediaUrls = (urls = [], type = 'image/jpeg') => {
+  if (!Array.isArray(urls) || urls.length === 0) return;
+  const imageUrls = urls.filter(u => 
+    u && 
+    typeof u === 'string' && 
+    u.startsWith('http') && 
+    !u.toLowerCase().includes('.mp4') && 
+    !u.toLowerCase().includes('video') &&
+    !u.toLowerCase().includes('_vid')
+  );
+
+  imageUrls.forEach(url => {
+    decryptUrl(url, type || 'image/jpeg');
   });
 };

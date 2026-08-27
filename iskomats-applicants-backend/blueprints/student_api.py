@@ -2915,6 +2915,14 @@ def get_applicant_document_raw(field_name):
                 else:
                     mime_type = 'video/mp4'
                 
+            import hashlib
+            sample = value[:512] if len(value) > 512 else value
+            etag = f'"{request.user_no}_{field_name}_{hashlib.md5(sample + str(len(value)).encode()).hexdigest()[:12]}"'
+
+            if_none_match = request.headers.get('If-None-Match')
+            if if_none_match and etag and if_none_match.strip() == etag.strip():
+                return Response(status=304)
+
             if mime_type.startswith('video/'):
                 from flask import Response
                 range_header = request.headers.get('Range', None)
@@ -2937,19 +2945,22 @@ def get_applicant_document_raw(field_name):
                     response.headers.set('Accept-Ranges', 'bytes')
                     response.headers.set('Content-Range', f'bytes {start}-{end}/{len(value)}')
                     response.headers.set('Content-Length', str(len(chunk)))
-                    response.headers.set('Cache-Control', 'public, max-age=604800')  # 7 days
+                    response.headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600')
+                    response.headers.set('ETag', etag)
                     return response
                 else:
                     response = Response(value, mimetype=mime_type)
                     response.headers.set('Accept-Ranges', 'bytes')
                     response.headers.set('Content-Length', str(len(value)))
-                    response.headers.set('Cache-Control', 'public, max-age=604800')  # 7 days
+                    response.headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600')
+                    response.headers.set('ETag', etag)
                     return response
             else:
                 from flask import make_response
                 response = make_response(value)
                 response.headers.set('Content-Type', mime_type)
-                response.headers.set('Cache-Control', 'public, max-age=604800')  # 7 days
+                response.headers.set('Cache-Control', 'public, max-age=86400, immutable')
+                response.headers.set('ETag', etag)
                 return response
     except Exception as e:
         print(f"[DOCUMENT RAW] Error: {e}", flush=True)

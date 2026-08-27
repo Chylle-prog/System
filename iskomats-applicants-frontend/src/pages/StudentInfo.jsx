@@ -3888,15 +3888,15 @@ const StudentInfo = () => {
           schoolIdBack_video: (profile.schoolid_back_vid_url && String(profile.schoolid_back_vid_url).startsWith('http')) ? profile.schoolid_back_vid_url : (hasSchoolIdBackVid ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null)
         };
 
-        const activeVids = {};
-        for (const [k, urlVal] of Object.entries(rawVideos)) {
-          if (urlVal) {
+        const activeEntries = Object.entries(rawVideos).filter(([, urlVal]) => Boolean(urlVal));
+        const resolvedPairs = await Promise.all(
+          activeEntries.map(async ([k, urlVal]) => {
             const resolved = await applicantAPI.resolveDocument(k, urlVal);
-            if (active && resolved) {
-              activeVids[k] = resolved;
-            }
-          }
-        }
+            return [k, resolved];
+          })
+        );
+
+        const activeVids = Object.fromEntries(resolvedPairs.filter(([, res]) => Boolean(res)));
 
         if (active && Object.keys(activeVids).length > 0) {
           setDocumentVideos(prev => ({ ...prev, ...activeVids }));
@@ -3957,50 +3957,37 @@ const StudentInfo = () => {
       const token = localStorage.getItem('authToken');
       const apiOrigin = API_ORIGIN;
 
-      const newPhotos = {};
-      const updates = {};
+      const docPromises = [];
 
       if (profile.has_mayorIndigency_photo) {
         const indigencyUrl = `${apiOrigin}/api/student/applicant/document/raw/indigency_doc?token=${token}`;
-        const resolved = await applicantAPI.resolveDocument('mayorIndigency_photo', indigencyUrl);
-        newPhotos.mayorIndigency_photo = resolved;
-        updates.mayorIndigency_photo = resolved;
+        docPromises.push(
+          applicantAPI.resolveDocument('mayorIndigency_photo', indigencyUrl).then(resolved => ({ key: 'mayorIndigency_photo', type: 'photo', resolved }))
+        );
       }
       if (profile.has_mayorCOE_photo) {
         const coeUrl = `${apiOrigin}/api/student/applicant/document/raw/enrollment_certificate_doc?token=${token}`;
-        const resolved = await applicantAPI.resolveDocument('mayorCOE_photo', coeUrl);
-        newPhotos.mayorCOE_photo = resolved;
-        updates.mayorCOE_photo = resolved;
+        docPromises.push(
+          applicantAPI.resolveDocument('mayorCOE_photo', coeUrl).then(resolved => ({ key: 'mayorCOE_photo', type: 'photo', resolved }))
+        );
       }
       if (profile.has_mayorGrades_photo) {
         const gradesUrl = `${apiOrigin}/api/student/applicant/document/raw/grades_doc?token=${token}`;
-        const resolved = await applicantAPI.resolveDocument('mayorGrades_photo', gradesUrl);
-        newPhotos.mayorGrades_photo = resolved;
-        updates.mayorGrades_photo = resolved;
+        docPromises.push(
+          applicantAPI.resolveDocument('mayorGrades_photo', gradesUrl).then(resolved => ({ key: 'mayorGrades_photo', type: 'photo', resolved }))
+        );
       }
-
-      const newIdPhotos = {};
       if (profile.has_id) {
         const frontUrl = `${apiOrigin}/api/student/applicant/document/raw/id_img_front?token=${token}`;
-        const resolved = await applicantAPI.resolveDocument('id_front', frontUrl);
-        newIdPhotos.front = resolved;
-        updates.schoolIdFront = resolved;
+        docPromises.push(
+          applicantAPI.resolveDocument('id_front', frontUrl).then(resolved => ({ key: 'front', formKey: 'schoolIdFront', type: 'idPhoto', resolved }))
+        );
       }
       if (profile.has_id_back) {
         const backUrl = `${apiOrigin}/api/student/applicant/document/raw/id_img_back?token=${token}`;
-        const resolved = await applicantAPI.resolveDocument('id_back', backUrl);
-        newIdPhotos.back = resolved;
-        updates.schoolIdBack = resolved;
-      }
-
-      setPhotos(prev => ({
-        ...prev,
-        ...newPhotos,
-        id_front: newIdPhotos.front || prev.id_front,
-        id_back: newIdPhotos.back || prev.id_back
-      }));
-      if (newIdPhotos.front || newIdPhotos.back) {
-        setSchoolIdPhotos(prev => ({ ...prev, ...newIdPhotos }));
+        docPromises.push(
+          applicantAPI.resolveDocument('id_back', backUrl).then(resolved => ({ key: 'back', formKey: 'schoolIdBack', type: 'idPhoto', resolved }))
+        );
       }
 
       const rawVideos = {
@@ -4012,13 +3999,43 @@ const StudentInfo = () => {
         schoolIdBack_video: (profile.schoolid_back_vid_url && String(profile.schoolid_back_vid_url).startsWith('http')) ? profile.schoolid_back_vid_url : (profile.schoolid_back_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null)
       };
 
-      const activeVideos = {};
-      for (const [k, urlVal] of Object.entries(rawVideos)) {
+      Object.entries(rawVideos).forEach(([k, urlVal]) => {
         if (urlVal) {
-          const resolvedVid = await applicantAPI.resolveDocument(k, urlVal);
-          activeVideos[k] = resolvedVid;
-          updates[k] = resolvedVid;
+          docPromises.push(
+            applicantAPI.resolveDocument(k, urlVal).then(resolved => ({ key: k, type: 'video', resolved }))
+          );
         }
+      });
+
+      const results = await Promise.all(docPromises);
+
+      const newPhotos = {};
+      const newIdPhotos = {};
+      const activeVideos = {};
+      const updates = {};
+
+      results.forEach(item => {
+        if (!item || !item.resolved) return;
+        if (item.type === 'photo') {
+          newPhotos[item.key] = item.resolved;
+          updates[item.key] = item.resolved;
+        } else if (item.type === 'idPhoto') {
+          newIdPhotos[item.key] = item.resolved;
+          updates[item.formKey] = item.resolved;
+        } else if (item.type === 'video') {
+          activeVideos[item.key] = item.resolved;
+          updates[item.key] = item.resolved;
+        }
+      });
+
+      setPhotos(prev => ({
+        ...prev,
+        ...newPhotos,
+        id_front: newIdPhotos.front || prev.id_front,
+        id_back: newIdPhotos.back || prev.id_back
+      }));
+      if (newIdPhotos.front || newIdPhotos.back) {
+        setSchoolIdPhotos(prev => ({ ...prev, ...newIdPhotos }));
       }
 
       setDocumentVideos(prev => ({ ...prev, ...activeVideos }));
