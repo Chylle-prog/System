@@ -196,6 +196,33 @@ const Portal = () => {
       }
     };
 
+    const fetchResources = async () => {
+      try {
+        const data = await scholarshipAPI.getAll();
+        setResources(data || []);
+      } catch (err) {
+        console.error("Failed to load scholarship resources:", err);
+      }
+    };
+
+    const fetchAnnouncements = async () => {
+      try {
+        const data = await announcementAPI.getAll();
+        setDbAnnouncements(data || []);
+      } catch (err) {
+        console.error("Failed to load announcements:", err);
+      }
+    };
+
+    const fetchNotifications = async () => {
+      try {
+        const data = await notificationAPI.getAll();
+        setNotifications(data || []);
+      } catch (err) {
+        console.error("Failed to load notifications:", err);
+      }
+    };
+
     // Fetch all initial data concurrently
     Promise.allSettled([
       fetchApplications(true),
