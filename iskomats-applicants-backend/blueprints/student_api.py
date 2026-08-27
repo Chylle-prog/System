@@ -68,6 +68,7 @@ def try_int(val):
 _TTL_CACHE = {}
 _TTL_CACHE_LOCK = threading.Lock()
 _APPLICANTS_COLUMNS_CACHE = None
+_ANNOUNCEMENT_COLUMNS_CACHE = None
 
 def get_cached_response(key, ttl_seconds=60):
     now = time.time()
@@ -4220,18 +4221,21 @@ def get_announcements():
             except Exception:
                 primary_key_column, foreign_key_column = None, None
 
-            cur.execute(
-                """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name = 'announcements'
-                  AND column_name IN ('time_added', 'status_updated', 'ann_date', 'is_removed')
-                """
-            )
-            announcement_columns = {
-                row['column_name'] if isinstance(row, dict) else row[0]
-                for row in cur.fetchall()
-            }
+            global _ANNOUNCEMENT_COLUMNS_CACHE
+            if _ANNOUNCEMENT_COLUMNS_CACHE is None:
+                cur.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'announcements'
+                      AND column_name IN ('time_added', 'status_updated', 'ann_date', 'is_removed')
+                    """
+                )
+                _ANNOUNCEMENT_COLUMNS_CACHE = {
+                    row['column_name'] if isinstance(row, dict) else row[0]
+                    for row in cur.fetchall()
+                }
+            announcement_columns = _ANNOUNCEMENT_COLUMNS_CACHE
 
             # Build the date expression based on what columns actually exist
             if 'time_added' in announcement_columns:

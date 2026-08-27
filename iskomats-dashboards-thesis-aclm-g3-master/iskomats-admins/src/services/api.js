@@ -13,6 +13,7 @@ const RETRYABLE_METHODS = new Set(['get', 'head', 'options']);
 export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 let backendWarmupPromise = null;
 
+
 const wait = (ms) => new Promise((resolve) => {
   window.setTimeout(resolve, ms);
 });

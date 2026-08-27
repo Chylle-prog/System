@@ -11,7 +11,7 @@ import Register from './Pages/Auth/Register/register'
 import ResetPass from './Pages/Auth/Reset Pass/reset-pass'
 import Suspended from './Pages/Auth/Suspended/suspended'
 import VerifyEmail from './Pages/Auth/VerifyE/verify-email'
-import { authAPI } from './services/api'
+import { authAPI, API_ORIGIN } from './services/api'
 import { clearAdminSession } from './utils/admin-session'
 import SuperAdminDebugPanel from './Components/Debug/SuperAdminDebugPanel'
 
@@ -207,6 +207,31 @@ function AppContent() {
 }
 
 function App() {
+  // Fire a health ping immediately on app load (even on the login page) so the
+  // Render free-tier server is warm before the user submits any real request.
+  // Repeat every 8 minutes — Render spins down after ~15 min of inactivity.
+  useEffect(() => {
+    const backendOrigin = API_ORIGIN || 'https://iskomats-backend.onrender.com';
+    const pingBackend = () => {
+      fetch(`${backendOrigin}/_health`, { method: 'GET', cache: 'no-store' }).catch(() => {});
+    };
+
+    pingBackend();
+    const interval = setInterval(pingBackend, 8 * 60 * 1000); // every 8 minutes
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        pingBackend();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   return (
     <BrowserRouter>
       <AppContent />

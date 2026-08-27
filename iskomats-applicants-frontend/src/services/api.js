@@ -307,7 +307,7 @@ const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
   };
 };
 
-const warmBackendConnection = async ({ force = false } = {}) => {
+export const warmBackendConnection = async ({ force = false } = {}) => {
   if (force) {
     backendWarmupPromise = null;
   }

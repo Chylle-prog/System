@@ -1685,45 +1685,23 @@ def resolve_provider_context(cursor, user_no, role, token_pro_no=None):
 
 
 def resolve_account_email_record(cursor, account_id):
-    """Resolve a synthetic account id to its underlying auth-table row."""
-    requested_type, numeric_id = parse_account_identifier(account_id)
+    """Resolve an account id (admin-X, applicant-Y, raw ID, or email) to its underlying auth/applicant/user row."""
+    if not account_id:
+        return None
+    raw_str = str(account_id).strip()
     user_email_table = get_user_email_table(cursor)
     applicant_email_table = get_applicant_email_table(cursor)
 
-    def fetch_admin_record(email_id):
-        cursor.execute(
-            f"""
-            SELECT
-                'Admin' AS account_type,
-                {email_id}::INTEGER AS lookup_id,
-                ue.user_em_no AS email_id,
-                ue.email_address AS email,
-                ue.user_no,
-                NULL::INTEGER AS applicant_no,
-                COALESCE(u.user_name, p.provider_name, 'Unknown Account') AS name,
-                p.pro_no AS provider_no,
-                COALESCE(p.provider_name, 'All') AS provider_name,
-                COALESCE(ue.is_locked, FALSE) AS locked
-            FROM {user_email_table} ue
-            LEFT JOIN users u ON ue.user_no = u.user_no
-            LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
-            WHERE ue.user_em_no = %s
-            LIMIT 1
-            """,
-            (email_id,),
-        )
-        return cursor.fetchone()
-
-    def fetch_applicant_record(email_id):
+    # 1. If raw_str is an email address
+    if '@' in raw_str:
         cursor.execute(
             f"""
             SELECT
                 'Applicant' AS account_type,
-                {email_id}::INTEGER AS lookup_id,
                 ae.app_em_no AS email_id,
                 ae.email_address AS email,
                 NULL::INTEGER AS user_no,
-                ae.applicant_no,
+                COALESCE(a.applicant_no, ae.applicant_no) AS applicant_no,
                 COALESCE(
                     NULLIF(TRIM(COALESCE(a.first_name, '') || ' ' || COALESCE(a.last_name, '')), ''),
                     'Unknown Account'
@@ -1736,23 +1714,121 @@ def resolve_account_email_record(cursor, account_id):
             LEFT JOIN applicant_status ast ON ast.applicant_no = a.applicant_no
             LEFT JOIN scholarships sch ON ast.scholarship_no = sch.req_no
             LEFT JOIN scholarship_providers s ON sch.pro_no = s.pro_no
-            WHERE ae.app_em_no = %s
+            WHERE ae.email_address ILIKE %s
             LIMIT 1
             """,
-            (email_id,),
+            (raw_str,),
+        )
+        rec = cursor.fetchone()
+        if rec:
+            return rec
+
+        cursor.execute(
+            f"""
+            SELECT
+                'Admin' AS account_type,
+                ue.user_em_no AS email_id,
+                ue.email_address AS email,
+                COALESCE(u.user_no, ue.user_no) AS user_no,
+                NULL::INTEGER AS applicant_no,
+                COALESCE(u.user_name, p.provider_name, 'Unknown Account') AS name,
+                p.pro_no AS provider_no,
+                COALESCE(p.provider_name, 'All') AS provider_name,
+                COALESCE(ue.is_locked, FALSE) AS locked
+            FROM {user_email_table} ue
+            LEFT JOIN users u ON ue.user_no = u.user_no
+            LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
+            WHERE ue.email_address ILIKE %s
+            LIMIT 1
+            """,
+            (raw_str,),
+        )
+        return cursor.fetchone()
+
+    # 2. Parse numeric ID and prefix
+    requested_type = None
+    numeric_id = None
+    if raw_str.lower().startswith('admin-'):
+        requested_type = 'admin'
+        suffix = raw_str[6:]
+        if suffix.isdigit():
+            numeric_id = int(suffix)
+    elif raw_str.lower().startswith('applicant-'):
+        requested_type = 'applicant'
+        suffix = raw_str[10:]
+        if suffix.isdigit():
+            numeric_id = int(suffix)
+    elif raw_str.isdigit():
+        numeric_id = int(raw_str)
+
+    if numeric_id is None:
+        return None
+
+    def fetch_admin_record(ident):
+        cursor.execute(
+            f"""
+            SELECT
+                'Admin' AS account_type,
+                ue.user_em_no AS email_id,
+                ue.email_address AS email,
+                COALESCE(u.user_no, ue.user_no) AS user_no,
+                NULL::INTEGER AS applicant_no,
+                COALESCE(u.user_name, p.provider_name, 'Unknown Account') AS name,
+                p.pro_no AS provider_no,
+                COALESCE(p.provider_name, 'All') AS provider_name,
+                COALESCE(ue.is_locked, FALSE) AS locked
+            FROM users u
+            LEFT JOIN {user_email_table} ue ON ue.user_no = u.user_no
+            LEFT JOIN scholarship_providers p ON u.pro_no = p.pro_no
+            WHERE u.user_no = %s OR ue.user_em_no = %s OR ue.user_no = %s
+            LIMIT 1
+            """,
+            (ident, ident, ident),
+        )
+        return cursor.fetchone()
+
+    def fetch_applicant_record(ident):
+        cursor.execute(
+            f"""
+            SELECT
+                'Applicant' AS account_type,
+                ae.app_em_no AS email_id,
+                ae.email_address AS email,
+                NULL::INTEGER AS user_no,
+                COALESCE(a.applicant_no, ae.applicant_no) AS applicant_no,
+                COALESCE(
+                    NULLIF(TRIM(COALESCE(a.first_name, '') || ' ' || COALESCE(a.last_name, '')), ''),
+                    'Unknown Account'
+                ) AS name,
+                s.pro_no AS provider_no,
+                COALESCE(sch.scholarship_name, 'Unassigned') AS provider_name,
+                COALESCE(ae.is_locked, FALSE) AS locked
+            FROM applicants a
+            LEFT JOIN {applicant_email_table} ae ON ae.applicant_no = a.applicant_no
+            LEFT JOIN applicant_status ast ON ast.applicant_no = a.applicant_no
+            LEFT JOIN scholarships sch ON ast.scholarship_no = sch.req_no
+            LEFT JOIN scholarship_providers s ON sch.pro_no = s.pro_no
+            WHERE a.applicant_no = %s OR ae.app_em_no = %s OR ae.applicant_no = %s
+            LIMIT 1
+            """,
+            (ident, ident, ident),
         )
         return cursor.fetchone()
 
     if requested_type == 'admin':
-        return fetch_admin_record(numeric_id)
-    if requested_type == 'applicant':
+        rec = fetch_admin_record(numeric_id)
+        if rec:
+            return rec
         return fetch_applicant_record(numeric_id)
+    if requested_type == 'applicant':
+        rec = fetch_applicant_record(numeric_id)
+        if rec:
+            return rec
+        return fetch_admin_record(numeric_id)
 
     admin_record = fetch_admin_record(numeric_id)
     applicant_record = fetch_applicant_record(numeric_id)
 
-    if admin_record and applicant_record:
-        raise ValueError('Ambiguous account identifier. Refresh the account list and retry.')
     return admin_record or applicant_record
 
 
@@ -3223,16 +3299,37 @@ def delete_account(current_user_id, pro_no, role, account_id):
         with get_db() as conn:
             cursor = conn.cursor()
             account_context = fetch_account_activity_context(cursor, account_id)
-            if not account_context:
-                return jsonify({'message': 'Account not found'}), 404
             
-            email_addr = account_context.get('email')
-            user_no = account_context.get('user_no')
-            applicant_no = account_context.get('applicant_no')
-            email_id = account_context.get('email_id')
+            raw_id_str = str(account_id or '').strip()
+            applicant_no = account_context.get('applicant_no') if account_context else None
+            user_no = account_context.get('user_no') if account_context else None
+            email_addr = account_context.get('email') if account_context else None
+            email_id = account_context.get('email_id') if account_context else None
+            account_type = account_context.get('account_type') if account_context else None
 
-            if account_context['account_type'] == 'Admin':
-                user_email_table = get_user_email_table(cursor)
+            # Fallback direct parsing if context lookup didn't find the record
+            if not account_context:
+                if raw_id_str.lower().startswith('applicant-'):
+                    suffix = raw_id_str[10:]
+                    if suffix.isdigit():
+                        applicant_no = int(suffix)
+                        account_type = 'Applicant'
+                elif raw_id_str.lower().startswith('admin-'):
+                    suffix = raw_id_str[6:]
+                    if suffix.isdigit():
+                        user_no = int(suffix)
+                        account_type = 'Admin'
+                elif raw_id_str.isdigit():
+                    applicant_no = int(raw_id_str)
+                    account_type = 'Applicant'
+
+            if not applicant_no and not user_no and not email_id and not email_addr:
+                return jsonify({'message': 'Account not found'}), 404
+
+            user_email_table = get_user_email_table(cursor)
+            applicant_email_table = get_applicant_email_table(cursor)
+
+            if account_type == 'Admin' or (user_no and not applicant_no):
                 if email_id:
                     try:
                         cursor.execute(f'DELETE FROM {user_email_table} WHERE user_em_no = %s', (email_id,))
@@ -3240,13 +3337,15 @@ def delete_account(current_user_id, pro_no, role, account_id):
                         print(f"[ACCOUNT DELETE NOTICE] {e}", flush=True)
                 if user_no:
                     try:
+                        cursor.execute(f'DELETE FROM {user_email_table} WHERE user_no = %s', (user_no,))
+                    except Exception:
+                        pass
+                    try:
                         cursor.execute('DELETE FROM notifications WHERE user_no = %s', (user_no,))
                     except Exception:
                         pass
                     cursor.execute('DELETE FROM users WHERE user_no = %s', (user_no,))
             else:
-                applicant_email_table = get_applicant_email_table(cursor)
-
                 # If applicant_no is missing, try looking it up by app_em_no or email
                 if not applicant_no and email_id:
                     try:
@@ -3313,15 +3412,18 @@ def delete_account(current_user_id, pro_no, role, account_id):
 
             conn.commit()
 
-            record_admin_activity(
-                actor_user_no=current_user_id,
-                action='Account Deleted',
-                target_type=account_context['account_type'],
-                target_id=account_id,
-                target_label=account_context['name'],
-                provider_no=account_context['provider_no'],
-                status='success',
-            )
+            try:
+                record_admin_activity(
+                    actor_user_no=current_user_id,
+                    action='Account Deleted',
+                    target_type=account_type or 'Account',
+                    target_id=str(account_id),
+                    target_label=(account_context.get('name') if account_context else None) or email_addr or str(account_id),
+                    provider_no=account_context.get('provider_no') if account_context else None,
+                    status='success',
+                )
+            except Exception:
+                pass
             
             # Real-time synchronization: Notify connected admins
             safe_emit('account_change', {'action': 'deleted', 'account_id': account_id, 'applicant_no': applicant_no, 'user_no': user_no}, broadcast=True)

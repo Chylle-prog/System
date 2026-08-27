@@ -156,29 +156,6 @@ const Portal = () => {
   };
 
   useEffect(() => {
-    // Add Font Awesome link
-    const fontAwesomeLink = document.createElement('link');
-    fontAwesomeLink.rel = 'stylesheet';
-    fontAwesomeLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css';
-    document.head.appendChild(fontAwesomeLink);
-
-    // Add Google Fonts link
-    const googleFontsLink = document.createElement('link');
-    googleFontsLink.rel = 'preconnect';
-    googleFontsLink.href = 'https://fonts.googleapis.com';
-    document.head.appendChild(googleFontsLink);
-
-    const googleFontsDisplay = document.createElement('link');
-    googleFontsDisplay.rel = 'preconnect';
-    googleFontsDisplay.href = 'https://fonts.gstatic.com';
-    googleFontsDisplay.crossOrigin = 'anonymous';
-    document.head.appendChild(googleFontsDisplay);
-
-    const googleFontsSheet = document.createElement('link');
-    googleFontsSheet.rel = 'stylesheet';
-    googleFontsSheet.href = 'https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap';
-    document.head.appendChild(googleFontsSheet);
-
     // Load user data
     const user = localStorage.getItem('currentUser');
     const profiles = JSON.parse(localStorage.getItem('userProfiles')) || {};
@@ -219,54 +196,14 @@ const Portal = () => {
       }
     };
 
-    if (user) {
-      fetchApplications(true);
-      fetchProfile();
-    }
-
-    // Load scholarship resources
-    const fetchResources = async () => {
-      try {
-        const data = await scholarshipAPI.getAll();
-        setResources(data || []);
-      } catch (err) {
-        console.error("Failed to load resources:", err);
-      }
-    };
-    fetchResources();
-
-    // Load dynamic announcements
-    const fetchAnnouncements = async () => {
-      try {
-        const data = await announcementAPI.getAll();
-        setDbAnnouncements(data || []);
-      } catch (err) {
-        console.error("Failed to load announcements:", err);
-      }
-    };
-    fetchAnnouncements();
-
-    const fetchNotifications = async () => {
-      try {
-        const data = await notificationAPI.getAll();
-        if (Array.isArray(data)) {
-          // Deduplicate by notif_id or title+message to prevent doubled notifications
-          const seen = new Set();
-          const unique = [];
-          for (const item of data) {
-            const key = item.notif_id || item.id || `${item.title}_${item.message}`;
-            if (!seen.has(key)) {
-              seen.add(key);
-              unique.push(item);
-            }
-          }
-          setNotifications(unique);
-        }
-      } catch (err) {
-        console.error("Failed to load notifications:", err);
-      }
-    };
-    fetchNotifications();
+    // Fetch all initial data concurrently
+    Promise.allSettled([
+      fetchApplications(true),
+      fetchProfile(),
+      fetchResources(),
+      fetchAnnouncements(),
+      fetchNotifications()
+    ]).catch(() => undefined);
 
     // Set up polling fallback for notifications every 10 seconds
     const notifInterval = setInterval(fetchNotifications, 10000);
@@ -548,12 +485,6 @@ const Portal = () => {
 
       clearInterval(notifInterval);
       clearInterval(announcementInterval);
-
-      // Cleanup DOM
-      if (document.head.contains(fontAwesomeLink)) document.head.removeChild(fontAwesomeLink);
-      if (document.head.contains(googleFontsLink)) document.head.removeChild(googleFontsLink);
-      if (document.head.contains(googleFontsDisplay)) document.head.removeChild(googleFontsDisplay);
-      if (document.head.contains(googleFontsSheet)) document.head.removeChild(googleFontsSheet);
     };
   }, [navigate]);
 

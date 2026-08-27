@@ -40,7 +40,7 @@ import {
   FaSearchPlus
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
-import { adminAPI, scholarshipAPI, announcementService, messagingAPI, warmBackendConnection } from '../../services/api';
+import { adminAPI, scholarshipAPI, announcementService, messagingAPI } from '../../services/api';
 import { decryptUrl, preloadMediaUrls } from '../../services/CryptoService';
 import socketService from '../../services/socket';
 import iskomatsLogo from '../../assets/logo.png';
@@ -1439,7 +1439,6 @@ export default function ScholarshipDashboard({
 
   // Load applicants, scholarships, and announcements from backend API concurrently on component mount
   useEffect(() => {
-    warmBackendConnection();
     Promise.allSettled([
       loadApplicants(),
       loadScholarships(false),
