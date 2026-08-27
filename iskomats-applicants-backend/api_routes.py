@@ -1733,11 +1733,7 @@ def resolve_account_email_record(cursor, account_id):
                 COALESCE(ae.is_locked, FALSE) AS locked
             FROM {applicant_email_table} ae
             LEFT JOIN applicants a ON ae.applicant_no = a.applicant_no
-            LEFT JOIN (
-                SELECT applicant_no, scholarship_no,
-                       ROW_NUMBER() OVER (PARTITION BY applicant_no ORDER BY stat_no DESC) AS rn
-                FROM applicant_status
-            ) ast ON ast.applicant_no = a.applicant_no AND ast.rn = 1
+            LEFT JOIN applicant_status ast ON ast.applicant_no = a.applicant_no
             LEFT JOIN scholarships sch ON ast.scholarship_no = sch.req_no
             LEFT JOIN scholarship_providers s ON sch.pro_no = s.pro_no
             WHERE ae.app_em_no = %s
@@ -3303,7 +3299,10 @@ def delete_account(current_user_id, pro_no, role, account_id):
 
                 # 2. Delete the entire user from the applicants table!
                 if applicant_no:
-                    cursor.execute("DELETE FROM applicants WHERE applicant_no = %s", (applicant_no,))
+                    try:
+                        cursor.execute("DELETE FROM applicants WHERE applicant_no = %s", (applicant_no,))
+                    except Exception as app_del_err:
+                        print(f"[ACCOUNT DELETE APPLICANT NOTICE] {app_del_err}", flush=True)
 
                 # 3. If there is a corresponding users table record
                 if user_no:
