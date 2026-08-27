@@ -181,10 +181,10 @@ def applicant_document_join_sql(cursor, applicant_alias='a', document_alias='ad'
             status_cols = [c.lower() for c in get_table_columns(cursor, 'applicant_status')]
             doc_cols = [c.lower() for c in get_table_columns(cursor, document_table)]
             if 'app_doc_no' in status_cols and 'app_doc_no' in doc_cols:
-                return f' LEFT JOIN {document_table} {document_alias} ON ({document_alias}.app_doc_no = {status_alias}.app_doc_no OR ({status_alias}.app_doc_no IS NULL AND {document_alias}.applicant_no = {applicant_alias}.applicant_no)) '
+                return f' LEFT JOIN {document_table} {document_alias} ON ({document_alias}.app_doc_no = {status_alias}.app_doc_no OR ({status_alias}.app_doc_no IS NULL AND {document_alias}.app_doc_no = (SELECT MAX(sub_d.app_doc_no) FROM {document_table} sub_d WHERE sub_d.applicant_no = {applicant_alias}.applicant_no))) '
         except Exception:
             pass
-    return f' LEFT JOIN {document_table} {document_alias} ON {document_alias}.applicant_no = {applicant_alias}.applicant_no '
+    return f' LEFT JOIN (SELECT DISTINCT ON (applicant_no) * FROM {document_table} ORDER BY applicant_no, app_doc_no DESC) {document_alias} ON {document_alias}.applicant_no = {applicant_alias}.applicant_no '
 
 
 def applicant_document_expr(cursor, column_name, applicant_alias='a', document_alias='ad'):
@@ -252,7 +252,28 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names, app_doc_
         query = f'SELECT {", ".join(select_parts)} FROM applicants a{joins}WHERE a.applicant_no = %s LIMIT 1'
         cursor.execute(query, (applicant_no,))
     row = cursor.fetchone()
-    return row or {}
+    row_dict = dict(row) if row else {}
+
+    # Robust Fallback: If any requested document column is NULL in the joined row,
+    # find the most recent non-null value from applicant_documents for this applicant.
+    if document_table:
+        doc_cols = [c.lower() for c in get_table_columns(cursor, document_table)]
+        for col in requested_columns:
+            if row_dict.get(col) is None and col.lower() in doc_cols:
+                try:
+                    cursor.execute(
+                        f'SELECT "{col}" FROM {document_table} WHERE applicant_no = %s AND "{col}" IS NOT NULL ORDER BY app_doc_no DESC LIMIT 1',
+                        (applicant_no,)
+                    )
+                    fb = cursor.fetchone()
+                    if fb:
+                        val = fb.get(col) if isinstance(fb, dict) else fb[0]
+                        if val is not None:
+                            row_dict[col] = val
+                except Exception as fb_err:
+                    print(f"[DOC SERVICE] Fallback fetch error for {col}: {fb_err}", flush=True)
+
+    return row_dict
 
 
 def create_applicant_document_record(cursor, applicant_no, values):

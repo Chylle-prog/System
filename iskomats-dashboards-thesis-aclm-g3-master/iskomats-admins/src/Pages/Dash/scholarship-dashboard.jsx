@@ -6432,12 +6432,13 @@ export default function ScholarshipDashboard({
                   className="relative group max-w-xs overflow-hidden rounded-xl border-2 border-[#800020] shadow-md bg-white cursor-pointer"
                   onClick={() => setImageModalSrc(a.id_pic)}
                 >
-                  <img
-                    src={a.id_pic}
+                  <DecryptedMedia
+                    src={a.id_pic || a.face_photo || a.facePhoto || a.idPic}
                     alt="Face Verification Capture"
+                    type="image/jpeg"
                     className="w-48 h-56 object-cover rounded-lg transition-transform duration-300 group-hover:scale-105"
                   />
-                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1">
+                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1 pointer-events-none">
                     <i className="fas fa-search-plus"></i> View Image
                   </div>
                 </div>
