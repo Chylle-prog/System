@@ -1558,7 +1558,6 @@ ISKOMATS Team
 
     except Exception as exc:
         log(f"[ANNOUNCEMENT NOTIF CRITICAL FAILURE] {exc}")
-        import traceback
         traceback.print_exc()
 
 
@@ -3874,7 +3873,6 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
     
     except Exception as e:
         print(f"[SCHOLARSHIP API] CRITICAL ERROR: {str(e)}")
-        import traceback
         traceback.print_exc()
         # Return more diagnostic info in the 500 response to help debugging
         return jsonify({
@@ -4134,7 +4132,6 @@ def get_applicants(current_user_id, pro_no, role, program):
     
     except Exception as e:
         print(f"[APPLICANTS API] CRITICAL ERROR loading applicants for program='{program}': {e}", flush=True)
-        import traceback
         traceback.print_exc()
         return jsonify({
             'success': False,
@@ -4462,7 +4459,6 @@ def create_scholarship(current_user_id, pro_no, role):
         
     except Exception as e:
         print(f"[SCHOLARSHIP CREATE] CRITICAL ERROR: {str(e)}")
-        import traceback
         traceback.print_exc()
         return jsonify({
             'success': False,
@@ -4560,7 +4556,6 @@ def update_scholarship(current_user_id, pro_no, role, req_no):
     
     except Exception as e:
         print(f"[SCHOLARSHIP UPDATE] Error: {str(e)}")
-        import traceback
         traceback.print_exc()
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
@@ -4709,8 +4704,6 @@ def get_announcement_image(image_id):
         
     except Exception as e:
         print(f"[IMAGE ENDPOINT] Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 
@@ -4785,8 +4778,6 @@ def get_announcement_image_by_index(ann_no, idx):
         
     except Exception as e:
         print(f"[IMAGE ENDPOINT] Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 import hashlib
@@ -5159,7 +5150,6 @@ def get_applicant_image(applicant_no, column_name):
 
     except Exception as e:
         print(f"[APPLICANT IMAGE] CRITICAL ERROR serving {column_name} for applicant {applicant_no}: {str(e)}", flush=True)
-        import traceback
         traceback.print_exc()
         return jsonify({
             'success': False,

@@ -753,7 +753,6 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
         return public_url
     except Exception as e:
         print(f"[STORAGE ERROR] Upload failed for field {field_name}: {e}", flush=True)
-        import traceback
         traceback.print_exc()
         return None
 
@@ -3601,7 +3600,6 @@ def submit_application():
                                 print(f"[SUBMIT] ✅ Video Validated ({key}): {v_msg}")
 
                 except Exception as ai_err:
-                    import traceback
                     traceback.print_exc()
                     print(f"[SUBMIT] Parallel Verification Exception: {str(ai_err)}")
                     return jsonify({
@@ -4447,7 +4445,6 @@ def signature_match():
         })
     except Exception as e:
         print(f"[SIGNATURE-MATCH] Error: {str(e)}", flush=True)
-        import traceback
         traceback.print_exc()
         return jsonify({'verified': False, 'message': f'Internal verification error: {str(e)}', 'confidence': 0.0}), 500
 
@@ -4681,7 +4678,6 @@ def upload_video():
     except Exception as e:
         error_msg = str(e)
         print(f"[VIDEO-CONVERT-UPLOAD] Error: {error_msg}", flush=True)
-        import traceback
         traceback.print_exc()
         return jsonify({
             'success': False, 
