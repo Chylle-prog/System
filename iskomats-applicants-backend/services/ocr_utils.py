@@ -17,6 +17,13 @@ try:
 except ImportError:
     pytesseract = None
 
+try:
+    from google.cloud import vision
+    from google.oauth2 import service_account
+except ImportError:
+    vision = None
+    service_account = None
+
 def run_full_security_audit(image_bytes, doc_type="Document", success=False, message="", meta=None):
     return {'security_flagged': False, 'audit': {}, 'recommendation': message}
 
@@ -163,7 +170,7 @@ def _run_tesseract_fallback(img_cv_or_bytes, psm=6):
 
 def _run_tesseract_fallback(image_input):
     """Fallback OCR using PyTesseract if available."""
-    if not image_input or pytesseract is None:
+    if image_input is None or pytesseract is None:
         return ""
     try:
         raw_bytes = resolve_verification_image_bytes(image_input)
@@ -192,18 +199,14 @@ def _get_google_vision_client(debug_msg=None):
             debug_msg.append("Reusing cached Google Cloud Vision client")
         return _GCP_VISION_CLIENT
 
+    if vision is None or service_account is None:
+        if debug_msg is not None:
+            debug_msg.append("google.cloud.vision or service_account module not available")
+        return None
+
     with _GCP_VISION_LOCK:
         if _GCP_VISION_CLIENT is not None:
             return _GCP_VISION_CLIENT
-
-        try:
-            from google.cloud import vision
-            from google.oauth2 import service_account
-        except Exception as imp_err:
-            if debug_msg is not None:
-                debug_msg.append(f"Import error: {imp_err}")
-            logger.warning(f"[GOOGLE CLOUD VISION] Import error: {imp_err}")
-            return None
 
         client = None
 
