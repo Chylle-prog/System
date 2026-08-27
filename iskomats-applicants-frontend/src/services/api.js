@@ -1,5 +1,137 @@
 
 
+import { supabase } from '../supabaseClient';
+
+export const dataUrlToBlob = (dataUrl) => {
+  if (!dataUrl || typeof dataUrl !== 'string') return null;
+  if (!dataUrl.startsWith('data:')) return null;
+  try {
+    const arr = dataUrl.split(',');
+    const match = arr[0].match(/:(.*?);/);
+    const mime = match ? match[1] : 'image/jpeg';
+    const bstr = atob(arr[1] || '');
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) u8arr[n] = bstr.charCodeAt(n);
+    return new Blob([u8arr], { type: mime });
+  } catch (e) {
+    console.warn('[dataUrlToBlob] Conversion error:', e);
+    return null;
+  }
+};
+
+// Upload document image directly to Supabase Storage and return public URL
+export const uploadDocumentImageDirect = async (fieldName, fileOrDataUrl, onProgress) => {
+  if (!fileOrDataUrl) return null;
+
+  // If already a remote URL, return immediately
+  if (typeof fileOrDataUrl === 'string' && (fileOrDataUrl.startsWith('http://') || fileOrDataUrl.startsWith('https://'))) {
+    return fileOrDataUrl;
+  }
+
+  const folderMap = {
+    signature_data: 'signatures',
+    signature_image_data: 'signatures',
+    grades_doc: 'grades',
+    mayorGrades_photo: 'grades',
+    enrollment_certificate_doc: 'coe',
+    mayorCOE_photo: 'coe',
+    indigency_doc: 'indigency',
+    mayorIndigency_photo: 'indigency',
+    id_front: 'id_verification',
+    id_img_front: 'id_verification',
+    schoolIdFront: 'id_verification',
+    id_back: 'id_verification',
+    id_img_back: 'id_verification',
+    schoolIdBack: 'id_verification',
+    profile_picture: 'profile_pictures',
+    id_pic: 'face_verification',
+    face_photo: 'face_verification',
+    merit_doc_1: 'merit_documents',
+    merit_doc_2: 'merit_documents',
+    merit_doc_3: 'merit_documents',
+    merit_proof_1: 'merit_documents',
+    merit_proof_2: 'merit_documents',
+    merit_proof_3: 'merit_documents',
+  };
+
+  const canonicalFieldMap = {
+    signature_data: 'signature_image_data',
+    signature_image_data: 'signature_image_data',
+    grades_doc: 'grades_doc',
+    mayorGrades_photo: 'grades_doc',
+    enrollment_certificate_doc: 'enrollment_certificate_doc',
+    mayorCOE_photo: 'enrollment_certificate_doc',
+    indigency_doc: 'indigency_doc',
+    mayorIndigency_photo: 'indigency_doc',
+    id_front: 'id_img_front',
+    id_img_front: 'id_img_front',
+    schoolIdFront: 'id_img_front',
+    id_back: 'id_img_back',
+    id_img_back: 'id_img_back',
+    schoolIdBack: 'id_img_back',
+    profile_picture: 'profile_picture',
+    id_pic: 'id_pic',
+    face_photo: 'id_pic',
+    merit_doc_1: 'merit_doc_1',
+    merit_doc_2: 'merit_doc_2',
+    merit_doc_3: 'merit_doc_3',
+    merit_proof_1: 'merit_doc_1',
+    merit_proof_2: 'merit_doc_2',
+    merit_proof_3: 'merit_doc_3',
+  };
+
+  const applicantNo = sanitizeStorageSegment(localStorage.getItem('applicantNo'), 'unknown-applicant');
+  let folder = folderMap[fieldName] || 'others';
+  if (fieldName && fieldName.toLowerCase().includes('merit')) {
+    folder = 'merit_documents';
+  }
+  const dbCol = canonicalFieldMap[fieldName] || fieldName;
+  const objectPath = `${folder}/${applicantNo}-${dbCol}.jpg`;
+
+  let blob = null;
+  if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
+    blob = dataUrlToBlob(fileOrDataUrl);
+  } else if (fileOrDataUrl instanceof Blob || (typeof File !== 'undefined' && fileOrDataUrl instanceof File)) {
+    blob = fileOrDataUrl;
+  }
+
+  if (!blob) return null;
+
+  try {
+    const { encryptDocument } = await import('./CryptoService');
+    const encryptedFile = await encryptDocument(blob);
+
+    const uploadResult = await supabase.storage
+      .from('document_images')
+      .upload(objectPath, encryptedFile, {
+        upsert: true,
+        contentType: 'application/octet-stream',
+        cacheControl: '31536000',
+        onUploadProgress: (p) => {
+          if (!onProgress) return;
+          const percent = Math.round((p.loaded / (p.total || 1)) * 100);
+          onProgress(Math.max(1, Math.min(99, percent)));
+        }
+      });
+
+    if (uploadResult.error) {
+      console.warn(`[DIRECT UPLOAD] Supabase upload failed for ${fieldName}:`, uploadResult.error);
+      return null;
+    }
+
+    const { data } = supabase.storage.from('document_images').getPublicUrl(objectPath);
+    if (!data?.publicUrl) {
+      return null;
+    }
+
+    return data.publicUrl;
+  } catch (err) {
+    console.warn(`[DIRECT UPLOAD] Error uploading ${fieldName} directly:`, err);
+    return null;
+  }
+};
+
 // Upload profile picture to Supabase Storage and return public URL
 export const uploadProfilePicture = async (file) => {
   const applicantNo = sanitizeStorageSegment(localStorage.getItem('applicantNo'), 'unknown-applicant');
@@ -33,8 +165,6 @@ export const uploadProfilePicture = async (file) => {
  * API Service for ISKOMATS Scholarship System
  * Provides functions to communicate with the Flask backend
  */
-
-import { supabase } from '../supabaseClient';
 
 export const sanitizeOriginUrl = (rawUrl, fallback = 'https://iskomats-backend.onrender.com') => {
   if (!rawUrl || typeof rawUrl !== 'string') {

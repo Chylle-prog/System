@@ -3188,6 +3188,7 @@ def update_profile():
 
             # ── MERIT PROOFS PERSISTENCE (1NF merit_proofs table) ──
             merit_entries_to_save = None
+            merit_upload_tasks = []
             if 'meritList' in data and isinstance(data['meritList'], list):
                 merit_entries_to_save = []
                 for idx, m in enumerate(data['meritList']):
@@ -3202,9 +3203,8 @@ def update_profile():
                         else:
                             blob = decode_base64(m_photo) if isinstance(m_photo, str) else m_photo
                             if blob:
-                                url = upload_image_to_storage(blob, request.user_no, f'merit_doc_{idx+1}', is_update=True)
-                                if url:
-                                    merit_entries_to_save.append({'title': m_title, 'document': url})
+                                merit_upload_tasks.append((len(merit_entries_to_save), m_title, f'merit_doc_{idx+1}', blob))
+                                merit_entries_to_save.append({'title': m_title, 'document': None})
             else:
                 has_any_merit_input = any(f'merit_proof_{i}' in files_data or f'merit_proof_{i}' in data or f'merit_proof_{i}' in request.form for i in range(1, 4))
                 if has_any_merit_input:
@@ -3227,9 +3227,23 @@ def update_profile():
                             else:
                                 blob = decode_base64(raw_val) if isinstance(raw_val, str) else raw_val
                                 if blob:
-                                    url = upload_image_to_storage(blob, request.user_no, f'merit_doc_{idx}', is_update=True)
-                                    if url:
-                                        merit_entries_to_save.append({'title': m_title, 'document': url})
+                                    merit_upload_tasks.append((len(merit_entries_to_save), m_title, f'merit_doc_{idx}', blob))
+                                    merit_entries_to_save.append({'title': m_title, 'document': None})
+
+            if merit_upload_tasks:
+                import concurrent.futures
+                current_user_no = request.user_no
+                def _do_merit_upload(task):
+                    entry_idx, title, field_tag, b_bytes = task
+                    url = upload_image_to_storage(b_bytes, current_user_no, field_tag, is_update=True)
+                    return entry_idx, url
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(merit_upload_tasks))) as executor:
+                    for entry_idx, url in executor.map(_do_merit_upload, merit_upload_tasks):
+                        if url and entry_idx < len(merit_entries_to_save):
+                            merit_entries_to_save[entry_idx]['document'] = url
+
+                merit_entries_to_save = [e for e in merit_entries_to_save if e.get('document')]
 
             if merit_entries_to_save is not None:
                 save_merit_proofs(cur, request.user_no, merit_entries_to_save)

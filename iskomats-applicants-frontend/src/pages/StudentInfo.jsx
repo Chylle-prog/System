@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import SignaturePad from '../components/SignaturePad';
 import VideoRecorder from '../components/VideoRecorder';
-import { applicantAPI, applicationAPI, scholarshipAPI, verificationAPI, uploadProfilePicture, API_ORIGIN, debugAPI, isAltCheckBypassed } from '../services/api';
+import { applicantAPI, applicationAPI, scholarshipAPI, verificationAPI, uploadProfilePicture, uploadDocumentImageDirect, API_ORIGIN, debugAPI, isAltCheckBypassed } from '../services/api';
 import { SCHOOLS, BARANGAYS } from '../utils/constants';
 
 const FIND_SCHOLARSHIP_PROFILE_KEY = 'findScholarshipProfile';
@@ -2810,6 +2810,40 @@ const StudentInfo = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const lastSaveStepPromiseRef = useRef(null);
   const lastSavedStepSignaturesRef = useRef({});
+  const activeImageUploadPromisesRef = useRef({});
+
+  const triggerBackgroundUpload = (fieldName, fileOrDataUrl) => {
+    if (!fileOrDataUrl) return;
+    if (typeof fileOrDataUrl === 'string' && (fileOrDataUrl.startsWith('http://') || fileOrDataUrl.startsWith('https://'))) {
+      return;
+    }
+    const promise = uploadDocumentImageDirect(fieldName, fileOrDataUrl)
+      .then(url => {
+        if (url && typeof url === 'string' && url.startsWith('http')) {
+          if (fieldName === 'mayorIndigency_photo' || fieldName === 'indigency_doc') {
+            setFormData(prev => ({ ...prev, mayorIndigency_photo: url, indigency_doc: url, indigency: url }));
+          } else if (fieldName === 'mayorCOE_photo' || fieldName === 'enrollment_certificate_doc') {
+            setFormData(prev => ({ ...prev, mayorCOE_photo: url, enrollment_certificate_doc: url, enrollment: url }));
+          } else if (fieldName === 'mayorGrades_photo' || fieldName === 'grades_doc') {
+            setFormData(prev => ({ ...prev, mayorGrades_photo: url, grades_doc: url, grades: url }));
+          } else if (fieldName === 'id_front' || fieldName === 'schoolIdFront') {
+            setFormData(prev => ({ ...prev, schoolIdFront: url, id_front: url }));
+          } else if (fieldName === 'id_back' || fieldName === 'schoolIdBack') {
+            setFormData(prev => ({ ...prev, schoolIdBack: url, id_back: url }));
+          } else if (fieldName === 'profile_picture') {
+            setFormData(prev => ({ ...prev, profile_picture: url }));
+          } else if (fieldName === 'face_photo') {
+            setFormData(prev => ({ ...prev, face_photo: url, id_pic: url }));
+          }
+          return url;
+        }
+      })
+      .catch(err => {
+        console.warn(`[BACKGROUND UPLOAD] Failed for ${fieldName}:`, err);
+      });
+
+    activeImageUploadPromisesRef.current[fieldName] = promise;
+  };
 
   const [schoolIdPhotos, setSchoolIdPhotos] = useState({
     front: null,
@@ -6066,40 +6100,51 @@ const StudentInfo = () => {
       }
 
       const payloadFieldName = DOCUMENT_UPLOAD_FIELD_MAP[fieldName] || fieldName;
+      jsonData[payloadFieldName] = typeof value === 'boolean' ? String(value) : value;
       payload.append(payloadFieldName, typeof value === 'boolean' ? String(value) : value);
       hasPayload = true;
     }
 
-    const appendSmartFile = (fieldName, sourceValue) => {
+    const directUploadTasks = [];
+    const directUploadKeys = [];
+
+    const queueSmartUpload = (fieldName, sourceValue) => {
       if (!sourceValue) return;
 
       // If it's already a URL, don't re-upload as binary
-      if (typeof sourceValue === 'string' && sourceValue.startsWith('http')) {
+      if (typeof sourceValue === 'string' && (sourceValue.startsWith('http://') || sourceValue.startsWith('https://'))) {
         jsonData[fieldName] = sourceValue;
         hasPayload = true;
         return;
       }
 
-      if (isFileLike(sourceValue)) {
-        payload.append(fieldName, sourceValue);
+      // Check if this field has an in-flight background direct upload promise
+      if (activeImageUploadPromisesRef.current[fieldName]) {
+        directUploadKeys.push(fieldName);
+        directUploadTasks.push(activeImageUploadPromisesRef.current[fieldName]);
         hasPayload = true;
-      } else if (typeof sourceValue === 'string' && sourceValue.startsWith('data:')) {
-        const blob = dataUrlToBlob(sourceValue);
-        if (blob) {
-          payload.append(fieldName, blob, `${fieldName}.jpg`);
-          hasPayload = true;
-        }
+        return;
       }
+
+      // Queue parallel direct upload to Supabase Storage
+      directUploadKeys.push(fieldName);
+      const uploadPromise = uploadDocumentImageDirect(fieldName, sourceValue);
+      activeImageUploadPromisesRef.current[fieldName] = uploadPromise;
+      directUploadTasks.push(uploadPromise);
+      hasPayload = true;
     };
 
-    // 2. Special handling for files and previews based on the current step
+    // 2. Queue files for current step
     if (stepNumber === 1) {
-      const profilePicVal = (formData.profile_picture && typeof formData.profile_picture === 'string' && formData.profile_picture.startsWith('http')) ? formData.profile_picture : idPicturePreview;
-      appendSmartFile('profile_picture', profilePicVal);
+      const profilePicVal = (formData.profile_picture && typeof formData.profile_picture === 'string' && formData.profile_picture.startsWith('http'))
+        ? formData.profile_picture
+        : (rawProfilePictureFile || idPicturePreview);
+      queueSmartUpload('profile_picture', profilePicVal);
+
       const indigencyVal = (formData.mayorIndigency_photo && typeof formData.mayorIndigency_photo === 'string' && formData.mayorIndigency_photo.startsWith('http'))
         ? formData.mayorIndigency_photo
         : (photos.mayorIndigency_photo || photos.indigency || formData.mayorIndigency_photo || formData.indigency);
-      appendSmartFile('indigency_doc', indigencyVal);
+      queueSmartUpload('indigency_doc', indigencyVal);
     }
 
     if (stepNumber === 3) {
@@ -6116,24 +6161,28 @@ const StudentInfo = () => {
         ? (formData.mayorGrades_photo || formData.grades_doc)
         : (photos.mayorGrades_photo || photos.grades || formData.mayorGrades_photo || formData.grades || photos.grades_doc || formData.grades_doc);
 
-      appendSmartFile('id_front', frontFile);
-      appendSmartFile('id_back', backFile);
-      appendSmartFile('enrollment_certificate_doc', coeFile);
-      appendSmartFile('grades_doc', gradesFile);
+      queueSmartUpload('id_front', frontFile);
+      queueSmartUpload('id_back', backFile);
+      queueSmartUpload('enrollment_certificate_doc', coeFile);
+      queueSmartUpload('grades_doc', gradesFile);
 
       // Save 1NF merit proof certificates
       const activeMeritsWithPhotos = meritList.filter(m => m.title && m.title.trim() && m.photo);
       activeMeritsWithPhotos.forEach((m, idx) => {
-        appendSmartFile(`merit_proof_${idx + 1}`, m.photo);
+        queueSmartUpload(`merit_doc_${idx + 1}`, m.photo);
         jsonData[`merit_title_${idx + 1}`] = m.title.trim();
       });
     }
 
     if (stepNumber === 4) {
-      appendSmartFile('face_photo', photos.face_photo);
+      const faceVal = (formData.face_photo && typeof formData.face_photo === 'string' && formData.face_photo.startsWith('http'))
+        ? formData.face_photo
+        : (photos.face_photo || formData.face_photo);
+      queueSmartUpload('face_photo', faceVal);
+
       const signatureToSave = drawnSignature || signaturePreview;
       if (signatureToSave) {
-        appendSmartFile('signature_data', signatureToSave);
+        queueSmartUpload('signature_data', signatureToSave);
       }
     }
 
@@ -6146,6 +6195,60 @@ const StudentInfo = () => {
         hasPayload = true;
       }
     });
+
+    // Execute direct parallel uploads to Supabase
+    if (directUploadTasks.length > 0) {
+      try {
+        const uploadUrls = await Promise.all(directUploadTasks);
+        const formDocUpdates = {};
+
+        directUploadKeys.forEach((key, idx) => {
+          const url = uploadUrls[idx];
+          if (url && typeof url === 'string' && url.startsWith('http')) {
+            jsonData[key] = url;
+            if (key === 'indigency_doc') {
+              formDocUpdates.mayorIndigency_photo = url;
+              formDocUpdates.indigency_doc = url;
+              formDocUpdates.indigency = url;
+            } else if (key === 'enrollment_certificate_doc') {
+              formDocUpdates.mayorCOE_photo = url;
+              formDocUpdates.enrollment_certificate_doc = url;
+              formDocUpdates.enrollment = url;
+            } else if (key === 'grades_doc') {
+              formDocUpdates.mayorGrades_photo = url;
+              formDocUpdates.grades_doc = url;
+              formDocUpdates.grades = url;
+            } else if (key === 'id_front') {
+              formDocUpdates.schoolIdFront = url;
+              formDocUpdates.id_front = url;
+            } else if (key === 'id_back') {
+              formDocUpdates.schoolIdBack = url;
+              formDocUpdates.id_back = url;
+            } else if (key === 'profile_picture') {
+              formDocUpdates.profile_picture = url;
+            } else if (key === 'face_photo') {
+              formDocUpdates.face_photo = url;
+              formDocUpdates.id_pic = url;
+            }
+          } else {
+            // Fallback for any single field where direct upload returned null
+            const origVal = directUploadTasks[idx];
+            if (isFileLike(origVal)) {
+              payload.append(key, origVal);
+            } else if (typeof origVal === 'string' && origVal.startsWith('data:')) {
+              const b = dataUrlToBlob(origVal);
+              if (b) payload.append(key, b, `${key}.jpg`);
+            }
+          }
+        });
+
+        if (Object.keys(formDocUpdates).length > 0) {
+          setFormData(prev => ({ ...prev, ...formDocUpdates }));
+        }
+      } catch (uploadErr) {
+        console.warn('[saveCurrentStepProgress] Direct Supabase upload issue, falling back to payload:', uploadErr);
+      }
+    }
 
     persistDraft(currentUser);
 
@@ -6165,7 +6268,7 @@ const StudentInfo = () => {
       saveResult = await applicantAPI.updateProfile(payload);
     }
 
-    // Persist permanent storage URLs in formData without clobbering visible in-memory previews in photos/schoolIdPhotos
+    // Persist permanent storage URLs in formData without clobbering visible in-memory previews
     if (saveResult && saveResult.document_urls) {
       const docUrls = saveResult.document_urls;
       const formDocUpdates = {};
@@ -7085,6 +7188,7 @@ const StudentInfo = () => {
           window.compressImage(file).then(compressedBase64 => {
             setFormData(prev => ({ ...prev, [name]: compressedBase64 }));
             setPhotos(prev => ({ ...prev, [name]: compressedBase64 })); // Update with compressed version
+            triggerBackgroundUpload(name, compressedBase64);
 
             // Reset verification on photo change
             if (name === 'mayorIndigency_photo') { setOcrVerified(null); setOcrStatus(''); preScanDocument('Indigency', compressedBase64); triggerAutoScan('Indigency'); }
@@ -7094,6 +7198,7 @@ const StudentInfo = () => {
         } else {
           // Non-image or compression skipped
           setFormData(prev => ({ ...prev, [name]: file }));
+          triggerBackgroundUpload(name, file);
         }
 
         if (name === 'mayorValidID_photo') {
@@ -7106,9 +7211,11 @@ const StudentInfo = () => {
         window.compressImage(file).then(compressedBase64 => {
           setFormData(prev => ({ ...prev, [name]: compressedBase64 }));
           if (name === 'mayorValidID_photo') setValidIdPreview(compressedBase64);
+          triggerBackgroundUpload(name, compressedBase64);
         });
       } else {
         setFormData(prev => ({ ...prev, [name]: file }));
+        if (file) triggerBackgroundUpload(name, file);
       }
     } else {
       invalidateVerificationDependencies(name, value);
@@ -7134,6 +7241,7 @@ const StudentInfo = () => {
         setIdPicturePreview(compressedBase64);
         setPhotos(prev => ({ ...prev, profile_picture: compressedBase64 }));
         setFormData(prev => ({ ...prev, profile_picture: compressedBase64 }));
+        triggerBackgroundUpload('profile_picture', compressedBase64);
       });
     } else {
       const reader = new FileReader();
@@ -7141,6 +7249,7 @@ const StudentInfo = () => {
         setIdPicturePreview(reader.result);
         setPhotos(prev => ({ ...prev, profile_picture: reader.result }));
         setFormData(prev => ({ ...prev, profile_picture: reader.result }));
+        triggerBackgroundUpload('profile_picture', reader.result);
       };
       reader.readAsDataURL(file);
     }
@@ -7159,6 +7268,7 @@ const StudentInfo = () => {
         }));
         const photoKey = side === 'front' ? 'id_front' : 'id_back';
         setPhotos(prev => ({ ...prev, [photoKey]: compressedBase64 }));
+        triggerBackgroundUpload(photoKey, compressedBase64);
 
         // Pre-scan front ID in background
         if (side === 'front') preScanDocument('SchoolID', compressedBase64);
@@ -7182,6 +7292,7 @@ const StudentInfo = () => {
     if (file && window.compressImage) {
       window.compressImage(file).then(compressedBase64 => {
         setSignaturePreview(compressedBase64);
+        triggerBackgroundUpload('signature_data', compressedBase64);
       });
     }
   };
@@ -7192,6 +7303,7 @@ const StudentInfo = () => {
       window.compressImage(file).then(compressedBase64 => {
         setFaceVerificationPreview(compressedBase64);
         setPhotos(prev => ({ ...prev, face_photo: compressedBase64 }));
+        triggerBackgroundUpload('face_photo', compressedBase64);
       });
     }
   };
@@ -7255,6 +7367,7 @@ const StudentInfo = () => {
       setSignatureVerified(null); // Reset verification when updated
       setSignatureStatus('');
       setDrawnSignature(dataUrl);
+      triggerBackgroundUpload('signature_data', dataUrl);
     } else {
       showPromptMessage('Please provide a signature first.');
     }
@@ -9493,18 +9606,32 @@ const StudentInfo = () => {
                                     if (isAnyScanning || isSavingStep) return;
                                     const file = e.target.files[0];
                                     if (file) {
-                                      const reader = new FileReader();
-                                      reader.onload = (evt) => {
-                                        const dataUrl = evt.target.result;
-                                        setMeritList(prev => {
-                                          const next = [...prev];
-                                          next[index] = { ...next[index], photo: dataUrl, verified: null, status: '' };
-                                          return next;
+                                      if (window.compressImage) {
+                                        window.compressImage(file).then(compressedBase64 => {
+                                          setMeritList(prev => {
+                                            const next = [...prev];
+                                            next[index] = { ...next[index], photo: compressedBase64, verified: null, status: '' };
+                                            return next;
+                                          });
+                                          setMeritScanVerified(null);
+                                          setMeritScanStatus('');
+                                          triggerBackgroundUpload(`merit_doc_${index + 1}`, compressedBase64);
                                         });
-                                        setMeritScanVerified(null);
-                                        setMeritScanStatus('');
-                                      };
-                                      reader.readAsDataURL(file);
+                                      } else {
+                                        const reader = new FileReader();
+                                        reader.onload = (evt) => {
+                                          const dataUrl = evt.target.result;
+                                          setMeritList(prev => {
+                                            const next = [...prev];
+                                            next[index] = { ...next[index], photo: dataUrl, verified: null, status: '' };
+                                            return next;
+                                          });
+                                          setMeritScanVerified(null);
+                                          setMeritScanStatus('');
+                                          triggerBackgroundUpload(`merit_doc_${index + 1}`, dataUrl);
+                                        };
+                                        reader.readAsDataURL(file);
+                                      }
                                     }
                                   }}
                                   style={{ display: 'none' }}
