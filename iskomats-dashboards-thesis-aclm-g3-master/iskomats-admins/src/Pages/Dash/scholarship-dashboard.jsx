@@ -53,13 +53,11 @@ Chart.register(...registerables);
 const DecryptedMedia = ({ src, type, className, controls = false, autoPlay = false, onClick = null, alt = "Document" }) => {
   const isVideo = Boolean(
     (type && type.startsWith('video')) ||
-    (typeof src === 'string' && (src.includes('.mp4') || src.includes('.webm') || src.includes('.mov') || src.includes('/video/')))
+    (typeof src === 'string' && (src.includes('.mp4') || src.includes('.webm') || src.includes('.mov') || src.includes('/video/') || src.includes('_vid_url')))
   );
-  // Unencrypted videos (Cloudinary, standard video URLs) stream natively and do not need initial blocking fetch
-  const isDirectVideoStream = isVideo && typeof src === 'string' && src.startsWith('http') && (src.includes('cloudinary.com') || src.includes('res.cloudinary') || !src.includes('encrypted'));
 
-  const [decryptedSrc, setDecryptedSrc] = useState(isDirectVideoStream ? src : src);
-  const [isLoading, setIsLoading] = useState(Boolean(!isDirectVideoStream && src && typeof src === 'string' && src.startsWith('http')));
+  const [decryptedSrc, setDecryptedSrc] = useState(src);
+  const [isLoading, setIsLoading] = useState(Boolean(!isVideo && src && typeof src === 'string' && src.startsWith('http')));
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
@@ -72,7 +70,7 @@ const DecryptedMedia = ({ src, type, className, controls = false, autoPlay = fal
       return;
     }
 
-    if (isDirectVideoStream) {
+    if (isVideo) {
       setDecryptedSrc(src);
       setIsLoading(false);
       return;
@@ -97,7 +95,30 @@ const DecryptedMedia = ({ src, type, className, controls = false, autoPlay = fal
     return () => {
       isMounted = false;
     };
-  }, [src, type, isDirectVideoStream]);
+  }, [src, type, isVideo]);
+
+  if (isVideo) {
+    if (hasError || !src) {
+      return (
+        <div className={`${className} bg-gray-900 flex flex-col items-center justify-center text-gray-400`} onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default', minHeight: '60px' }}>
+          <FaPlay className="text-xl mb-1 text-gray-500" />
+          <span className="text-[9px] font-bold uppercase tracking-wider">Video Unavailable</span>
+        </div>
+      );
+    }
+    return (
+      <video
+        src={decryptedSrc || src}
+        controls={controls}
+        autoPlay={autoPlay}
+        preload="metadata"
+        playsInline
+        className={className}
+        onClick={onClick}
+        onError={() => setHasError(true)}
+      />
+    );
+  }
 
   if (isLoading) {
     return (
@@ -116,24 +137,11 @@ const DecryptedMedia = ({ src, type, className, controls = false, autoPlay = fal
     );
   }
 
-  if (type && type.startsWith('image')) {
-    return (
-      <img
-        src={decryptedSrc}
-        alt={alt}
-        className={className}
-        onClick={onClick}
-        onError={() => setHasError(true)}
-      />
-    );
-  }
-
   return (
-    <video
+    <img
       src={decryptedSrc}
-      controls={controls}
-      autoPlay={autoPlay}
-      preload="metadata"
+      alt={alt}
+      loading="lazy"
       className={className}
       onClick={onClick}
       onError={() => setHasError(true)}

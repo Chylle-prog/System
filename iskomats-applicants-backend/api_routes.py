@@ -4789,8 +4789,73 @@ def get_announcement_image_by_index(ann_no, idx):
         traceback.print_exc()
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
+import hashlib
+import time
+import requests
+from collections import OrderedDict
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Persistent HTTP session with connection pooling for lightning-fast cloud media fetches
+_CLOUD_SESSION = requests.Session()
+_cloud_adapter = HTTPAdapter(pool_connections=25, pool_maxsize=50, max_retries=Retry(total=2, backoff_factor=0.2))
+_CLOUD_SESSION.mount('http://', _cloud_adapter)
+_CLOUD_SESSION.mount('https://', _cloud_adapter)
+
+# In-Memory LRU Cache for Decrypted Media & Videos
+# Eliminates redundant Supabase downloads and decryptions during Range request seeking/buffering
+_MEDIA_CACHE = OrderedDict()
+_MAX_MEDIA_CACHE_BYTES = 180 * 1024 * 1024  # 180 MB memory budget
+_MAX_SINGLE_ITEM_BYTES = 40 * 1024 * 1024   # 40 MB max per item
+_current_media_cache_bytes = 0
+
+def _get_media_cache_key(applicant_no, column_name, app_doc_no=None, scholarship_no=None):
+    return f"{applicant_no}_{column_name}_{app_doc_no or ''}_{scholarship_no or ''}"
+
+def _get_cached_media(key):
+    global _MEDIA_CACHE
+    entry = _MEDIA_CACHE.get(key)
+    if entry:
+        _MEDIA_CACHE.move_to_end(key)
+        return entry
+    return None
+
+def _set_cached_media(key, data, mime_type, etag):
+    global _MEDIA_CACHE, _current_media_cache_bytes
+    if not data or len(data) > _MAX_SINGLE_ITEM_BYTES:
+        return
+    
+    if key in _MEDIA_CACHE:
+        _current_media_cache_bytes -= len(_MEDIA_CACHE[key]['data'])
+        del _MEDIA_CACHE[key]
+    
+    while _MEDIA_CACHE and (_current_media_cache_bytes + len(data) > _MAX_MEDIA_CACHE_BYTES):
+        _, oldest_entry = _MEDIA_CACHE.popitem(last=False)
+        _current_media_cache_bytes -= len(oldest_entry['data'])
+    
+    _MEDIA_CACHE[key] = {
+        'data': data,
+        'mime_type': mime_type,
+        'etag': etag,
+        'time': time.time()
+    }
+    _current_media_cache_bytes += len(data)
+
+def invalidate_media_cache(applicant_no=None):
+    global _MEDIA_CACHE, _current_media_cache_bytes
+    if applicant_no is None:
+        _MEDIA_CACHE.clear()
+        _current_media_cache_bytes = 0
+    else:
+        prefix = f"{applicant_no}_"
+        keys_to_del = [k for k in _MEDIA_CACHE if k.startswith(prefix)]
+        for k in keys_to_del:
+            _current_media_cache_bytes -= len(_MEDIA_CACHE[k]['data'])
+            del _MEDIA_CACHE[k]
+
+
 def fetch_cloud_media_bytes(url):
-    """Fetch cloud media bytes (Supabase or HTTP) using Service Role Key or Supabase SDK."""
+    """Fetch cloud media bytes (Supabase or HTTP) using Service Role Key or Supabase SDK with connection pooling."""
     if not url or not isinstance(url, str) or not url.startswith('http'):
         return None
         
@@ -4815,9 +4880,9 @@ def fetch_cloud_media_bytes(url):
                     if res_bytes:
                         return res_bytes
     except Exception as sdk_err:
-        print(f"[CLOUD MEDIA SDK] SDK download fallback triggered for {normalized_url}: {sdk_err}", flush=True)
+        pass
 
-    # 2. HTTP GET with Service Role Key / Anon Key
+    # 2. High-speed HTTP GET with Connection Pooling
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ISKOMATS-AdminBackend/1.0'
     }
@@ -4838,22 +4903,64 @@ def fetch_cloud_media_bytes(url):
     elif '/object/authenticated/' in url_to_fetch:
         urls_to_try.append(url_to_fetch.replace('/object/authenticated/', '/object/public/'))
 
-    try:
-        import requests
-        for attempt_url in urls_to_try:
-            resp = requests.get(attempt_url, headers=headers, timeout=20)
+    for attempt_url in urls_to_try:
+        try:
+            resp = _CLOUD_SESSION.get(attempt_url, headers=headers, timeout=12)
             if resp.status_code == 200 and resp.content:
                 return resp.content
-            print(f"[CLOUD MEDIA FETCH] HTTP {resp.status_code} for {attempt_url}", flush=True)
-    except Exception as e:
-        print(f"[CLOUD MEDIA FETCH] Error fetching {url_to_fetch}: {e}", flush=True)
+        except Exception:
+            continue
 
     return None
+
+def _get_media_cache_key(applicant_no, column_name, app_doc_no=None, scholarship_no=None):
+    return f"{applicant_no}_{column_name}_{app_doc_no or ''}_{scholarship_no or ''}"
+
+def _get_cached_media(key):
+    global _MEDIA_CACHE
+    entry = _MEDIA_CACHE.get(key)
+    if entry:
+        _MEDIA_CACHE.move_to_end(key)
+        return entry
+    return None
+
+def _set_cached_media(key, data, mime_type, etag):
+    global _MEDIA_CACHE, _current_media_cache_bytes
+    if not data or len(data) > _MAX_SINGLE_ITEM_BYTES:
+        return
+    
+    if key in _MEDIA_CACHE:
+        _current_media_cache_bytes -= len(_MEDIA_CACHE[key]['data'])
+        del _MEDIA_CACHE[key]
+    
+    while _MEDIA_CACHE and (_current_media_cache_bytes + len(data) > _MAX_MEDIA_CACHE_BYTES):
+        _, oldest_entry = _MEDIA_CACHE.popitem(last=False)
+        _current_media_cache_bytes -= len(oldest_entry['data'])
+    
+    _MEDIA_CACHE[key] = {
+        'data': data,
+        'mime_type': mime_type,
+        'etag': etag,
+        'time': time.time()
+    }
+    _current_media_cache_bytes += len(data)
+
+def invalidate_media_cache(applicant_no=None):
+    global _MEDIA_CACHE, _current_media_cache_bytes
+    if applicant_no is None:
+        _MEDIA_CACHE.clear()
+        _current_media_cache_bytes = 0
+    else:
+        prefix = f"{applicant_no}_"
+        keys_to_del = [k for k in _MEDIA_CACHE if k.startswith(prefix)]
+        for k in keys_to_del:
+            _current_media_cache_bytes -= len(_MEDIA_CACHE[k]['data'])
+            del _MEDIA_CACHE[k]
 
 
 @api_bp.route('/applicant-image/<int:applicant_no>/<column_name>', methods=['GET'])
 def get_applicant_image(applicant_no, column_name):
-    """Get applicant image or document as binary file on demand (Lazy Loading)"""
+    """Get applicant image or document as binary file on demand with high-speed LRU memory caching & range streaming."""
     allowed_columns = [
         'indigency_doc', 'enrollment_certificate_doc', 'grades_doc', 
         'id_img_front', 'id_img_back', 'profile_picture',
@@ -4865,158 +4972,175 @@ def get_applicant_image(applicant_no, column_name):
         return jsonify({'message': 'Invalid column name'}), 400
         
     try:
-        data = None
-        with get_db() as conn:
-            cursor = conn.cursor()
-            app_doc_no = request.args.get('app_doc_no')
-            scholarship_no = request.args.get('scholarship_no')
-            
-            if app_doc_no in (None, '', 'null', 'undefined', 'None'):
-                app_doc_no = None
-            if scholarship_no in (None, '', 'null', 'undefined', 'None'):
-                scholarship_no = None
+        app_doc_no = request.args.get('app_doc_no')
+        scholarship_no = request.args.get('scholarship_no')
+        if app_doc_no in (None, '', 'null', 'undefined', 'None'):
+            app_doc_no = None
+        if scholarship_no in (None, '', 'null', 'undefined', 'None'):
+            scholarship_no = None
 
-            if not app_doc_no and scholarship_no:
-                try:
-                    status_cols = [c.lower() for c in get_table_columns(cursor, 'applicant_status')]
-                    if 'app_doc_no' in status_cols:
-                        cursor.execute("SELECT app_doc_no FROM applicant_status WHERE applicant_no = %s AND scholarship_no = %s LIMIT 1", (applicant_no, scholarship_no))
-                        s_row = cursor.fetchone()
-                        if s_row and (s_row.get('app_doc_no') if isinstance(s_row, dict) else s_row[0]):
-                            app_doc_no = s_row.get('app_doc_no') if isinstance(s_row, dict) else s_row[0]
-                except Exception as s_err:
-                    print(f"[APPLICANT IMAGE] Non-fatal status lookup error: {s_err}", flush=True)
-
-            row = fetch_applicant_document_values(cursor, applicant_no, [column_name], app_doc_no=app_doc_no)
+        cache_key = _get_media_cache_key(applicant_no, column_name, app_doc_no, scholarship_no)
+        cached_media = _get_cached_media(cache_key)
         
+        data = None
+        mime_type = None
+        etag = None
+
+        if cached_media:
+            data = cached_media['data']
+            mime_type = cached_media['mime_type']
+            etag = cached_media['etag']
+        else:
+            with get_db() as conn:
+                cursor = conn.cursor()
+                if not app_doc_no and scholarship_no:
+                    try:
+                        status_cols = [c.lower() for c in get_table_columns(cursor, 'applicant_status')]
+                        if 'app_doc_no' in status_cols:
+                            cursor.execute("SELECT app_doc_no FROM applicant_status WHERE applicant_no = %s AND scholarship_no = %s LIMIT 1", (applicant_no, scholarship_no))
+                            s_row = cursor.fetchone()
+                            if s_row and (s_row.get('app_doc_no') if isinstance(s_row, dict) else s_row[0]):
+                                app_doc_no = s_row.get('app_doc_no') if isinstance(s_row, dict) else s_row[0]
+                    except Exception as s_err:
+                        print(f"[APPLICANT IMAGE] Non-fatal status lookup error: {s_err}", flush=True)
+
+                row = fetch_applicant_document_values(cursor, applicant_no, [column_name], app_doc_no=app_doc_no)
+                cursor.close()
+            
             if not row or not row.get(column_name):
                 return jsonify({'message': 'Image not found'}), 404
-        
+            
             data = row[column_name]
-        
+            
             if hasattr(data, 'tobytes'):
                 data = data.tobytes()
             elif isinstance(data, memoryview):
                 data = bytes(data)
-        
-        # --- CLOUD STORAGE & PROXY URL RESOLUTION ---
-        if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
-            # If the URL is an admin proxy pointing to itself, return 404 to avoid infinite recursion loop
-            if '/applicant-image/' in data:
-                return jsonify({'message': 'Image not found (recursive proxy)'}), 404
-
-            # Check if this URL is a student proxy route pointing to another field
-            if '/applicant/document/raw/' in data:
-                try:
-                    parts = data.split('/applicant/document/raw/')
-                    if len(parts) > 1:
-                        raw_field = parts[1].split('?')[0]
-                        field_mapping = {
-                            'face_video': 'id_vid_url',
-                            'mayorIndigency_video': 'indigency_vid_url',
-                            'mayorGrades_video': 'grades_vid_url',
-                            'mayorCOE_video': 'enrollment_certificate_vid_url',
-                            'schoolIdFront_video': 'schoolid_front_vid_url',
-                            'schoolIdBack_video': 'schoolid_back_vid_url',
-                            'id_front': 'id_img_front',
-                            'id_back': 'id_img_back',
-                            'face_photo': 'id_pic',
-                        }
-                        mapped_col = field_mapping.get(raw_field, raw_field)
-                        if mapped_col in allowed_columns:
-                            with get_db() as conn:
-                                cursor = conn.cursor()
-                                re_row = fetch_applicant_document_values(cursor, applicant_no, [mapped_col], app_doc_no=app_doc_no)
-                                if re_row and re_row.get(mapped_col):
-                                    real_val = re_row[mapped_col]
-                                    if isinstance(real_val, str) and not ('/applicant/document/raw/' in real_val):
-                                        data = real_val
-                except Exception as ex:
-                    print(f"[APPLICANT IMAGE] Proxy resolution error: {ex}", flush=True)
-
-        if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
-            fetched_bytes = fetch_cloud_media_bytes(data)
-            if fetched_bytes:
-                data = fetched_bytes
-            else:
-                try:
-                    import requests
-                    proxy_url = normalize_supabase_url(data)
-                    proxy_resp = requests.get(proxy_url, timeout=20)
-                    if proxy_resp.status_code == 200 and proxy_resp.content:
-                        data = proxy_resp.content
-                    else:
-                        print(f"[APPLICANT IMAGE] Fallback HTTP fetch returned {proxy_resp.status_code} for {proxy_url}, redirecting natively.", flush=True)
-                        return redirect(proxy_url, code=302)
-                except Exception as proxy_err:
-                    print(f"[APPLICANT IMAGE] Proxy fetch exception for {data}: {proxy_err}, redirecting natively.", flush=True)
-                    return redirect(normalize_supabase_url(data), code=302)
-
-        # Convert to bytes if not already
-        if not isinstance(data, (bytes, bytearray)):
-            try:
-                data = bytes(data)
-            except (TypeError, ValueError):
-                if isinstance(data, str):
-                    data = data.encode('utf-8')
-                else:
-                    data = bytes(str(data), 'utf-8')
             
-        # Handle decryption for all fields if encrypted
-        if data:
-            from services.crypto_service import decrypt_if_encrypted
-            try:
-                decrypted = decrypt_if_encrypted(data)
-                if decrypted != data:
-                    data = decrypted
-                    print(f"[APPLICANT IMAGE] Decrypted {column_name} (Applicant {applicant_no})", flush=True)
-            except Exception as e:
-                print(f"[APPLICANT IMAGE] Failed to decrypt {column_name}: {e}")
-        
-        # Detect image type from magic bytes
-        mime_type = get_mime_type(data)
-        
-        # Final conversion check for BytesIO
-        if not isinstance(data, (bytes, bytearray)):
-            print(f"[APPLICANT IMAGE] Data for {column_name} is still not bytes (type: {type(data)}). Attempting final conversion.")
-            try:
-                if isinstance(data, str):
-                    data = data.encode('utf-8')
-                else:
-                    data = bytes(str(data), 'utf-8')
-            except:
-                return jsonify({'message': f'Invalid data format for {column_name}'}), 500
+            # --- CLOUD STORAGE & PROXY URL RESOLUTION ---
+            if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
+                if '/applicant-image/' in data:
+                    return jsonify({'message': 'Image not found (recursive proxy)'}), 404
 
+                if '/applicant/document/raw/' in data:
+                    try:
+                        parts = data.split('/applicant/document/raw/')
+                        if len(parts) > 1:
+                            raw_field = parts[1].split('?')[0]
+                            field_mapping = {
+                                'face_video': 'id_vid_url',
+                                'mayorIndigency_video': 'indigency_vid_url',
+                                'mayorGrades_video': 'grades_vid_url',
+                                'mayorCOE_video': 'enrollment_certificate_vid_url',
+                                'schoolIdFront_video': 'schoolid_front_vid_url',
+                                'schoolIdBack_video': 'schoolid_back_vid_url',
+                                'id_front': 'id_img_front',
+                                'id_back': 'id_img_back',
+                                'face_photo': 'id_pic',
+                            }
+                            mapped_col = field_mapping.get(raw_field, raw_field)
+                            if mapped_col in allowed_columns:
+                                with get_db() as conn:
+                                    cursor = conn.cursor()
+                                    re_row = fetch_applicant_document_values(cursor, applicant_no, [mapped_col], app_doc_no=app_doc_no)
+                                    cursor.close()
+                                    if re_row and re_row.get(mapped_col):
+                                        real_val = re_row[mapped_col]
+                                        if isinstance(real_val, str) and not ('/applicant/document/raw/' in real_val):
+                                            data = real_val
+                    except Exception as ex:
+                        print(f"[APPLICANT IMAGE] Proxy resolution error: {ex}", flush=True)
+
+            if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
+                fetched_bytes = fetch_cloud_media_bytes(data)
+                if fetched_bytes:
+                    data = fetched_bytes
+                else:
+                    try:
+                        proxy_url = normalize_supabase_url(data)
+                        proxy_resp = _CLOUD_SESSION.get(proxy_url, timeout=15)
+                        if proxy_resp.status_code == 200 and proxy_resp.content:
+                            data = proxy_resp.content
+                        else:
+                            return redirect(proxy_url, code=302)
+                    except Exception:
+                        return redirect(normalize_supabase_url(data), code=302)
+
+            # Convert to bytes if not already
+            if not isinstance(data, (bytes, bytearray)):
+                try:
+                    data = bytes(data)
+                except (TypeError, ValueError):
+                    if isinstance(data, str):
+                        data = data.encode('utf-8')
+                    else:
+                        data = bytes(str(data), 'utf-8')
+                
+            # Handle decryption for all fields if encrypted
+            if data:
+                from services.crypto_service import decrypt_if_encrypted
+                try:
+                    decrypted = decrypt_if_encrypted(data)
+                    if decrypted != data:
+                        data = decrypted
+                except Exception as e:
+                    print(f"[APPLICANT IMAGE] Failed to decrypt {column_name}: {e}")
+            
+            # Detect media type from magic bytes or column name
+            mime_type = get_mime_type(data)
+            if column_name.endswith('_vid_url') and not mime_type.startswith('video/'):
+                mime_type = 'video/mp4'
+
+            # Calculate fast ETag
+            sample = data[:512] if len(data) > 512 else data
+            etag = f'"{applicant_no}_{column_name}_{hashlib.md5(sample + str(len(data)).encode()).hexdigest()[:12]}"'
+            
+            # Cache the decrypted media in RAM
+            _set_cached_media(cache_key, data, mime_type, etag)
+
+        # Handle HTTP 304 Not Modified
+        if_none_match = request.headers.get('If-None-Match')
+        if if_none_match and etag and if_none_match.strip() == etag.strip():
+            return Response(status=304)
+
+        # Video Streaming with HTTP 206 Partial Content (Range requests)
         if mime_type.startswith('video/'):
             range_header = request.headers.get('Range', None)
+            total_len = len(data)
+            
             if range_header and range_header.startswith('bytes='):
                 try:
                     byte_ranges = range_header.replace('bytes=', '').split('-')
                     start = int(byte_ranges[0]) if byte_ranges[0] else 0
-                    end = int(byte_ranges[1]) if byte_ranges[1] else len(data) - 1
+                    end = int(byte_ranges[1]) if len(byte_ranges) > 1 and byte_ranges[1] else total_len - 1
                 except ValueError:
                     start = 0
-                    end = len(data) - 1
+                    end = total_len - 1
                 
-                if end >= len(data):
-                    end = len(data) - 1
+                if end >= total_len:
+                    end = total_len - 1
                 if start > end:
                     start = end
                 
                 chunk = data[start:end+1]
                 response = Response(chunk, status=206, mimetype=mime_type)
-                response.headers.set('Accept-Ranges', 'bytes')
-                response.headers.set('Content-Range', f'bytes {start}-{end}/{len(data)}')
-                response.headers.set('Content-Length', str(len(chunk)))
-                response.headers.set('Cache-Control', 'public, max-age=3600')
+                response.headers['Accept-Ranges'] = 'bytes'
+                response.headers['Content-Range'] = f'bytes {start}-{end}/{total_len}'
+                response.headers['Content-Length'] = str(len(chunk))
+                response.headers['Cache-Control'] = 'public, max-age=86400, stale-while-revalidate=3600'
+                if etag:
+                    response.headers['ETag'] = etag
                 return response
             else:
                 response = Response(data, mimetype=mime_type)
-                response.headers.set('Accept-Ranges', 'bytes')
-                response.headers.set('Content-Length', str(len(data)))
-                response.headers.set('Cache-Control', 'public, max-age=3600')
+                response.headers['Accept-Ranges'] = 'bytes'
+                response.headers['Content-Length'] = str(total_len)
+                response.headers['Cache-Control'] = 'public, max-age=86400, stale-while-revalidate=3600'
+                if etag:
+                    response.headers['ETag'] = etag
                 return response
         
+        # Image / Document Serving
         try:
             response = send_file(
                 BytesIO(data),
@@ -5026,6 +5150,8 @@ def get_applicant_image(applicant_no, column_name):
                 max_age=86400
             )
             response.headers['Cache-Control'] = 'public, max-age=86400, immutable'
+            if etag:
+                response.headers['ETag'] = etag
             return response
         except Exception as e:
             print(f"[APPLICANT IMAGE] send_file failed: {e}")
