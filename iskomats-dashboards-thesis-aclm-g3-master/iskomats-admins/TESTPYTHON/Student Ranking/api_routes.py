@@ -3,7 +3,7 @@ import os
 import re
 import json
 from decimal import Decimal
-from flask import Blueprint, request, jsonify, send_file, url_for, session
+from flask import Blueprint, request, jsonify, send_file, url_for, session, current_app, Response, redirect, make_response
 from flask_bcrypt import Bcrypt
 from werkzeug.security import check_password_hash as werkzeug_check_password_hash
 from functools import wraps
@@ -4846,7 +4846,6 @@ def get_announcement_image(image_id):
         
         # --- CLOUD STORAGE REDIRECT ---
         if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
-            from flask import redirect
             from services.applicant_document_service import normalize_supabase_url
             normalized_url = normalize_supabase_url(data)
             print(f"[ANN IMAGE] Redirecting {image_id} to cloud URL: {normalized_url[:60]}...", flush=True)
@@ -4918,7 +4917,6 @@ def get_announcement_image_by_index(ann_no, idx):
         
         # --- CLOUD STORAGE REDIRECT ---
         if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
-            from flask import redirect
             from services.applicant_document_service import normalize_supabase_url
             normalized_url = normalize_supabase_url(data)
             print(f"[ANN INDEX ENDPOINT] Redirecting {ann_no}/{idx} to cloud URL: {normalized_url[:60]}...", flush=True)
@@ -5100,7 +5098,6 @@ def get_applicant_image(applicant_no, column_name):
                     print(f"[APPLICANT IMAGE] Proxy resolution error: {ex}", flush=True)
 
         if isinstance(data, str) and (data.startswith('http://') or data.startswith('https://')):
-            from flask import redirect
             return redirect(normalize_supabase_url(data), code=302)
             
         # Convert memoryview to bytes if needed

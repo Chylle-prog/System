@@ -4,7 +4,7 @@ import re
 import json
 import time
 from decimal import Decimal
-from flask import Blueprint, request, jsonify, send_file, url_for, session
+from flask import Blueprint, request, jsonify, send_file, url_for, session, current_app, Response, redirect, make_response
 from flask_bcrypt import Bcrypt
 from werkzeug.security import check_password_hash as werkzeug_check_password_hash
 import functools
@@ -4615,10 +4615,8 @@ def get_announcement_image(image_id):
                     if proxy_resp.status_code == 200 and proxy_resp.content:
                         data = proxy_resp.content
                     else:
-                        from flask import redirect
                         return redirect(normalized_url)
                 except Exception:
-                    from flask import redirect
                     return redirect(normalized_url)
 
             encrypted_img = data
@@ -4693,10 +4691,8 @@ def get_announcement_image_by_index(ann_no, idx):
                     if proxy_resp.status_code == 200 and proxy_resp.content:
                         data = proxy_resp.content
                     else:
-                        from flask import redirect
                         return redirect(normalized_url)
                 except Exception:
-                    from flask import redirect
                     return redirect(normalized_url)
 
             encrypted_img = data
@@ -4892,11 +4888,9 @@ def get_applicant_image(applicant_no, column_name):
                         data = proxy_resp.content
                     else:
                         print(f"[APPLICANT IMAGE] Fallback HTTP fetch returned {proxy_resp.status_code} for {proxy_url}, redirecting natively.", flush=True)
-                        from flask import redirect
                         return redirect(proxy_url, code=302)
                 except Exception as proxy_err:
                     print(f"[APPLICANT IMAGE] Proxy fetch exception for {data}: {proxy_err}, redirecting natively.", flush=True)
-                    from flask import redirect
                     return redirect(normalize_supabase_url(data), code=302)
 
         # Convert to bytes if not already
@@ -4935,7 +4929,6 @@ def get_applicant_image(applicant_no, column_name):
                 return jsonify({'message': f'Invalid data format for {column_name}'}), 500
 
         if mime_type.startswith('video/'):
-            from flask import request, Response
             range_header = request.headers.get('Range', None)
             if range_header and range_header.startswith('bytes='):
                 try:
