@@ -2871,6 +2871,14 @@ export default function ScholarshipDashboard({
     [filteredReportApplicants]
   );
 
+  const recentPendingApplicants = useMemo(() => {
+    const pendingList = (data.applicants || []).filter(app => {
+      const status = String(app.status || 'Pending').toLowerCase();
+      return status === 'pending' || status === 'null' || !app.status;
+    });
+    return [...pendingList].sort(compareApplicantsByLatestSubmission);
+  }, [data.applicants]);
+
   const openScholarshipInTrack = (post) => {
     const scholarshipValue = String(post.reqNo || post.id || 'all');
     setTrackScholarshipFilter(scholarshipValue);
@@ -3952,21 +3960,28 @@ export default function ScholarshipDashboard({
               <button onClick={() => setSection('track')} className="text-xs font-bold text-[#800020] hover:underline">View All</button>
             </div>
             <div className="divide-y divide-gray-50 max-h-96 overflow-y-auto">
-              {data.applicants.slice(0, 15).map((app, idx) => (
-                <div key={idx} className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => viewApplicantFn(idx, 'all')}>
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-semibold flex-shrink-0 text-sm">
-                    {(app.firstName?.[0] || app.name?.[0] || '').toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-center mb-0.5 gap-2">
-                      <span className="text-xs sm:text-sm font-black text-gray-900 truncate">{app.lastName ? `${app.firstName} ${app.lastName}` : app.name}</span>
-                      <span className="text-[9px] sm:text-[10px] font-bold text-[#800020] bg-rose-50 px-2 py-0.5 rounded-full flex-shrink-0">{app.course}</span>
+              {recentPendingApplicants.slice(0, 15).map((app, idx) => {
+                const targetIdx = data.applicants.indexOf(app);
+                return (
+                  <div
+                    key={app.applicant_no || app.id || idx}
+                    className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                    onClick={() => viewApplicantFn(targetIdx >= 0 ? targetIdx : idx, 'all')}
+                  >
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#800020] to-[#650018] flex items-center justify-center text-white font-semibold flex-shrink-0 text-sm">
+                      {(app.firstName?.[0] || app.name?.[0] || '').toUpperCase()}
                     </div>
-                    <p className="text-[11px] sm:text-xs text-gray-500 line-clamp-1">{getApplicantAddressDisplay(app)}</p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center mb-0.5 gap-2">
+                        <span className="text-xs sm:text-sm font-black text-gray-900 truncate">{app.lastName ? `${app.firstName} ${app.lastName}` : app.name}</span>
+                        <span className="text-[9px] sm:text-[10px] font-bold text-[#800020] bg-rose-50 px-2 py-0.5 rounded-full flex-shrink-0">{app.course}</span>
+                      </div>
+                      <p className="text-[11px] sm:text-xs text-gray-500 line-clamp-1">{getApplicantAddressDisplay(app)}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-              {data.applicants.length === 0 && (
+                );
+              })}
+              {recentPendingApplicants.length === 0 && (
                 <div className="p-8 text-center text-gray-400 text-sm">No recent applicants found.</div>
               )}
             </div>
@@ -4769,15 +4784,6 @@ export default function ScholarshipDashboard({
       <section className="bg-white p-3 sm:p-6 lg:p-8 rounded-2xl shadow-md border border-gray-50 animate-in fade-in duration-300">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 mb-4">
           <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-[#800020] break-words min-w-0">{trackTitle}</h3>
-          {trackScholarshipFilter !== 'all' && trackScholarshipFilter !== 'deleted' && (
-            <button
-              type="button"
-              onClick={recommendStudents}
-              className="w-full sm:w-auto px-3 py-2 sm:px-4 sm:py-2 rounded-lg bg-[#800020] text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-[#650018] transition-colors flex-shrink-0"
-            >
-              <FaRobot /> <span className="hidden xs:inline">Recommended</span><span className="xs:hidden">AI</span> Student Applicants
-            </button>
-          )}
         </div>
 
         <div className="flex flex-col gap-2.5 mb-4">
