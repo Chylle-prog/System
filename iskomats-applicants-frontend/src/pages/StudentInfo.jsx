@@ -6094,16 +6094,27 @@ const StudentInfo = () => {
 
     // 2. Special handling for files and previews based on the current step
     if (stepNumber === 1) {
-      appendSmartFile('profile_picture', idPicturePreview);
-      const indigencyFile = photos.mayorIndigency_photo || photos.indigency || formData.mayorIndigency_photo || formData.indigency;
-      appendSmartFile('indigency_doc', indigencyFile);
+      const profilePicVal = (formData.profile_picture && typeof formData.profile_picture === 'string' && formData.profile_picture.startsWith('http')) ? formData.profile_picture : idPicturePreview;
+      appendSmartFile('profile_picture', profilePicVal);
+      const indigencyVal = (formData.mayorIndigency_photo && typeof formData.mayorIndigency_photo === 'string' && formData.mayorIndigency_photo.startsWith('http'))
+        ? formData.mayorIndigency_photo
+        : (photos.mayorIndigency_photo || photos.indigency || formData.mayorIndigency_photo || formData.indigency);
+      appendSmartFile('indigency_doc', indigencyVal);
     }
 
     if (stepNumber === 3) {
-      const frontFile = schoolIdPhotos.front || formData.schoolIdFront;
-      const backFile = schoolIdPhotos.back || formData.schoolIdBack;
-      const coeFile = photos.mayorCOE_photo || photos.enrollment || formData.mayorCOE_photo || formData.enrollment || photos.enrollment_certificate_doc || formData.enrollment_certificate_doc;
-      const gradesFile = photos.mayorGrades_photo || photos.grades || formData.mayorGrades_photo || formData.grades || photos.grades_doc || formData.grades_doc;
+      const frontFile = (formData.schoolIdFront && typeof formData.schoolIdFront === 'string' && formData.schoolIdFront.startsWith('http'))
+        ? formData.schoolIdFront
+        : (schoolIdPhotos.front || formData.schoolIdFront);
+      const backFile = (formData.schoolIdBack && typeof formData.schoolIdBack === 'string' && formData.schoolIdBack.startsWith('http'))
+        ? formData.schoolIdBack
+        : (schoolIdPhotos.back || formData.schoolIdBack);
+      const coeFile = ((formData.mayorCOE_photo && typeof formData.mayorCOE_photo === 'string' && formData.mayorCOE_photo.startsWith('http')) || (formData.enrollment_certificate_doc && typeof formData.enrollment_certificate_doc === 'string' && formData.enrollment_certificate_doc.startsWith('http')))
+        ? (formData.mayorCOE_photo || formData.enrollment_certificate_doc)
+        : (photos.mayorCOE_photo || photos.enrollment || formData.mayorCOE_photo || formData.enrollment || photos.enrollment_certificate_doc || formData.enrollment_certificate_doc);
+      const gradesFile = ((formData.mayorGrades_photo && typeof formData.mayorGrades_photo === 'string' && formData.mayorGrades_photo.startsWith('http')) || (formData.grades_doc && typeof formData.grades_doc === 'string' && formData.grades_doc.startsWith('http')))
+        ? (formData.mayorGrades_photo || formData.grades_doc)
+        : (photos.mayorGrades_photo || photos.grades || formData.mayorGrades_photo || formData.grades || photos.grades_doc || formData.grades_doc);
 
       appendSmartFile('id_front', frontFile);
       appendSmartFile('id_back', backFile);
@@ -6154,44 +6165,33 @@ const StudentInfo = () => {
       saveResult = await applicantAPI.updateProfile(payload);
     }
 
-    // Replace uploaded base64 data with permanent storage URLs to prevent duplicate uploads on next steps
+    // Persist permanent storage URLs in formData without clobbering visible in-memory previews in photos/schoolIdPhotos
     if (saveResult && saveResult.document_urls) {
       const docUrls = saveResult.document_urls;
-      const photoUpdates = {};
-      const idPhotoUpdates = {};
       const formDocUpdates = {};
 
       if (docUrls.indigency_doc) {
-        photoUpdates.mayorIndigency_photo = docUrls.indigency_doc;
-        photoUpdates.indigency = docUrls.indigency_doc;
         formDocUpdates.mayorIndigency_photo = docUrls.indigency_doc;
+        formDocUpdates.indigency = docUrls.indigency_doc;
       }
       if (docUrls.enrollment_certificate_doc) {
-        photoUpdates.mayorCOE_photo = docUrls.enrollment_certificate_doc;
-        photoUpdates.enrollment = docUrls.enrollment_certificate_doc;
         formDocUpdates.mayorCOE_photo = docUrls.enrollment_certificate_doc;
+        formDocUpdates.enrollment = docUrls.enrollment_certificate_doc;
       }
       if (docUrls.grades_doc) {
-        photoUpdates.mayorGrades_photo = docUrls.grades_doc;
-        photoUpdates.grades = docUrls.grades_doc;
         formDocUpdates.mayorGrades_photo = docUrls.grades_doc;
+        formDocUpdates.grades = docUrls.grades_doc;
       }
       if (docUrls.id_img_front) {
-        idPhotoUpdates.front = docUrls.id_img_front;
         formDocUpdates.schoolIdFront = docUrls.id_img_front;
       }
       if (docUrls.id_img_back) {
-        idPhotoUpdates.back = docUrls.id_img_back;
         formDocUpdates.schoolIdBack = docUrls.id_img_back;
       }
       if (saveResult.profile_picture) {
-        setIdPicturePreview(saveResult.profile_picture);
-        photoUpdates.profile_picture = saveResult.profile_picture;
         formDocUpdates.profile_picture = saveResult.profile_picture;
       }
 
-      if (Object.keys(photoUpdates).length > 0) setPhotos(prev => ({ ...prev, ...photoUpdates }));
-      if (Object.keys(idPhotoUpdates).length > 0) setSchoolIdPhotos(prev => ({ ...prev, ...idPhotoUpdates }));
       if (Object.keys(formDocUpdates).length > 0) setFormData(prev => ({ ...prev, ...formDocUpdates }));
     }
   };
@@ -6369,7 +6369,7 @@ const StudentInfo = () => {
         // 1. Map document photos from server profile if available
         const newPhotos = {};
         if (profile.has_mayorIndigency_photo || profile.indigency_doc) {
-          const indigencyUrl = profile.indigency_doc || `${apiOrigin}/api/student/applicant/document/raw/indigency_doc?token=${token}`;
+          const indigencyUrl = `${apiOrigin}/api/student/applicant/document/raw/indigency_doc?token=${token}`;
           newPhotos.mayorIndigency_photo = indigencyUrl;
           newPhotos.indigency = indigencyUrl;
           updates.mayorIndigency_photo = indigencyUrl;
@@ -6377,7 +6377,7 @@ const StudentInfo = () => {
         }
 
         if (profile.has_mayorCOE_photo || profile.enrollment_certificate_doc) {
-          const coeUrl = profile.enrollment_certificate_doc || `${apiOrigin}/api/student/applicant/document/raw/enrollment_certificate_doc?token=${token}`;
+          const coeUrl = `${apiOrigin}/api/student/applicant/document/raw/enrollment_certificate_doc?token=${token}`;
           newPhotos.mayorCOE_photo = coeUrl;
           newPhotos.enrollment = coeUrl;
           updates.mayorCOE_photo = coeUrl;
@@ -6385,7 +6385,7 @@ const StudentInfo = () => {
         }
 
         if (profile.has_mayorGrades_photo || profile.grades_doc) {
-          const gradesUrl = profile.grades_doc || `${apiOrigin}/api/student/applicant/document/raw/grades_doc?token=${token}`;
+          const gradesUrl = `${apiOrigin}/api/student/applicant/document/raw/grades_doc?token=${token}`;
           newPhotos.mayorGrades_photo = gradesUrl;
           newPhotos.grades = gradesUrl;
           updates.mayorGrades_photo = gradesUrl;
@@ -6414,13 +6414,13 @@ const StudentInfo = () => {
         }
 
         const newIdPhotos = {};
-        if (profile.has_id) {
+        if (profile.has_id || profile.id_img_front) {
           const frontUrl = `${apiOrigin}/api/student/applicant/document/raw/id_img_front?token=${token}`;
           newIdPhotos.front = frontUrl;
           updates.schoolIdFront = frontUrl;
         }
 
-        if (profile.has_id_back) {
+        if (profile.has_id_back || profile.id_img_back) {
           const backUrl = `${apiOrigin}/api/student/applicant/document/raw/id_img_back?token=${token}`;
           newIdPhotos.back = backUrl;
           updates.schoolIdBack = backUrl;
