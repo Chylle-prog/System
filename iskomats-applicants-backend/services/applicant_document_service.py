@@ -257,21 +257,26 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names, app_doc_
     # Robust Fallback: If any requested document column is NULL in the joined row,
     # find the most recent non-null value from applicant_documents for this applicant.
     if document_table:
-        doc_cols = [c.lower() for c in get_table_columns(cursor, document_table)]
-        for col in requested_columns:
-            if row_dict.get(col) is None and col.lower() in doc_cols:
-                try:
-                    cursor.execute(
-                        f'SELECT "{col}" FROM {document_table} WHERE applicant_no = %s AND "{col}" IS NOT NULL ORDER BY app_doc_no DESC LIMIT 1',
-                        (applicant_no,)
-                    )
-                    fb = cursor.fetchone()
-                    if fb:
-                        val = fb.get(col) if isinstance(fb, dict) else fb[0]
-                        if val is not None:
-                            row_dict[col] = val
-                except Exception as fb_err:
-                    print(f"[DOC SERVICE] Fallback fetch error for {col}: {fb_err}", flush=True)
+        document_columns = get_table_columns(cursor, document_table)
+        doc_col_map = {c.lower(): c for c in document_columns}
+        needed_cols = [col for col in requested_columns if row_dict.get(col) is None and doc_col_map.get(col.lower())]
+        if needed_cols:
+            real_needed = list({doc_col_map[col.lower()] for col in needed_cols})
+            select_cols_sql = ', '.join(f'"{c}"' for c in real_needed)
+            try:
+                cursor.execute(
+                    f'SELECT {select_cols_sql} FROM {document_table} WHERE applicant_no = %s ORDER BY app_doc_no DESC LIMIT 1',
+                    (applicant_no,)
+                )
+                fb_row = cursor.fetchone()
+                if fb_row:
+                    fb_dict = dict(fb_row) if hasattr(fb_row, 'keys') else {}
+                    for col in needed_cols:
+                        rc = doc_col_map[col.lower()]
+                        if fb_dict.get(rc) is not None and row_dict.get(col) is None:
+                            row_dict[col] = fb_dict[rc]
+            except Exception as fb_err:
+                print(f"[DOC SERVICE] Fallback fetch error: {fb_err}", flush=True)
 
     return row_dict
 
