@@ -1547,8 +1547,8 @@ ISKOMATS Team
                     return False
 
             if valid_recipients:
-                # Dispatch concurrently with up to 20 parallel worker threads for instant delivery
-                worker_count = min(20, max(1, len(valid_recipients)))
+                # Dispatch concurrently with controlled concurrency (up to 5 workers) to protect eventlet CPU/I/O
+                worker_count = min(5, max(1, len(valid_recipients)))
                 with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
                     results = list(executor.map(_send_single_announcement, valid_recipients))
                     email_success_count = sum(1 for r in results if r)
@@ -5135,6 +5135,7 @@ def get_admin_announcements(current_user_id, pro_no, role):
                 row_dict = dict(row)
                 ann_no = row_dict['ann_no']
                 image_id = row_dict.pop('image_id', None)
+                raw_img_data = row_dict.pop('announcement_image_data', None)
                 ann_date = row_dict.get('ann_date')
 
                 if ann_date and hasattr(ann_date, 'isoformat'):
@@ -5151,7 +5152,7 @@ def get_admin_announcements(current_user_id, pro_no, role):
                     }
 
                 if image_id is not None:
-                    img_data_val = row_dict.get('announcement_image_data')
+                    img_data_val = raw_img_data
                 
                     # Check for cloud URL directly in result set
                     if isinstance(img_data_val, str) and img_data_val.startswith('http'):

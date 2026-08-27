@@ -1610,15 +1610,24 @@ export default function ScholarshipDashboard({
         }
       });
 
+      // Debounced applicant loader to prevent socket storm lag
+      let debounceApplicantsTimer = null;
+      const debouncedLoadApplicants = () => {
+        clearTimeout(debounceApplicantsTimer);
+        debounceApplicantsTimer = setTimeout(() => {
+          loadApplicants();
+        }, 400);
+      };
+
       // Subscribe to applicant updates from students and other admins
       const unsubStatusUpdate = socketService.subscribe('applicant_status_update', (update) => {
         console.log('[LIVE SYNC] Applicant status update received:', update);
-        loadApplicants();
+        debouncedLoadApplicants();
       });
 
       const unsubNewApp = socketService.subscribe('new_application', (update) => {
         console.log('[LIVE SYNC] New application received live:', update);
-        loadApplicants();
+        debouncedLoadApplicants();
         if (update && update.applicant_no && update.pro_no) {
           socketService.loadHistory(`${update.applicant_no}+${update.pro_no}`);
         }
@@ -1626,15 +1635,16 @@ export default function ScholarshipDashboard({
 
       const unsubNewApplicant = socketService.subscribe('new_applicant', (update) => {
         console.log('[LIVE SYNC] New applicant received live:', update);
-        loadApplicants();
+        debouncedLoadApplicants();
       });
 
       const unsubAccountChange = socketService.subscribe('account_change', (update) => {
         console.log('[LIVE SYNC] Account change received live:', update);
-        loadApplicants();
+        debouncedLoadApplicants();
       });
 
       return () => {
+        clearTimeout(debounceApplicantsTimer);
         unsubMsg();
         unsubLogged();
         unsubRoom();
@@ -2203,26 +2213,42 @@ export default function ScholarshipDashboard({
       loadAnnouncements();
     }
 
+    let debounceScholarshipTimer = null;
+    const debouncedLoadScholarships = () => {
+      clearTimeout(debounceScholarshipTimer);
+      debounceScholarshipTimer = setTimeout(() => {
+        loadScholarships(false);
+      }, 400);
+    };
+
+    let debounceAnnouncementTimer = null;
+    const debouncedLoadAnnouncements = () => {
+      clearTimeout(debounceAnnouncementTimer);
+      debounceAnnouncementTimer = setTimeout(() => {
+        loadAnnouncements();
+      }, 400);
+    };
+
     // Listen for scholarship updates from other admins
     const unsubScholarships = socketService.onScholarshipUpdate((data) => {
       console.log('[SCHOLARSHIP UPDATE] Received update:', data);
-      loadScholarships(false);
+      debouncedLoadScholarships();
     });
 
     const unsubScholarshipChange = socketService.subscribe('scholarship_change', (data) => {
       console.log('[SCHOLARSHIP CHANGE] Received change:', data);
-      loadScholarships(false);
+      debouncedLoadScholarships();
     });
 
     // Listen for announcement updates from other admins
     const unsubAnnouncements = socketService.onAnnouncementUpdate((data) => {
       console.log('[ANNOUNCEMENT UPDATE] Received update:', data);
-      loadAnnouncements();
+      debouncedLoadAnnouncements();
     });
 
     const unsubNewAnnouncements = socketService.subscribe('new_announcement', (data) => {
       console.log('[NEW ANNOUNCEMENT] Received new announcement:', data);
-      loadAnnouncements();
+      debouncedLoadAnnouncements();
     });
 
     // Listen for real-time notifications
@@ -2231,6 +2257,8 @@ export default function ScholarshipDashboard({
     });
 
     return () => {
+      clearTimeout(debounceScholarshipTimer);
+      clearTimeout(debounceAnnouncementTimer);
       unsubScholarships();
       unsubScholarshipChange();
       unsubAnnouncements();
@@ -2552,16 +2580,6 @@ export default function ScholarshipDashboard({
         resetForm();
         setManageMode('list');
         loadAnnouncements();
-
-        // Notify other admins of the announcement update via socket
-        socketService.emit('announcement_update', {
-          program: providerKey,
-          action: manageMode === 'edit' ? 'updated' : 'created',
-          title: formData.title,
-          annNo: editingPost?.id || editingPost?.ann_no || null,
-          adminName: userName,
-          timestamp: new Date().toISOString()
-        });
       }
     } catch (error) {
       console.error('Failed to save announcement:', error);

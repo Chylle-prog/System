@@ -232,9 +232,42 @@ const Portal = () => {
       fetchNotifications()
     ]).catch(() => undefined);
 
-    // Set up polling fallback for notifications every 10 seconds
-    const notifInterval = setInterval(fetchNotifications, 10000);
-    const announcementInterval = setInterval(fetchAnnouncements, 10000);
+    // Lightweight polling fallback (every 2 minutes) for background recovery if sockets disconnect
+    const notifInterval = setInterval(fetchNotifications, 120000);
+    const announcementInterval = setInterval(fetchAnnouncements, 120000);
+
+    // Debounce helpers to prevent socket event cascades from firing multiple heavy API calls in the same second
+    let debounceAnnounceTimer = null;
+    const debouncedFetchAnnouncements = () => {
+      clearTimeout(debounceAnnounceTimer);
+      debounceAnnounceTimer = setTimeout(() => {
+        fetchAnnouncements();
+      }, 400);
+    };
+
+    let debounceNotifTimer = null;
+    const debouncedFetchNotifications = () => {
+      clearTimeout(debounceNotifTimer);
+      debounceNotifTimer = setTimeout(() => {
+        fetchNotifications();
+      }, 400);
+    };
+
+    let debounceResourcesTimer = null;
+    const debouncedFetchResources = () => {
+      clearTimeout(debounceResourcesTimer);
+      debounceResourcesTimer = setTimeout(() => {
+        fetchResources();
+      }, 400);
+    };
+
+    let debounceAppsTimer = null;
+    const debouncedFetchApplications = () => {
+      clearTimeout(debounceAppsTimer);
+      debounceAppsTimer = setTimeout(() => {
+        fetchApplications(false);
+      }, 400);
+    };
 
     // Socket.IO Integration
     let unsubLogged, unsubMsg, unsubHistory, unsubRoom;
@@ -286,7 +319,7 @@ const Portal = () => {
             if (msg.m_id && m.m_id) return String(m.m_id) === String(msg.m_id);
             return m.message === msg.message && (m.type === 'sent' || isStudentSender);
           });
- 
+
           if (isDuplicate) {
             return {
               ...prev,
@@ -298,7 +331,7 @@ const Portal = () => {
               }))
             };
           }
- 
+
           const nextMessage = {
             id: msg.m_id || `${msg.room}-${msg.timestamp}-${msg.username}`,
             m_id: msg.m_id,
@@ -307,30 +340,30 @@ const Portal = () => {
             time: msg.timestamp || new Date().toISOString(),
             type: isStudentSender ? 'sent' : 'received'
           };
- 
+
           return {
             ...prev,
             [msg.room]: sortChatMessages([...roomMsgs, nextMessage])
           };
         });
- 
+
         setScholarships(prev => prev.map((s) => {
           if (s.id !== msg.room) return s;
           const nextUnread = isActiveRoom ? 0 : ((s.unread || 0) + (isStudentSender ? 0 : 1));
           return { ...s, lastMessage: msg.message, time: 'Just now', unread: nextUnread };
         }));
       });
- 
+
       unsubHistory = socketService.subscribe('history', (data) => {
         const roomId = data.room;
         const historyMsgs = data.messages || [];
         const currentAppNo = localStorage.getItem('applicantNo');
         const firstName = (userProfile?.first_name || currentUser?.first_name || '').toLowerCase();
- 
+
         setChatMessages(prev => {
           const roomMsgs = prev[roomId] || [];
           const merged = [...roomMsgs];
- 
+
           historyMsgs.forEach(msg => {
             const msgUsername = String(msg.username || '').toLowerCase();
             const isStudentSender = (
@@ -339,7 +372,7 @@ const Portal = () => {
               (firstName && msgUsername === firstName) ||
               msg.is_student_sender === true
             );
- 
+
             const exists = merged.some(m => (msg.m_id && m.m_id && String(m.m_id) === String(msg.m_id)) || (m.message === msg.message && (m.type === 'sent' || isStudentSender)));
             if (!exists) {
               merged.push({
@@ -374,7 +407,7 @@ const Portal = () => {
         });
       });
 
-      // Live real-time updates for announcements
+      // Live real-time updates for announcements (debounced)
       const unsubAnnounce = socketService.subscribe('announcement_update', (data) => {
         console.log('[LIVE SYNC] Announcement update received live:', data);
         if (data && data.action === 'delete') {
@@ -390,16 +423,16 @@ const Portal = () => {
             }));
           }
         }
-        fetchAnnouncements();
-        fetchNotifications();
+        debouncedFetchAnnouncements();
+        debouncedFetchNotifications();
       });
       const unsubNewAnnounce = socketService.subscribe('new_announcement', () => {
         console.log('[LIVE SYNC] New announcement received live');
-        fetchAnnouncements();
-        fetchNotifications();
+        debouncedFetchAnnouncements();
+        debouncedFetchNotifications();
       });
 
-      // Live real-time updates for scholarships
+      // Live real-time updates for scholarships (debounced)
       const unsubScholar = socketService.subscribe('scholarship_update', (data) => {
         console.log('[LIVE SYNC] Scholarship update received live:', data);
         if (data && data.action === 'delete') {
@@ -416,24 +449,24 @@ const Portal = () => {
             }));
           }
         }
-        fetchResources();
-        fetchNotifications();
+        debouncedFetchResources();
+        debouncedFetchNotifications();
       });
       const unsubScholarChange = socketService.subscribe('scholarship_change', (data) => {
         console.log('[LIVE SYNC] Scholarship change received live:', data);
         if (data && data.action === 'delete' && data.req_no) {
           setResources(prev => prev.filter(r => String(r.req_no || r.id || r.reqNo) !== String(data.req_no)));
         }
-        fetchResources();
-        fetchNotifications();
+        debouncedFetchResources();
+        debouncedFetchNotifications();
       });
 
-      // Live real-time updates for applicant status changes & notifications
+      // Live real-time updates for applicant status changes & notifications (debounced)
       const unsubStatus = socketService.subscribe('applicant_status_update', (data) => {
         console.log('[LIVE SYNC] Applicant status update received live:', data);
-        fetchApplications(false);
+        debouncedFetchApplications();
         fetchProfile();
-        fetchNotifications();
+        debouncedFetchNotifications();
       });
       const unsubNotifUpdate = socketService.subscribe('notification_update', (data) => {
         console.log('[LIVE SYNC] Notification update received live:', data);
@@ -445,8 +478,8 @@ const Portal = () => {
             return !notifTitle.includes(deleteTitleLower) && !notifMsg.includes(deleteTitleLower);
           }));
         }
-        fetchNotifications();
-        fetchApplications(false);
+        debouncedFetchNotifications();
+        debouncedFetchApplications();
       });
       const unsubNewNotif = socketService.subscribe('new_notification', (data) => {
         console.log('[LIVE SYNC] New notification received live:', data);
@@ -473,8 +506,8 @@ const Portal = () => {
             return [formattedNotif, ...prev];
           });
         }
-        fetchNotifications();
-        fetchApplications(false);
+        debouncedFetchNotifications();
+        debouncedFetchApplications();
       });
 
       var cleanupLiveSockets = () => {
@@ -485,6 +518,10 @@ const Portal = () => {
         unsubStatus();
         unsubNotifUpdate();
         unsubNewNotif();
+        clearTimeout(debounceAnnounceTimer);
+        clearTimeout(debounceNotifTimer);
+        clearTimeout(debounceResourcesTimer);
+        clearTimeout(debounceAppsTimer);
       };
     }
 

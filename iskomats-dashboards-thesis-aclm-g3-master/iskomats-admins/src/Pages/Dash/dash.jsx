@@ -343,41 +343,51 @@ export default function Dash() {
     const token = localStorage.getItem('authToken');
     if (token) {
       socketService.connect(token);
+
+      let debounceTimer = null;
+      const debouncedLoadDashboard = () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          loadDashboardData(false);
+        }, 400);
+      };
+
       const unsubAccount = socketService.subscribe('account_change', (data) => {
         console.log('[SYNC] Account change detected live:', data);
-        loadDashboardData(false);
+        debouncedLoadDashboard();
       });
       const unsubStatus = socketService.subscribe('applicant_status_update', (data) => {
         console.log('[SYNC] Applicant status update detected live:', data);
-        loadDashboardData(false);
+        debouncedLoadDashboard();
       });
       const unsubScholarship = socketService.subscribe('scholarship_update', (data) => {
         console.log('[SYNC] Scholarship update detected live:', data);
-        loadDashboardData(false);
+        debouncedLoadDashboard();
       });
       const unsubScholarshipChange = socketService.subscribe('scholarship_change', (data) => {
         console.log('[SYNC] Scholarship change detected live:', data);
-        loadDashboardData(false);
+        debouncedLoadDashboard();
       });
       const unsubAnnouncement = socketService.subscribe('announcement_update', (data) => {
         console.log('[SYNC] Announcement update detected live:', data);
-        loadDashboardData(false);
+        debouncedLoadDashboard();
       });
       const unsubNewAnnouncement = socketService.subscribe('new_announcement', (data) => {
         console.log('[SYNC] New announcement detected live:', data);
-        loadDashboardData(false);
+        debouncedLoadDashboard();
       });
 
       const unsubNewApp = socketService.subscribe('new_application', (data) => {
         console.log('[SYNC] New application detected live:', data);
-        loadDashboardData(false);
+        debouncedLoadDashboard();
       });
       const unsubNewApplicant = socketService.subscribe('new_applicant', (data) => {
         console.log('[SYNC] New applicant detected live:', data);
-        loadDashboardData(false);
+        debouncedLoadDashboard();
       });
 
       return () => {
+        clearTimeout(debounceTimer);
         unsubAccount();
         unsubStatus();
         unsubNewApp();
