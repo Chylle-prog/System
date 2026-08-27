@@ -7582,6 +7582,8 @@ const StudentInfo = () => {
   const handleApplicationSubmit = async (e) => {
     e.preventDefault();
 
+    setLoadingMessage({ title: 'Submitting Application', message: 'Preparing your application for submission...' });
+
     // Fast Safety Check: Parallel wait for any active background uploads / step sync
     const pendingUploads = [...Object.values(uploadingFields)];
     if (lastSaveStepPromiseRef.current) {
@@ -7633,6 +7635,7 @@ const StudentInfo = () => {
     }
 
     if (missingLabel) {
+      setIsSubmitting(false);
       showPromptMessage(`Please fill in all fields: ${missingLabel} is missing.`);
       return;
     }
@@ -7653,6 +7656,7 @@ const StudentInfo = () => {
     }
 
     if (missingDocLabel) {
+      setIsSubmitting(false);
       showPromptMessage(`Please upload the document: ${missingDocLabel}.`);
       return;
     }
@@ -7662,16 +7666,19 @@ const StudentInfo = () => {
       (!schoolIdPhotos.back) ||
       (!photos.face_photo && !userProfile?.profile_picture)
     ) {
+      setIsSubmitting(false);
       showPromptMessage('Please complete Identity Verification: Upload Front/Back School ID and a Face Photo.');
       return;
     }
 
     if (!formData.dataCertifyConsent) {
+      setIsSubmitting(false);
       showPromptMessage('Please certify that the information provided is correct.');
       return;
     }
 
     if (!signaturePreview && !drawnSignature && !formData.applicantSignatureName) {
+      setIsSubmitting(false);
       showPromptMessage('Please either upload a signature photo or draw your signature.');
       return;
     }
@@ -7682,12 +7689,17 @@ const StudentInfo = () => {
     }
 
     if (!reqNo || isNaN(parseInt(reqNo))) {
+      setIsSubmitting(false);
       showPromptMessage('Scholarship ID missing or invalid.');
       return;
     }
 
     const numericReqNo = parseInt(reqNo, 10);
     localStorage.setItem('last_submitted_scholarship_id', numericReqNo.toString());
+    setLoadingMessage({
+      title: 'Submitting Application',
+      message: 'Uploading your documents and finalizing your application. Please wait...'
+    });
     setIsSubmitting(true);
 
     try {

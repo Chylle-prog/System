@@ -114,7 +114,7 @@ export const decryptUrl = (url, type = 'image/jpeg') => {
   );
 
   // All video streams play immediately via native browser HTML5 player (zero blocking blob downloads)
-  if (isVideo) {
+  if (isVideo || url.includes('/applicant/document/raw/')) {
     return Promise.resolve(url);
   }
 

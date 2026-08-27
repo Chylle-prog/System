@@ -339,8 +339,15 @@ export const warmBackendConnection = async ({ force = false } = {}) => {
 const resolveApplicantDocumentForDisplay = async (fieldName, value) => {
   if (!value || typeof value !== 'string') return value;
 
+  const isVideo = fieldName.endsWith('_vid_url') || fieldName.includes('video') || fieldName.includes('vid') || value.includes('.mp4') || value.includes('.webm');
+  if (isVideo) return value;
+
+  // Backend raw endpoints already stream raw decrypted image bytes directly to <img> tags
+  if (value.includes('/applicant/document/raw/')) {
+    return value;
+  }
+
   if (value.startsWith('http') && (value.includes('supabase.co') || value.includes('localhost') || value.includes('onrender.com'))) {
-    const isVideo = fieldName.endsWith('_vid_url') || fieldName.includes('video') || fieldName.includes('vid');
     const mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
     
     try {

@@ -153,8 +153,9 @@ def apply_cors_headers(response, origin):
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD'
         response.headers['Access-Control-Allow-Headers'] = request.headers.get(
             'Access-Control-Request-Headers',
-            'Content-Type, Authorization, Accept, X-Requested-With, X-CSRF-Token'
+            'Content-Type, Authorization, Accept, X-Requested-With, X-CSRF-Token, Range, If-None-Match, If-Match'
         )
+        response.headers['Access-Control-Expose-Headers'] = 'Content-Range, Accept-Ranges, Content-Length, ETag'
         response.headers['Access-Control-Allow-Credentials'] = 'true'
         response.headers['Access-Control-Max-Age'] = '86400'
     else:
