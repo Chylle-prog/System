@@ -1515,29 +1515,6 @@ def notify_announcement_applicants(
             except Exception:
                 pass
 
-            # Pre-check SMTP connectivity once with a fast timeout (2.5s)
-            smtp_available = False
-            raw_pass = (
-                os.environ.get('GMAIL_APP_PASSWORD', '').strip() or
-                os.environ.get('SMTP_PASSWORD', '').strip() or
-                os.environ.get('SMTP_PASS', '').strip()
-            )
-            app_password = raw_pass.replace(' ', '') if raw_pass else ''
-            smtp_user = os.environ.get('SMTP_USER', '').strip() or GMAIL_SENDER_EMAIL
-            smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com').strip()
-            smtp_port = int(os.environ.get('SMTP_PORT', '587'))
-
-            if app_password and smtp_user:
-                import smtplib
-                try:
-                    with smtplib.SMTP(smtp_host, smtp_port, timeout=3.0) as test_server:
-                        test_server.starttls()
-                        test_server.login(smtp_user, app_password)
-                        smtp_available = True
-                except Exception as test_err:
-                    log(f"[ANNOUNCEMENT EMAIL] SMTP test failed ({test_err}). Fast-falling back to Gmail OAuth.")
-                    smtp_available = False
-
             def _send_single_announcement(recipient_row):
                 email = recipient_row.get('email_address') if hasattr(recipient_row, 'get') else recipient_row['email_address']
                 first_name = (recipient_row.get('first_name') if hasattr(recipient_row, 'get') else recipient_row['first_name']) or 'Applicant'
@@ -1563,17 +1540,6 @@ ISKOMATS Team
                     msg['Subject'] = f"{notification_title_prefix} from {provider_label}: {title}"
                     msg['From'] = GMAIL_SENDER_EMAIL
                     msg['To'] = email
-
-                    if smtp_available and app_password:
-                        try:
-                            import smtplib
-                            with smtplib.SMTP(smtp_host, smtp_port, timeout=5.0) as s:
-                                s.starttls()
-                                s.login(smtp_user, app_password)
-                                s.send_message(msg)
-                            return True
-                        except Exception:
-                            pass
 
                     return send_email_message(msg)
                 except Exception as row_err:
