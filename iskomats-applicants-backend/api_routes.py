@@ -3872,10 +3872,10 @@ def get_applicants(current_user_id, pro_no, role, program):
             if filters.get('limit'):
                 limit = int(filters.get('limit'))
                 offset = int(filters.get('offset', 0))
-                query += ' ORDER BY a.applicant_no DESC LIMIT %s OFFSET %s'
+                query += ' ORDER BY COALESCE(s.created_at, s.status_updated) DESC NULLS LAST, a.applicant_no DESC LIMIT %s OFFSET %s'
                 params.extend([limit, offset])
             else:
-                query += ' ORDER BY a.applicant_no DESC'
+                query += ' ORDER BY COALESCE(s.created_at, s.status_updated) DESC NULLS LAST, a.applicant_no DESC'
 
             cursor.execute(query, params)
             applicants = cursor.fetchall()

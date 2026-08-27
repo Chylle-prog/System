@@ -1234,13 +1234,30 @@ export default function ScholarshipDashboard({
     }
   };
 
+  const getApplicantSubmissionTime = (applicant) => {
+    if (!applicant) return 0;
+    const rawDate = applicant.dateApplied || applicant.createdAt || applicant.status_created_at || applicant.created_at || applicant.status_updated || applicant.submissionDate || applicant.date || applicant.time_added;
+    if (rawDate) {
+      const time = new Date(rawDate).getTime();
+      if (!isNaN(time) && time > 0) return time;
+    }
+    return Number(applicant.applicant_no || applicant.id || applicant.applicantNo || 0);
+  };
+
+  const compareApplicantsByLatestSubmission = (a, b) => {
+    const timeA = getApplicantSubmissionTime(a);
+    const timeB = getApplicantSubmissionTime(b);
+    if (timeA !== timeB) {
+      return timeB - timeA; // Latest submitted applicant first
+    }
+    const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
+    const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
+    return idB - idA;
+  };
+
   const sortApplicants = (list) => {
     if (!sortConfig.column || !sortConfig.direction) {
-      return [...list].sort((a, b) => {
-        const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
-        const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
-        return idB - idA;
-      });
+      return [...list].sort(compareApplicantsByLatestSubmission);
     }
 
     return [...list].sort((a, b) => {
@@ -1282,10 +1299,8 @@ export default function ScholarshipDashboard({
           valB = String(b.mobileNumber || b.phone || (b.studentContact && b.studentContact.phone) || '').trim().toLowerCase();
         }
       } else if (sortConfig.column === 'createdAt' || sortConfig.column === 'date' || sortConfig.column === 'dateApplied') {
-        valA = new Date(a.createdAt || a.dateApplied || a.status_created_at || a.created_at || 0).getTime();
-        valB = new Date(b.createdAt || b.dateApplied || b.status_created_at || b.created_at || 0).getTime();
-        if (isNaN(valA)) valA = 0;
-        if (isNaN(valB)) valB = 0;
+        valA = getApplicantSubmissionTime(a);
+        valB = getApplicantSubmissionTime(b);
       }
 
       if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -1354,21 +1369,17 @@ export default function ScholarshipDashboard({
       });
 
       const uniqueApplicants = Array.from(applicantMap.values());
-      // Sort applicants on load by applicant ID descending (most recent first)
-      const sortedById = uniqueApplicants.sort((a, b) => {
-        const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
-        const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
-        return idB - idA;
-      });
+      // Sort applicants on load by latest application submission timestamp descending (most recent first)
+      const sortedByLatest = uniqueApplicants.sort(compareApplicantsByLatestSubmission);
       const historicalData = calculateHistoricalData(allApplicantsRaw);
 
       setData(prev => ({
         ...prev,
-        applicants: sortedById.filter(a => a.status === 'Pending'),
-        accepted: sortedById.filter(a => a.status === 'Accepted'),
-        rejected: sortedById.filter(a => a.status === 'Rejected'),
-        declined: sortedById.filter(a => a.status === 'Declined' || a.status === 'Rejected'),
-        cancelled: sortedById.filter(a => a.status === 'Cancelled'),
+        applicants: sortedByLatest.filter(a => a.status === 'Pending'),
+        accepted: sortedByLatest.filter(a => a.status === 'Accepted'),
+        rejected: sortedByLatest.filter(a => a.status === 'Rejected'),
+        declined: sortedByLatest.filter(a => a.status === 'Declined' || a.status === 'Rejected'),
+        cancelled: sortedByLatest.filter(a => a.status === 'Cancelled'),
         historicalData
       }));
     } catch (error) {
@@ -4707,6 +4718,9 @@ export default function ScholarshipDashboard({
           } else if (sortConfig.column === 'contactAddress') {
             valA = String(`${getApplicantAddressDisplay(a)} ${a.mobileNumber || ''}`).toLowerCase();
             valB = String(`${getApplicantAddressDisplay(b)} ${b.mobileNumber || ''}`).toLowerCase();
+          } else if (sortConfig.column === 'createdAt' || sortConfig.column === 'date' || sortConfig.column === 'dateApplied') {
+            valA = getApplicantSubmissionTime(a);
+            valB = getApplicantSubmissionTime(b);
           } else {
             valA = String(a[sortConfig.column] || '').toLowerCase();
             valB = String(b[sortConfig.column] || '').toLowerCase();
@@ -4730,9 +4744,7 @@ export default function ScholarshipDashboard({
           if (scoreB !== scoreA) return scoreB - scoreA;
         }
 
-        const idA = Number(a.applicant_no || a.id || a.applicantNo || 0);
-        const idB = Number(b.applicant_no || b.id || b.applicantNo || 0);
-        return idB - idA;
+        return compareApplicantsByLatestSubmission(a, b);
       });
     };
 

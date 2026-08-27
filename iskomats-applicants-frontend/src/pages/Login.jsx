@@ -18,6 +18,9 @@ const Login = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false);
   const [showEmailAlreadyRegisteredOverlay, setShowEmailAlreadyRegisteredOverlay] = useState(false);
   const [showSuspensionModal, setShowSuspensionModal] = useState(false);
   const [profilePicture, setProfilePicture] = useState(null);
@@ -745,7 +748,7 @@ const Login = () => {
         .input-wrapper input {
           width: 100%;
           box-sizing: border-box;
-          padding: 0.85rem 1.2rem 0.85rem 2.75rem;
+          padding: 0.85rem 2.85rem 0.85rem 2.75rem;
           border: 1px solid rgba(255, 255, 255, 0.2);
           border-radius: 30px;
           font-size: 0.95rem;
@@ -754,6 +757,45 @@ const Login = () => {
           transition: var(--transition);
           font-family: 'Inter', sans-serif;
           font-weight: 500;
+        }
+
+        .password-toggle-btn {
+          position: absolute;
+          right: 1rem;
+          top: 50%;
+          transform: translateY(-50%);
+          background: transparent;
+          border: none;
+          padding: 4px;
+          margin: 0;
+          cursor: pointer;
+          color: rgba(18, 24, 38, 0.55);
+          font-size: 0.95rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 3;
+          transition: all 0.2s ease;
+          border-radius: 50%;
+          width: 28px;
+          height: 28px;
+        }
+
+        .password-toggle-btn:hover {
+          color: var(--primary, #4F0D00);
+          background: rgba(255, 255, 255, 0.4);
+        }
+
+        .password-toggle-btn i {
+          position: static !important;
+          left: auto !important;
+          top: auto !important;
+          transform: none !important;
+          pointer-events: auto !important;
+          color: inherit !important;
+          font-size: 0.95rem !important;
+          width: auto !important;
+          height: auto !important;
         }
 
         .input-wrapper input::placeholder {
@@ -1218,7 +1260,21 @@ const Login = () => {
                   <label>Password</label>
                   <div className="input-wrapper">
                     <i className="fas fa-lock"></i>
-                    <input type="password" name="password" placeholder="••••••••" required />
+                    <input 
+                      type={showPassword ? "text" : "password"} 
+                      name="password" 
+                      placeholder="••••••••" 
+                      required 
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowPassword(prev => !prev)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      tabIndex="-1"
+                    >
+                      <i className={showPassword ? "fas fa-eye-slash" : "fas fa-eye"}></i>
+                    </button>
                   </div>
                 </div>
                 <button type="submit" className="submit-btn" disabled={isLoginLoading}>
@@ -1266,7 +1322,21 @@ const Login = () => {
                   <label>Password</label>
                   <div className="input-wrapper">
                     <i className="fas fa-lock"></i>
-                    <input type="password" name="password" placeholder="Min. 8 characters" required />
+                    <input 
+                      type={showRegisterPassword ? "text" : "password"} 
+                      name="password" 
+                      placeholder="Min. 8 characters" 
+                      required 
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowRegisterPassword(prev => !prev)}
+                      aria-label={showRegisterPassword ? "Hide password" : "Show password"}
+                      tabIndex="-1"
+                    >
+                      <i className={showRegisterPassword ? "fas fa-eye-slash" : "fas fa-eye"}></i>
+                    </button>
                   </div>
                   <small style={{ color: 'var(--text-soft)', fontSize: '0.85rem', marginTop: '0.25rem', display: 'block' }}>
                     Password must be at least 8 characters long
@@ -1276,7 +1346,21 @@ const Login = () => {
                   <label>Confirm password</label>
                   <div className="input-wrapper">
                     <i className="fas fa-lock"></i>
-                    <input type="password" name="confirmPassword" placeholder="••••••••" required />
+                    <input 
+                      type={showRegisterConfirmPassword ? "text" : "password"} 
+                      name="confirmPassword" 
+                      placeholder="••••••••" 
+                      required 
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowRegisterConfirmPassword(prev => !prev)}
+                      aria-label={showRegisterConfirmPassword ? "Hide password" : "Show password"}
+                      tabIndex="-1"
+                    >
+                      <i className={showRegisterConfirmPassword ? "fas fa-eye-slash" : "fas fa-eye"}></i>
+                    </button>
                   </div>
                 </div>
                 <button type="submit" className="submit-btn">Create account</button>

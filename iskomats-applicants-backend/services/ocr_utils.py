@@ -180,6 +180,90 @@ def _run_tesseract_fallback(image_input):
         logger.warning(f"[TESSERACT FALLBACK EXCEPTION] {te}")
         return ""
 
+_GCP_VISION_CLIENT = None
+_GCP_VISION_LOCK = threading.Lock()
+_GCP_VISION_INIT_TRIED = False
+
+def _get_google_vision_client(debug_msg=None):
+    """Retrieve or lazily initialize the singleton Google Cloud Vision client."""
+    global _GCP_VISION_CLIENT, _GCP_VISION_INIT_TRIED
+    if _GCP_VISION_CLIENT is not None:
+        if debug_msg is not None:
+            debug_msg.append("Reusing cached Google Cloud Vision client")
+        return _GCP_VISION_CLIENT
+
+    with _GCP_VISION_LOCK:
+        if _GCP_VISION_CLIENT is not None:
+            return _GCP_VISION_CLIENT
+
+        try:
+            from google.cloud import vision
+            from google.oauth2 import service_account
+        except Exception as imp_err:
+            if debug_msg is not None:
+                debug_msg.append(f"Import error: {imp_err}")
+            logger.warning(f"[GOOGLE CLOUD VISION] Import error: {imp_err}")
+            return None
+
+        client = None
+
+        # Priority 1: Direct JSON in environment variable (Render / Cloud environment)
+        if "GOOGLE_CLOUD_VISION_KEY_JSON" in os.environ:
+            try:
+                raw_json_str = os.environ["GOOGLE_CLOUD_VISION_KEY_JSON"].strip()
+                if debug_msg is not None:
+                    debug_msg.append(f"Found GOOGLE_CLOUD_VISION_KEY_JSON (len={len(raw_json_str)})")
+                key_data = json.loads(raw_json_str)
+                if isinstance(key_data, dict) and "private_key" in key_data:
+                    if "\\n" in key_data["private_key"] and "\n" not in key_data["private_key"]:
+                        key_data["private_key"] = key_data["private_key"].replace("\\n", "\n")
+                credentials = service_account.Credentials.from_service_account_info(key_data)
+                try:
+                    client = vision.ImageAnnotatorClient(credentials=credentials, transport='rest')  # type: ignore
+                except Exception:
+                    client = vision.ImageAnnotatorClient(credentials=credentials)  # type: ignore
+                if debug_msg is not None:
+                    debug_msg.append("Client created from GOOGLE_CLOUD_VISION_KEY_JSON (rest transport)")
+            except Exception as json_e:
+                if debug_msg is not None:
+                    debug_msg.append(f"JSON key parse error: {json_e}")
+                logger.warning(f"[GOOGLE CLOUD VISION] Failed initializing from GOOGLE_CLOUD_VISION_KEY_JSON: {json_e}")
+        else:
+            if debug_msg is not None:
+                debug_msg.append("GOOGLE_CLOUD_VISION_KEY_JSON not in os.environ")
+
+        # Priority 2: File path in GOOGLE_APPLICATION_CREDENTIALS or candidate paths
+        if client is None:
+            if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ or not os.path.exists(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")):
+                base_dir = os.path.dirname(__file__)
+                candidate_paths = [
+                    os.path.join(base_dir, "gcp-vision-key.json"),
+                    os.path.join(os.path.dirname(base_dir), "gcp-vision-key.json"),
+                    "/etc/secrets/gcp-vision-key.json",
+                    "gcp-vision-key.json"
+                ]
+                for cp in candidate_paths:
+                    if os.path.exists(cp):
+                        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.abspath(cp)
+                        if debug_msg is not None:
+                            debug_msg.append(f"Found candidate key file: {cp}")
+                        break
+            try:
+                try:
+                    client = vision.ImageAnnotatorClient(transport='rest')  # type: ignore
+                except Exception:
+                    client = vision.ImageAnnotatorClient()  # type: ignore
+                if debug_msg is not None:
+                    debug_msg.append("Client created from default GOOGLE_APPLICATION_CREDENTIALS")
+            except Exception as client_e:
+                if debug_msg is not None:
+                    debug_msg.append(f"Default client init error: {client_e}")
+                logger.warning(f"[GOOGLE CLOUD VISION] Failed default client initialization: {client_e}")
+
+        _GCP_VISION_CLIENT = client
+        _GCP_VISION_INIT_TRIED = True
+        return _GCP_VISION_CLIENT
+
 def extract_text_with_google_cloud_vision(image_input, return_debug=False):
     """
     High-Fidelity Document Text Extraction using Google Cloud Vision API (DOCUMENT_TEXT_DETECTION).
@@ -190,63 +274,7 @@ def extract_text_with_google_cloud_vision(image_input, return_debug=False):
         return ("", "image_input is None") if return_debug else ""
 
     debug_msg = []
-
-    try:
-        from google.cloud import vision
-        from google.oauth2 import service_account
-    except Exception as imp_err:
-        debug_msg.append(f"Import error: {imp_err}")
-        logger.warning(f"[GOOGLE CLOUD VISION] Import error: {imp_err}")
-        res = _run_tesseract_fallback(image_input)
-        return (res, " | ".join(debug_msg)) if return_debug else res
-
-    client = None
-
-    # Priority 1: Direct JSON in environment variable (Render / Cloud environment)
-    if "GOOGLE_CLOUD_VISION_KEY_JSON" in os.environ:
-        try:
-            raw_json_str = os.environ["GOOGLE_CLOUD_VISION_KEY_JSON"].strip()
-            debug_msg.append(f"Found GOOGLE_CLOUD_VISION_KEY_JSON (len={len(raw_json_str)})")
-            key_data = json.loads(raw_json_str)
-            if isinstance(key_data, dict) and "private_key" in key_data:
-                if "\\n" in key_data["private_key"] and "\n" not in key_data["private_key"]:
-                    key_data["private_key"] = key_data["private_key"].replace("\\n", "\n")
-            credentials = service_account.Credentials.from_service_account_info(key_data)
-            try:
-                client = vision.ImageAnnotatorClient(credentials=credentials, transport='rest')  # type: ignore
-            except Exception:
-                client = vision.ImageAnnotatorClient(credentials=credentials)  # type: ignore
-            debug_msg.append("Client created from GOOGLE_CLOUD_VISION_KEY_JSON (rest transport)")
-        except Exception as json_e:
-            debug_msg.append(f"JSON key parse error: {json_e}")
-            logger.warning(f"[GOOGLE CLOUD VISION] Failed initializing from GOOGLE_CLOUD_VISION_KEY_JSON: {json_e}")
-    else:
-        debug_msg.append("GOOGLE_CLOUD_VISION_KEY_JSON not in os.environ")
-
-    # Priority 2: File path in GOOGLE_APPLICATION_CREDENTIALS or candidate paths
-    if client is None:
-        if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ or not os.path.exists(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")):
-            base_dir = os.path.dirname(__file__)
-            candidate_paths = [
-                os.path.join(base_dir, "gcp-vision-key.json"),
-                os.path.join(os.path.dirname(base_dir), "gcp-vision-key.json"),
-                "/etc/secrets/gcp-vision-key.json",
-                "gcp-vision-key.json"
-            ]
-            for cp in candidate_paths:
-                if os.path.exists(cp):
-                    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.abspath(cp)
-                    debug_msg.append(f"Found candidate key file: {cp}")
-                    break
-        try:
-            try:
-                client = vision.ImageAnnotatorClient(transport='rest')  # type: ignore
-            except Exception:
-                client = vision.ImageAnnotatorClient()  # type: ignore
-            debug_msg.append("Client created from default GOOGLE_APPLICATION_CREDENTIALS")
-        except Exception as client_e:
-            debug_msg.append(f"Default client init error: {client_e}")
-            logger.warning(f"[GOOGLE CLOUD VISION] Failed default client initialization: {client_e}")
+    client = _get_google_vision_client(debug_msg)
 
     if client is None:
         debug_msg.append("No valid credentials found, running tesseract fallback")
