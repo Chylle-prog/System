@@ -25,24 +25,6 @@ const VerifyEmail = () => {
     localStorage.removeItem('registrationPassword');
   };
 
-  useEffect(() => {
-    // Add Font Awesome link
-    const fontAwesomeLink = document.createElement('link');
-    fontAwesomeLink.rel = 'stylesheet';
-    fontAwesomeLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css';
-    document.head.appendChild(fontAwesomeLink);
-
-    // Add Google Fonts link
-    const googleFontsSheet = document.createElement('link');
-    googleFontsSheet.rel = 'stylesheet';
-    googleFontsSheet.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap';
-    document.head.appendChild(googleFontsSheet);
-
-    return () => {
-      document.head.removeChild(fontAwesomeLink);
-      document.head.removeChild(googleFontsSheet);
-    };
-  }, []);
 
   useEffect(() => {
     // Check if there's an email in localStorage (from registration)

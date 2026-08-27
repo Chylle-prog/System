@@ -23,29 +23,6 @@ const ResetPassword = () => {
 
   const token = useMemo(() => routeToken || new URLSearchParams(window.location.search).get('token') || '', [routeToken]);
 
-  useEffect(() => {
-    // Add Font Awesome link
-    const fontAwesomeLink = document.createElement('link');
-    fontAwesomeLink.rel = 'stylesheet';
-    fontAwesomeLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css';
-    document.head.appendChild(fontAwesomeLink);
-
-    const googleFontsLink = document.createElement('link');
-    googleFontsLink.rel = 'stylesheet';
-    googleFontsLink.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap';
-    document.head.appendChild(googleFontsLink);
-
-    // Add Google Fonts link
-    const googleFontsSheet = document.createElement('link');
-    googleFontsSheet.rel = 'stylesheet';
-    googleFontsSheet.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap';
-    document.head.appendChild(googleFontsSheet);
-
-    return () => {
-      document.head.removeChild(fontAwesomeLink);
-      document.head.removeChild(googleFontsSheet);
-    };
-  }, []);
 
   const calculateStrength = (pass) => {
     let score = 0;

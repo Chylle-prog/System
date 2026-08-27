@@ -6338,27 +6338,6 @@ const StudentInfo = () => {
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
 
-    const fontAwesomeLink = document.createElement('link');
-    fontAwesomeLink.rel = 'stylesheet';
-    fontAwesomeLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css';
-    document.head.appendChild(fontAwesomeLink);
-
-    const googleFontsLink = document.createElement('link');
-    googleFontsLink.rel = 'preconnect';
-    googleFontsLink.href = 'https://fonts.googleapis.com';
-    document.head.appendChild(googleFontsLink);
-
-    const googleFontsDisplay = document.createElement('link');
-    googleFontsDisplay.rel = 'preconnect';
-    googleFontsDisplay.href = 'https://fonts.gstatic.com';
-    googleFontsDisplay.crossOrigin = 'anonymous';
-    document.head.appendChild(googleFontsDisplay);
-
-    const googleFontsSheet = document.createElement('link');
-    googleFontsSheet.rel = 'stylesheet';
-    googleFontsSheet.href = 'https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap';
-    document.head.appendChild(googleFontsSheet);
-
     const compressImage = (file, maxWidth = 1200, quality = 0.7) => {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -6891,11 +6870,6 @@ const StudentInfo = () => {
     loadProfile();
 
     return () => {
-      document.head.removeChild(fontAwesomeLink);
-      document.head.removeChild(googleFontsLink);
-      document.head.removeChild(googleFontsDisplay);
-      document.head.removeChild(googleFontsSheet);
-
       if (currentStream) {
         currentStream.getTracks().forEach(track => track.stop());
       }

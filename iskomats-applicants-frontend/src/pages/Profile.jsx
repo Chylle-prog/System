@@ -65,29 +65,6 @@ const Profile = () => {
   });
 
   useEffect(() => {
-    // Add Font Awesome link
-    const fontAwesomeLink = document.createElement('link');
-    fontAwesomeLink.rel = 'stylesheet';
-    fontAwesomeLink.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css';
-    document.head.appendChild(fontAwesomeLink);
-
-    // Add Google Fonts link
-    const googleFontsLink = document.createElement('link');
-    googleFontsLink.rel = 'preconnect';
-    googleFontsLink.href = 'https://fonts.googleapis.com';
-    document.head.appendChild(googleFontsLink);
-
-    const googleFontsDisplay = document.createElement('link');
-    googleFontsDisplay.rel = 'preconnect';
-    googleFontsDisplay.href = 'https://fonts.gstatic.com';
-    googleFontsDisplay.crossOrigin = 'anonymous';
-    document.head.appendChild(googleFontsDisplay);
-
-    const googleFontsSheet = document.createElement('link');
-    googleFontsSheet.rel = 'stylesheet';
-    googleFontsSheet.href = 'https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap';
-    document.head.appendChild(googleFontsSheet);
-
     // Load user data from API
     const loadUserProfile = async () => {
       const user = localStorage.getItem('currentUser');
@@ -126,12 +103,6 @@ const Profile = () => {
 
     loadUserProfile();
 
-    return () => {
-      if (document.head.contains(fontAwesomeLink)) document.head.removeChild(fontAwesomeLink);
-      if (document.head.contains(googleFontsLink)) document.head.removeChild(googleFontsLink);
-      if (document.head.contains(googleFontsDisplay)) document.head.removeChild(googleFontsDisplay);
-      if (document.head.contains(googleFontsSheet)) document.head.removeChild(googleFontsSheet);
-    };
   }, [navigate]);
 
   useEffect(() => {
