@@ -430,9 +430,9 @@ const splitFullName = (fullName) => {
 const visionOcrCache = new Map();
 const inFlightOcrPromises = new Map();
 
-// Concurrency limiter to prevent single or multiple users from overwhelming backend CPU/RAM
+// Concurrency limiter configured for optimal throughput
 let activeOcrRequests = 0;
-const MAX_CONCURRENT_OCR = 2;
+const MAX_CONCURRENT_OCR = 6;
 const ocrWaitQueue = [];
 
 const acquireOcrSlot = () => {
@@ -467,7 +467,7 @@ const getOcrCacheKey = (imageInput, resolvedBlob, base64Image) => {
   return null;
 };
 
-const compressImageForOcr = async (blobOrDataUrl, maxDim = 1024, quality = 0.75) => {
+const compressImageForOcr = async (blobOrDataUrl, maxDim = 1024, quality = 0.80) => {
   if (!blobOrDataUrl) return blobOrDataUrl;
   try {
     let srcUrl = null;
@@ -548,7 +548,6 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
   if (!imageInput) return "";
   if (signal?.aborted) return "";
 
-  // Pre-process imageInput safely into resolvedBlob or base64Image before attempting network calls
   let resolvedBlob = null;
   let base64Image = null;
 
@@ -561,11 +560,9 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
         if (blobResp.ok) {
           resolvedBlob = await blobResp.blob();
         } else {
-          console.warn('[GOOGLE CLOUD VISION CLIENT] Blob URL unavailable or revoked:', imageInput);
           return "";
         }
       } catch (blobErr) {
-        console.warn('[GOOGLE CLOUD VISION CLIENT] Unable to read blob URL:', blobErr?.message || blobErr);
         return "";
       }
     } else {
@@ -573,54 +570,48 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
     }
   }
 
-  // 1. Session Cache Check: Prevent duplicate GCP Vision API calls for identical files/frames
+  // 1. Session Cache Check
   const cacheKey = getOcrCacheKey(imageInput, resolvedBlob, base64Image);
   if (cacheKey && visionOcrCache.has(cacheKey)) {
-    console.log(`[GOOGLE CLOUD VISION CLIENT] Cache hit for image (${cacheKey}). Skipping Vision API request.`);
     return visionOcrCache.get(cacheKey);
   }
 
-  // 2. In-flight Request Deduplication: Reuse pending promise if same payload is already being scanned
+  // 2. In-flight Deduplication
   if (cacheKey && inFlightOcrPromises.has(cacheKey)) {
-    console.log(`[GOOGLE CLOUD VISION CLIENT] In-flight request join for (${cacheKey}).`);
     return inFlightOcrPromises.get(cacheKey);
   }
 
   const executionPromise = (async () => {
-    // Acquire slot in global concurrency queue (max 2 concurrent OCR requests per client)
     await acquireOcrSlot();
     try {
       if (signal?.aborted) return "";
 
-      // Compress large image payloads to max 1024px to prevent TCP socket timeouts / ERR_CONNECTION_CLOSED
-      if (resolvedBlob && resolvedBlob.size > 500000) {
-        const compressed = await compressImageForOcr(resolvedBlob, 1024, 0.75);
+      // Compress large payloads to ~1024px for fast upload
+      if (resolvedBlob && resolvedBlob.size > 400000) {
+        const compressed = await compressImageForOcr(resolvedBlob, 1024, 0.80);
         if (compressed instanceof Blob) resolvedBlob = compressed;
-      } else if (base64Image && base64Image.length > 500000) {
-        const compressed = await compressImageForOcr(base64Image, 1024, 0.75);
+      } else if (base64Image && base64Image.length > 400000) {
+        const compressed = await compressImageForOcr(base64Image, 1024, 0.80);
         if (compressed instanceof Blob) {
           resolvedBlob = compressed;
           base64Image = null;
         }
       }
 
-      // Filter backend candidates based on execution environment
+      const primaryOrigin = (API_ORIGIN || '').replace(/\/+$/, '') || window.location.origin;
       const isLocalhost = typeof window !== 'undefined' && 
         (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-      const candidates = [
-        API_ORIGIN,
-        'https://iskomats-backend.onrender.com',
-        ...(isLocalhost ? ['http://localhost:10000', 'http://localhost:10001', 'http://localhost:5000'] : [])
-      ];
-      const originsToTry = candidates.filter((v, i, a) => v && a.indexOf(v) === i);
+      const originsToTry = [
+        primaryOrigin,
+        ...(isLocalhost ? ['http://localhost:10000', 'https://iskomats-backend.onrender.com'] : ['https://iskomats-backend.onrender.com'])
+      ].filter((v, i, a) => v && a.indexOf(v) === i);
 
       for (const origin of originsToTry) {
         if (signal?.aborted) return "";
         const cleanOrigin = origin.replace(/\/+$/, '');
-        const maxRetries = 3;
 
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
           if (signal?.aborted) return "";
           try {
             const token = localStorage.getItem('authToken');
@@ -657,19 +648,16 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
                 if (cacheKey) visionOcrCache.set(cacheKey, text);
                 return text;
               }
-              break; // OK status, empty text -> no need to retry same origin
+              return "";
             } else {
-              console.warn(`[GOOGLE CLOUD VISION CLIENT] Origin ${cleanOrigin} returned HTTP status ${resp.status}`);
-              break; // Server error -> move to next candidate
+              break;
             }
           } catch (err) {
             if (signal?.aborted || err?.name === 'AbortError') {
               return "";
             }
-            console.warn(`[GOOGLE CLOUD VISION CLIENT] Network attempt ${attempt}/${maxRetries} failed on origin (${origin}):`, err?.message || err);
-            if (attempt < maxRetries) {
-              // Render free tier cold-start: wait 2.5s for container boot to complete before retrying
-              await new Promise(r => setTimeout(r, 2500));
+            if (attempt < 2) {
+              await new Promise(r => setTimeout(r, 400));
             }
           }
         }
@@ -3572,25 +3560,24 @@ const StudentInfo = () => {
         };
       };
 
-      // --- RUN GOOGLE CLOUD VISION API OCR ON SEEKED FRAMES SEQUENTIALLY WITH EARLY EXIT ---
+      // --- RUN GOOGLE CLOUD VISION API OCR ON SEEKED FRAMES IN PARALLEL ---
       const accumulatedText = [];
       try {
         if (extractedFrames.length > 0) {
-          for (let i = 0; i < extractedFrames.length; i++) {
-            if (signal?.aborted) break;
-            const { time, canvas } = extractedFrames[i];
-            const frameDataUrl = canvas.toDataURL('image/jpeg', 0.80);
-            const frameText = await performGoogleVisionOcrScan(frameDataUrl, signal);
-            if (frameText && frameText.length >= 3) {
-              accumulatedText.push(`[Frame at ${time.toFixed(1)}s]: "${frameText}"`);
-              // Early exit check: If current accumulated frames already satisfy validation, stop scanning subsequent frames
-              const interimResult = evaluateVideoText(accumulatedText);
-              if (interimResult.valid && interimResult.isMatched) {
-                console.log(`[VIDEO OCR VISION API] Early match confirmed at frame ${i + 1}/${extractedFrames.length}. Skipping remaining frames.`);
-                break;
+          const results = await Promise.all(
+            extractedFrames.map(async ({ time, canvas }) => {
+              if (signal?.aborted) return null;
+              const frameDataUrl = canvas.toDataURL('image/jpeg', 0.80);
+              const frameText = await performGoogleVisionOcrScan(frameDataUrl, signal);
+              if (frameText && frameText.length >= 3) {
+                return `[Frame at ${time.toFixed(1)}s]: "${frameText}"`;
               }
-            }
-          }
+              return null;
+            })
+          );
+          results.forEach(txt => {
+            if (txt) accumulatedText.push(txt);
+          });
         }
       } catch (ocrErr) {
         console.warn('[VIDEO OCR VISION API] Recognition error:', ocrErr);
@@ -4778,7 +4765,6 @@ const StudentInfo = () => {
 
     let progressInterval = null;
     try {
-      visionOcrCache.clear();
       if (!silent) {
         setVerified('verifying');
         setStatus(`Initializing in-browser WebAssembly OCR Engine...`);
