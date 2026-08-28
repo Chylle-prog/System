@@ -3113,7 +3113,6 @@ def update_profile():
             binary_fields = {
                 'profile_picture': 'profile_picture',
                 'id_pic': 'id_pic',  # legacy mapping
-                'face_photo': 'id_pic', # mapping from step 4
                 'signature_data': 'signature_image_data',
                 'schoolID_photo': 'school_id',
                 'id_front': 'id_img_front',
@@ -3507,7 +3506,6 @@ def submit_application():
 
             id_front_bytes = get_doc_bytes('id_front', 'id_img_front') or get_doc_bytes('schoolID_photo', 'schoolID_photo')
             id_back_bytes = get_doc_bytes('id_back', 'id_img_back')
-            face_photo_bytes = get_doc_bytes('face_photo', 'face_photo')
         
             profile_pic_bytes = None
             profile_pic_url = None
@@ -3697,7 +3695,7 @@ def submit_application():
                 'enrollment_certificate_doc': doc_bytes['mayorCOE_photo'],
                 'grades_doc': doc_bytes['mayorGrades_photo'],
                 'indigency_doc': doc_bytes['mayorIndigency_photo'],
-                'id_pic': doc_bytes['mayorValidID_photo'] or face_photo_bytes,
+                'id_pic': doc_bytes['mayorValidID_photo'],
                 'schoolID_photo': doc_bytes['schoolID_photo'],
             }
 

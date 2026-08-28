@@ -6223,11 +6223,6 @@ const StudentInfo = () => {
     }
 
     if (stepNumber === 4) {
-      const faceVal = (formData.face_photo && typeof formData.face_photo === 'string' && formData.face_photo.startsWith('http'))
-        ? formData.face_photo
-        : (photos.face_photo || formData.face_photo);
-      queueSmartUpload('face_photo', faceVal);
-
       const signatureToSave = drawnSignature || signaturePreview;
       if (signatureToSave) {
         queueSmartUpload('signature_data', signatureToSave);
@@ -7335,7 +7330,6 @@ const StudentInfo = () => {
       window.compressImage(file).then(compressedBase64 => {
         setFaceVerificationPreview(compressedBase64);
         setPhotos(prev => ({ ...prev, face_photo: compressedBase64 }));
-        triggerBackgroundUpload('face_photo', compressedBase64);
       });
     }
   };
@@ -7707,10 +7701,10 @@ const StudentInfo = () => {
     if (
       (!schoolIdPhotos.front) ||
       (!schoolIdPhotos.back) ||
-      (!photos.face_photo && !userProfile?.profile_picture)
+      (!idPicturePreview && !photos.profile_picture && !userProfile?.profile_picture)
     ) {
       setIsSubmitting(false);
-      showPromptMessage('Please complete Identity Verification: Upload Front/Back School ID and a Face Photo.');
+      showPromptMessage('Please complete Identity Verification: Upload Front/Back School ID and your 2x2 ID Picture.');
       return;
     }
 
@@ -7756,7 +7750,7 @@ const StudentInfo = () => {
       submissionData.append('streetBarangay', fullAddress);
 
       const imageKeys = [
-        'profile_picture', 'id_front', 'id_back', 'face_photo',
+        'profile_picture', 'id_front', 'id_back',
         'mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo',
         'applicantSignatureName', 'signature_data', 'barangay', 'streetBarangay'
       ];
@@ -7803,7 +7797,6 @@ const StudentInfo = () => {
 
       appendSmartDocPhoto('id_front', [photos.id_front, schoolIdPhotos.front, formData.schoolIdFront, formData.id_front]);
       appendSmartDocPhoto('id_back', [photos.id_back, schoolIdPhotos.back, formData.schoolIdBack, formData.id_back]);
-      appendSmartDocPhoto('face_photo', [photos.face_photo, formData.face_photo, formData.id_pic]);
 
       const finalSignature = signaturePreview || drawnSignature || formData.applicantSignatureName;
       if (finalSignature) {
