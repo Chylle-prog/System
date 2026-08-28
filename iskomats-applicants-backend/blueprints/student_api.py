@@ -947,12 +947,25 @@ def get_matching_applicant_ids_by_identity(cursor, applicant, source_data=None):
     if not identity:
         return [current_applicant_no], False, None
 
-    cursor.execute(
-        """
-        SELECT applicant_no, first_name, middle_name, last_name, father_name, mother_name
-        FROM applicants
-        """
-    )
+    last_name = identity.get('last_name') or ''
+    if last_name:
+        cursor.execute(
+            """
+            SELECT applicant_no, first_name, middle_name, last_name, father_name, mother_name
+            FROM applicants
+            WHERE LOWER(TRIM(last_name)) = LOWER(TRIM(%s))
+            """,
+            (last_name,)
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT applicant_no, first_name, middle_name, last_name, father_name, mother_name
+            FROM applicants
+            WHERE applicant_no = %s
+            """,
+            (current_applicant_no,)
+        )
     rows = cursor.fetchall()
 
     matching_ids = {current_applicant_no}
@@ -4270,7 +4283,7 @@ def get_announcements():
             if primary_key_column and foreign_key_column:
                 cur.execute(f"""
                     SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
-                           ai.{primary_key_column} AS image_id, ai.img AS announcement_image_data
+                           ai.{primary_key_column} AS image_id, (CASE WHEN ai.img LIKE 'http%' THEN ai.img ELSE NULL END) AS announcement_image_data
                     FROM announcements a
                     LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
                     LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}

@@ -147,7 +147,7 @@ def convert_blob_to_media_array(blob, name="document"):
         print(f"ERROR converting blob: {e}", file=sys.stderr)
         return []
 
-def get_applicant_media_metadata(applicant_no, column_name, has_data, data_value=None, name="document"):
+def get_applicant_media_metadata(applicant_no, column_name, has_data, data_value=None, name="document", app_doc_no=None, scholarship_no=None):
     """Return the media metadata with a URL instead of embedded base64 data for performance.
     
     For image/document columns (BYTEA):
@@ -165,11 +165,17 @@ def get_applicant_media_metadata(applicant_no, column_name, has_data, data_value
     is_video = column_name.endswith('_vid_url') if column_name else False
     media_type = 'video/mp4' if is_video else 'image/jpeg'
     
+    url_params = {'applicant_no': applicant_no, 'column_name': column_name, '_external': True}
+    if app_doc_no is not None and str(app_doc_no).strip() not in ('', 'None', 'null', 'undefined'):
+        url_params['app_doc_no'] = app_doc_no
+    if scholarship_no is not None and str(scholarship_no).strip() not in ('', 'None', 'null', 'undefined'):
+        url_params['scholarship_no'] = scholarship_no
+
     # ALWAYS use the proxy endpoint if encryption is available to ensure decryption
     # This allows the server to fetch from Supabase (even if it's a URL) and decrypt before serving.
     if _fernet:
         return [{
-            'src': url_for('admin_api.get_applicant_image', applicant_no=applicant_no, column_name=column_name, _external=True),
+            'src': url_for('admin_api.get_applicant_image', **url_params),
             'type': media_type,
             'name': f"{name} (Secure Proxy)"
         }]
@@ -184,7 +190,7 @@ def get_applicant_media_metadata(applicant_no, column_name, has_data, data_value
     elif not is_video:
         # Fallback for unencrypted images
         return [{
-            'src': url_for('admin_api.get_applicant_image', applicant_no=applicant_no, column_name=column_name, _external=True),
+            'src': url_for('admin_api.get_applicant_image', **url_params),
             'type': media_type,
             'name': f"{name} (Lazy Loaded)"
         }]
@@ -534,6 +540,23 @@ def ensure_schema_integrity(cursor):
         if not cursor.fetchone():
             print(f"[MIGRATION] Adding {col} column to applicants table")
             cursor.execute(f"ALTER TABLE applicants ADD COLUMN {col} {col_type}")
+
+    # 4. Critical performance indexes for high-speed queries
+    indexes_to_ensure = [
+        ("idx_notifications_user_no_created", "CREATE INDEX IF NOT EXISTS idx_notifications_user_no_created ON notifications(user_no, created_at DESC)"),
+        ("idx_notifications_user_unread", "CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_no) WHERE is_read = FALSE"),
+        ("idx_notifications_created_at", "CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC)"),
+        ("idx_applicant_documents_applicant_no", "CREATE INDEX IF NOT EXISTS idx_applicant_documents_applicant_no ON applicant_documents(applicant_no)"),
+        ("idx_applicants_names", "CREATE INDEX IF NOT EXISTS idx_applicants_names ON applicants(LOWER(TRIM(last_name)), LOWER(TRIM(first_name)))"),
+        ("idx_applicants_verification_ts", "CREATE INDEX IF NOT EXISTS idx_applicants_verification_ts ON applicants(verification_timestamp DESC)"),
+        ("idx_applicant_status_app_schol", "CREATE INDEX IF NOT EXISTS idx_applicant_status_app_schol ON applicant_status(applicant_no, scholarship_no)"),
+        ("idx_applicant_status_schol_status", "CREATE INDEX IF NOT EXISTS idx_applicant_status_schol_status ON applicant_status(scholarship_no, is_accepted)")
+    ]
+    for idx_name, idx_sql in indexes_to_ensure:
+        try:
+            cursor.execute(idx_sql)
+        except Exception as _e:
+            print(f"[MIGRATION WARNING] Index {idx_name} creation skipped: {_e}")
 
     _SCHEMA_INITIALIZED = True
 
@@ -3934,6 +3957,7 @@ def get_applicants(current_user_id, pro_no, role, program):
                        a.father_phone_no as "fatherPhone",
                        CONCAT_WS(', ', NULLIF(a.street_brgy, ''), NULLIF(a.town_city_municipality, ''), NULLIF(a.province, ''), NULLIF(a.zip_code, '')) as "schoolAddress",
                        s.is_accepted, s.scholarship_no as "scholarshipNo", p.provider_name as program,
+                       s.app_doc_no as "appDocNo", s.app_doc_no as "app_doc_no",
                        e.email_address as email,
                        CASE 
                            WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
@@ -3987,12 +4011,44 @@ def get_applicants(current_user_id, pro_no, role, program):
             if filters.get('search'):
                 query += ' AND (a.first_name ILIKE %s OR a.last_name ILIKE %s OR e.email_address ILIKE %s)'
                 search_term = f"%{filters['search']}%"
-                params.extend([search_term, search_term, search_term])
-            
-            # Add Pagination if explicitly requested by client
+            status_filter = filters.get('status')
+            if status_filter and status_filter.lower() != 'all':
+                sf = status_filter.lower()
+                if sf == 'pending':
+                    query += " AND (s.is_accepted IS NULL OR s.is_accepted = 'Pending')"
+                elif sf == 'accepted':
+                    query += " AND s.is_accepted = 'Accepted'"
+                elif sf in ('declined', 'rejected'):
+                    query += " AND s.is_accepted IN ('Declined', 'Rejected')"
+                elif sf == 'cancelled':
+                    query += " AND s.is_accepted = 'Cancelled'"
+
+            # Add Pagination if requested
+            total_count = None
             if filters.get('limit'):
-                limit = int(filters.get('limit'))
-                offset = int(filters.get('offset', 0))
+                limit = max(1, int(filters.get('limit')))
+                offset = max(0, int(filters.get('offset', 0)))
+                if 'page' in filters and 'offset' not in filters:
+                    page = max(1, int(filters.get('page')))
+                    offset = (page - 1) * limit
+                else:
+                    page = (offset // limit) + 1
+
+                # Compute total matching count
+                where_clause_part = query.split('WHERE 1=1', 1)[1] if 'WHERE 1=1' in query else ''
+                count_query = f"""
+                    SELECT COUNT(*) AS total
+                    FROM applicants a
+                    LEFT JOIN applicant_status s ON a.applicant_no = s.applicant_no
+                    LEFT JOIN scholarships esc ON s.scholarship_no = esc.req_no
+                    LEFT JOIN scholarship_providers p ON esc.pro_no = p.pro_no
+                    LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
+                    WHERE 1=1 {where_clause_part}
+                """
+                cursor.execute(count_query, params)
+                total_count_row = cursor.fetchone()
+                total_count = total_count_row['total'] if total_count_row else 0
+
                 query += ' ORDER BY COALESCE(s.created_at, s.status_updated) DESC NULLS LAST, a.applicant_no DESC LIMIT %s OFFSET %s'
                 params.extend([limit, offset])
             else:
@@ -4036,22 +4092,33 @@ def get_applicants(current_user_id, pro_no, role, program):
             try:
                 a = normalize_json_object(dict(row))
                 app_no = a['id'] # 'id' is aliased from 'applicant_no'
+                row_doc_no = a.get('app_doc_no') or a.get('appDocNo')
+                row_scholarship_no = a.get('scholarshipNo') or a.get('scholarship_no')
 
-                # Manage signature as a lazy-loaded URL too
+                # Manage signature as a lazy-loaded URL with application snapshot parameters
                 if a.get('has_signature'):
-                    a['signature'] = url_for('admin_api.get_applicant_image', applicant_no=app_no, column_name='signature_image_data', _external=True)
+                    sig_params = {'applicant_no': app_no, 'column_name': 'signature_image_data', '_external': True}
+                    if row_doc_no: sig_params['app_doc_no'] = row_doc_no
+                    if row_scholarship_no: sig_params['scholarship_no'] = row_scholarship_no
+                    a['signature'] = url_for('admin_api.get_applicant_image', **sig_params)
                 else:
                     a['signature'] = None
 
                 # Proxy profile picture too
                 if a.get('has_profile_picture'):
-                    a['profile_picture'] = url_for('admin_api.get_applicant_image', applicant_no=app_no, column_name='profile_picture', _external=True)
+                    pic_params = {'applicant_no': app_no, 'column_name': 'profile_picture', '_external': True}
+                    if row_doc_no: pic_params['app_doc_no'] = row_doc_no
+                    if row_scholarship_no: pic_params['scholarship_no'] = row_scholarship_no
+                    a['profile_picture'] = url_for('admin_api.get_applicant_image', **pic_params)
                 else:
                     a['profile_picture'] = None
 
                 # Proxy face verification photo (id_pic)
                 if a.get('has_id_pic'):
-                    a['id_pic'] = url_for('admin_api.get_applicant_image', applicant_no=app_no, column_name='id_pic', _external=True)
+                    id_pic_params = {'applicant_no': app_no, 'column_name': 'id_pic', '_external': True}
+                    if row_doc_no: id_pic_params['app_doc_no'] = row_doc_no
+                    if row_scholarship_no: id_pic_params['scholarship_no'] = row_scholarship_no
+                    a['id_pic'] = url_for('admin_api.get_applicant_image', **id_pic_params)
                 else:
                     a['id_pic'] = None
                 
@@ -4062,40 +4129,41 @@ def get_applicants(current_user_id, pro_no, role, program):
                     except (ValueError, TypeError):
                         pass
                  
-                # Convert document blobs to media arrays (Optimized: use URLs)
+                # Convert document blobs to media arrays (Optimized: use application snapshot-specific URLs)
                 # Include both image files and video files for each document type
-                a['indigencyFiles'] = get_applicant_media_metadata(app_no, 'indigency_doc', a.get('has_indigency_doc'), None, "Indigency Proof")
+                a['indigencyFiles'] = get_applicant_media_metadata(app_no, 'indigency_doc', a.get('has_indigency_doc'), None, "Indigency Proof", app_doc_no=row_doc_no, scholarship_no=row_scholarship_no)
                 if a.get('indigency_vid_url'):
-                    a['indigencyFiles'].extend(get_applicant_media_metadata(app_no, 'indigency_vid_url', True, a.get('indigency_vid_url'), "Indigency Video"))
+                    a['indigencyFiles'].extend(get_applicant_media_metadata(app_no, 'indigency_vid_url', True, a.get('indigency_vid_url'), "Indigency Video", app_doc_no=row_doc_no, scholarship_no=row_scholarship_no))
                 
-                a['certificateFiles'] = get_applicant_media_metadata(app_no, 'enrollment_certificate_doc', a.get('has_enrollment_certificate_doc'), None, "Enrollment Certificate")
+                a['certificateFiles'] = get_applicant_media_metadata(app_no, 'enrollment_certificate_doc', a.get('has_enrollment_certificate_doc'), None, "Enrollment Certificate", app_doc_no=row_doc_no, scholarship_no=row_scholarship_no)
                 if a.get('enrollment_certificate_vid_url'):
-                    a['certificateFiles'].extend(get_applicant_media_metadata(app_no, 'enrollment_certificate_vid_url', True, a.get('enrollment_certificate_vid_url'), "Enrollment Certificate Video"))
+                    a['certificateFiles'].extend(get_applicant_media_metadata(app_no, 'enrollment_certificate_vid_url', True, a.get('enrollment_certificate_vid_url'), "Enrollment Certificate Video", app_doc_no=row_doc_no, scholarship_no=row_scholarship_no))
                 
-                a['gradesFiles'] = get_applicant_media_metadata(app_no, 'grades_doc', a.get('has_grades_doc'), None, "Grades / Transcript")
+                a['gradesFiles'] = get_applicant_media_metadata(app_no, 'grades_doc', a.get('has_grades_doc'), None, "Grades / Transcript", app_doc_no=row_doc_no, scholarship_no=row_scholarship_no)
                 if a.get('grades_vid_url'):
-                    a['gradesFiles'].extend(get_applicant_media_metadata(app_no, 'grades_vid_url', True, a.get('grades_vid_url'), "Grades Video"))
+                    a['gradesFiles'].extend(get_applicant_media_metadata(app_no, 'grades_vid_url', True, a.get('grades_vid_url'), "Grades Video", app_doc_no=row_doc_no, scholarship_no=row_scholarship_no))
                 
                 # Include ID Front and Back images and videos in idFiles
                 id_files = []
                 if a.get('has_id_img_front'):
-                    id_files.extend(get_applicant_media_metadata(app_no, 'id_img_front', True, None, "ID Front"))
+                    id_files.extend(get_applicant_media_metadata(app_no, 'id_img_front', True, None, "ID Front", app_doc_no=row_doc_no, scholarship_no=row_scholarship_no))
 
                 has_front_vid = a.get('has_schoolid_front_vid') or bool(a.get('schoolid_front_vid_url'))
                 has_id_vid = a.get('has_id_vid') or bool(a.get('id_vid_url'))
                 if has_front_vid:
-                    id_files.extend(get_applicant_media_metadata(app_no, 'schoolid_front_vid_url', True, a.get('schoolid_front_vid_url'), "ID Front Video"))
+                    id_files.extend(get_applicant_media_metadata(app_no, 'schoolid_front_vid_url', True, a.get('schoolid_front_vid_url'), "ID Front Video", app_doc_no=row_doc_no, scholarship_no=row_scholarship_no))
                 elif has_id_vid:
-                    id_files.extend(get_applicant_media_metadata(app_no, 'id_vid_url', True, a.get('id_vid_url'), "ID Video"))
+                    id_files.extend(get_applicant_media_metadata(app_no, 'id_vid_url', True, a.get('id_vid_url'), "ID Video", app_doc_no=row_doc_no, scholarship_no=row_scholarship_no))
 
                 if a.get('has_id_img_back'):
-                    id_files.extend(get_applicant_media_metadata(app_no, 'id_img_back', True, None, "ID Back"))
+                    id_files.extend(get_applicant_media_metadata(app_no, 'id_img_back', True, None, "ID Back", app_doc_no=row_doc_no, scholarship_no=row_scholarship_no))
 
                 has_back_vid = a.get('has_schoolid_back_vid') or bool(a.get('schoolid_back_vid_url'))
                 if has_back_vid:
-                    id_files.extend(get_applicant_media_metadata(app_no, 'schoolid_back_vid_url', True, a.get('schoolid_back_vid_url'), "ID Back Video"))
+                    id_files.extend(get_applicant_media_metadata(app_no, 'schoolid_back_vid_url', True, a.get('schoolid_back_vid_url'), "ID Back Video", app_doc_no=row_doc_no, scholarship_no=row_scholarship_no))
 
                 a['idFiles'] = id_files
+
 
                 # Fill in ID# with school_id_no
                 a['idNumber'] = a.get('school_id_no') or a.get('schoolId')
@@ -4127,8 +4195,23 @@ def get_applicants(current_user_id, pro_no, role, program):
                 print(f"[APPLICANTS API] Skipping malformed applicant row {app_identifier or 'unknown'} for program='{program}': {row_error}", flush=True)
                 traceback.print_exc()
         
-        print(f"[APPLICANTS API] Returning {len(result)} normalized applicant rows for program='{program}'", flush=True)
-        return jsonify({'success': True, 'applicants': result}), 200
+        total_resp = total_count if total_count is not None else len(result)
+        response_payload = {
+            'success': True,
+            'applicants': result,
+            'total': total_resp
+        }
+        if filters.get('limit'):
+            limit_val = max(1, int(filters.get('limit')))
+            offset_val = max(0, int(filters.get('offset', 0)))
+            page_val = max(1, int(filters.get('page'))) if 'page' in filters else (offset_val // limit_val) + 1
+            response_payload['limit'] = limit_val
+            response_payload['offset'] = offset_val
+            response_payload['page'] = page_val
+            response_payload['pages'] = max(1, (total_resp + limit_val - 1) // limit_val)
+
+        print(f"[APPLICANTS API] Returning {len(result)} normalized applicant rows (Total: {total_resp}) for program='{program}'", flush=True)
+        return jsonify(response_payload), 200
     
     except Exception as e:
         print(f"[APPLICANTS API] CRITICAL ERROR loading applicants for program='{program}': {e}", flush=True)
@@ -4221,8 +4304,9 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
                     message=f"Congratulations! We are pleased to inform you that your application for {status_row['scholarship_name']} has been accepted.",
                     notif_type='result'
                 )
-                # Notify the student portal instantly via socket
-                safe_emit('notification_update', {'user_no': applicant_no}, broadcast=True)
+                # Notify the student portal instantly via room-targeted socket
+                safe_emit('notification_update', {'user_no': applicant_no}, room=f"applicant_{applicant_no}")
+                safe_emit('applicant_status_update', {'applicant_no': applicant_no, 'status': 'Accepted', 'scholarship_no': scholarship_no}, room=f"applicant_{applicant_no}")
             except Exception as notif_err:
                 print(f"[NOTIF ERROR] Failed to notify accepted applicant {applicant_no}: {notif_err}", flush=True)
 
@@ -4274,8 +4358,9 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
                     message=f"Thank you for your interest in {status_row['scholarship_name']}. We regret to inform you that your application has been declined.",
                     notif_type='result'
                 )
-                # Notify the student portal instantly via socket
-                safe_emit('notification_update', {'user_no': applicant_no}, broadcast=True)
+                # Notify the student portal instantly via room-targeted socket
+                safe_emit('notification_update', {'user_no': applicant_no}, room=f"applicant_{applicant_no}")
+                safe_emit('applicant_status_update', {'applicant_no': applicant_no, 'status': 'Rejected', 'scholarship_no': scholarship_no}, room=f"applicant_{applicant_no}")
             except Exception as notif_err:
                 print(f"[NOTIF ERROR] Failed to notify declined applicant {applicant_no}: {notif_err}", flush=True)
 
@@ -5224,7 +5309,7 @@ def get_admin_announcements(current_user_id, pro_no, role):
             """.format(
                 date_col=date_col,
                 is_removed_expr=is_removed_expr,
-                image_select=f"ai.{primary_key_column} AS image_id, ai.img AS announcement_image_data" if primary_key_column and foreign_key_column else "NULL AS image_id, NULL AS announcement_image_data",
+                image_select=f"ai.{primary_key_column} AS image_id, (CASE WHEN ai.img LIKE 'http%' THEN ai.img ELSE NULL END) AS announcement_image_data" if primary_key_column and foreign_key_column else "NULL AS image_id, NULL AS announcement_image_data",
                 image_join=f"LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}" if primary_key_column and foreign_key_column else "",
             )
             params = []

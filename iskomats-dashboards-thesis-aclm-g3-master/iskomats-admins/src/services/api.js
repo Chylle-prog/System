@@ -249,11 +249,15 @@ export const scholarshipAPI = {
     api.get('/admin/providers'),
 
   // Applicant Status Management
-  acceptApplicant: (applicantId, scholarshipNo) =>
-    api.post(`/admin/applicants/${applicantId}/accept`, { scholarshipNo }),
+  acceptApplicant: (applicantId, scholarshipNo) => {
+    scholarshipAPI.getApplicants.invalidate();
+    return api.post(`/admin/applicants/${applicantId}/accept`, { scholarshipNo });
+  },
   
-  declineApplicant: (applicantId, scholarshipNo) =>
-    api.post(`/admin/applicants/${applicantId}/decline`, { scholarshipNo }),
+  declineApplicant: (applicantId, scholarshipNo) => {
+    scholarshipAPI.getApplicants.invalidate();
+    return api.post(`/admin/applicants/${applicantId}/decline`, { scholarshipNo });
+  },
   
   sendSchoolVerification: (applicantId, scholarshipNo) =>
     api.post(`/admin/applicants/${applicantId}/school-verification`, { scholarshipNo }),

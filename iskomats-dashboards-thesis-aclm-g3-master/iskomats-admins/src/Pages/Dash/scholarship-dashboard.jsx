@@ -2160,8 +2160,8 @@ export default function ScholarshipDashboard({
           adminName: userName,
           timestamp: new Date().toISOString(),
         });
-        // Optionally reload in background to sync
-        loadApplicants();
+        // Invalidate cache so future tab switches pull fresh data
+        scholarshipAPI.getApplicants.invalidate();
         loadScholarships(false);
       } catch (error) {
         // Revert UI on error
