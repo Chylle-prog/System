@@ -2412,12 +2412,14 @@ def parse_cor_document(raw_text, azure_kvp=None):
                 fields['student_id'] = id_m11.group(1)[1:]
 
     raw_upper = str(raw_text).upper()
-    if any(k in raw_upper for k in ['DE LA SALLE LIPA', 'DE LY SALLE', 'DLSL', 'SALLE LIPA', 'SALLE PA', 'LIPA']):
+    if any(k in raw_upper for k in ['DE LA SALLE LIPA', 'DE LY SALLE LIPA', 'DE LA SALLE', 'DLSL']):
         fields['school_name'] = 'De La Salle Lipa'
     elif any(k in raw_upper for k in ['BATANGAS STATE UNIVERSITY', 'BATSTATEU', 'BSU']):
         fields['school_name'] = 'Batangas State University'
     elif any(k in raw_upper for k in ['UNIVERSITY OF THE PHILIPPINES', 'UP']):
         fields['school_name'] = 'University of the Philippines'
+    elif any(k in raw_upper for k in ['LIPA CITY COLLEGES', 'LIPA CITY COLLEGE', 'LCC']):
+        fields['school_name'] = 'Lipa City Colleges'
 
     # Total Units extraction from COR/COE
     units_val = extract_total_units_from_text(raw_text, azure_kvp=azure_kvp)
@@ -2984,8 +2986,14 @@ def parse_grades_document(raw_text):
         fields['total_units'] = units_match.group(1).strip()
 
     raw_upper = str(raw_text).upper()
-    if any(k in raw_upper for k in ['DE LA SALLE LIPA', 'DLSL', 'OFFICE OF THE COLLEGE REGISTRAR', 'COLLEGE REGISTRAR', 'STUDENT\'S FINAL GRADES', 'STUDENTS FINAL GRADES', 'LAUREL']):
+    if any(k in raw_upper for k in ['DE LA SALLE LIPA', 'DE LY SALLE LIPA', 'DE LA SALLE', 'DLSL']):
         fields['school_name'] = 'De La Salle Lipa'
+    elif any(k in raw_upper for k in ['BATANGAS STATE UNIVERSITY', 'BATSTATEU', 'BSU']):
+        fields['school_name'] = 'Batangas State University'
+    elif any(k in raw_upper for k in ['UNIVERSITY OF THE PHILIPPINES', 'UP']):
+        fields['school_name'] = 'University of the Philippines'
+    elif any(k in raw_upper for k in ['LIPA CITY COLLEGES', 'LIPA CITY COLLEGE', 'LCC']):
+        fields['school_name'] = 'Lipa City Colleges'
 
     return fields
 
@@ -3380,11 +3388,18 @@ def verify_school_id_fields(raw_text, first_name, middle_name, last_name, **kwar
     school_ok = True
     if expected_school:
         clean_school = normalize_text(expected_school)
-        school_words = [w for w in clean_school.split() if len(w) >= 3 and w not in {'university', 'college', 'school', 'inc', 'of', 'de', 'la', 'salle'}]
-        if school_words:
-            school_ok = any(w in doc_norm for w in school_words)
+        if 'de la salle' in clean_school or 'dlsl' in clean_school:
+            school_ok = any(k in doc_norm for k in ['de la salle lipa', 'de la salle', 'de ly salle lipa', 'de ly salle', 'dlsl'])
+        elif 'batangas state' in clean_school or 'batstateu' in clean_school or 'bsu' in clean_school:
+            school_ok = any(k in doc_norm for k in ['batangas state university', 'batangas state', 'batstateu', 'bsu'])
+        elif 'lipa city colleges' in clean_school or 'lcc' in clean_school:
+            school_ok = any(k in doc_norm for k in ['lipa city colleges', 'lipa city college', 'lcc'])
         else:
-            school_ok = clean_school in doc_norm
+            school_words = [w for w in clean_school.split() if len(w) >= 3 and w not in {'university', 'college', 'colleges', 'school', 'inc', 'of', 'and', 'the', 'lipa', 'city', 'batangas'}]
+            if school_words:
+                school_ok = all(w in doc_norm for w in school_words)
+            else:
+                school_ok = clean_school in doc_norm
         if not school_ok:
             failures.append(f"School name mismatch (Expected: '{expected_school}' on School ID)")
 

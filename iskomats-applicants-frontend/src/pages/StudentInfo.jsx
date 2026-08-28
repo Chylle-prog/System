@@ -1177,7 +1177,7 @@ function formatExtractedRequirementsSummary(rawText, expectedFirst = '', expecte
   const totalAssessment = totalAssessmentMatch ? totalAssessmentMatch[1] : null;
   const downpayment = downpaymentMatch ? downpaymentMatch[1] : null;
   const discount = discountMatch ? discountMatch[1] : "0.00";
-  const schoolName = schoolMatch ? schoolMatch[0] : "De La Salle Lipa";
+  const schoolName = schoolMatch ? schoolMatch[0] : "Not detected";
 
   const divider = "============================================================";
   const subDivider = "----------------+------------------------------+-------";
@@ -1780,44 +1780,44 @@ function schoolNameMatchesText(text, targetSchool) {
   const targetUpper = String(targetSchool).toUpperCase();
 
   // 1. De La Salle Lipa / DLSL
-  if (targetUpper.includes('DLSL') || targetUpper.includes('DE LA SALLE') || targetUpper.includes('LIPA')) {
+  if (targetUpper.includes('DLSL') || targetUpper.includes('DE LA SALLE') || targetUpper.includes('DE LA SALLE LIPA')) {
+    // Strictly require complete school name "De La Salle Lipa", "De La Salle", or "DLSL".
+    // NEVER match the word "Lipa" alone, as "Lipa" is a city appearing on Indigency certificates and addresses.
     if (
-      lowerRaw.includes('dlsl') ||
+      lowerRaw.includes('de la salle lipa') ||
       lowerRaw.includes('de la salle') ||
+      lowerRaw.includes('de ly salle lipa') ||
       lowerRaw.includes('de ly salle') ||
-      lowerRaw.includes('salle') ||
-      lowerRaw.includes('lipa') ||
-      lowerRaw.includes('ipa') ||
-      lowerRaw.includes('college registrar') ||
-      lowerRaw.includes('office of the college') ||
-      lowerRaw.includes('laurel') ||
-      lowerRaw.includes('students final grades')
+      lowerRaw.includes('dlsl')
     ) {
       return true;
     }
+    return false;
   }
 
   // 2. Batangas State University / BatStateU
   if (targetUpper.includes('BATANGAS STATE') || targetUpper.includes('BATSTATEU') || targetUpper.includes('BSU')) {
-    if (lowerRaw.includes('batangas') || lowerRaw.includes('batstateu') || lowerRaw.includes('bsu')) return true;
+    if (lowerRaw.includes('batangas state university') || lowerRaw.includes('batstateu') || lowerRaw.includes('batangas state') || lowerRaw.includes('bsu')) return true;
+    return false;
   }
 
-  // 3. General alias matching
+  // 3. Lipa City Colleges / LCC
+  if (targetUpper.includes('LIPA CITY COLLEGES') || targetUpper.includes('LCC')) {
+    if (lowerRaw.includes('lipa city colleges') || lowerRaw.includes('lipa city college') || lowerRaw.includes('lcc')) return true;
+    return false;
+  }
+
+  // 4. General alias matching
   const schoolAliases = String(targetSchool).split(/[\/\|,]/).map(s => s.trim()).filter(Boolean);
   for (let alias of schoolAliases) {
     const normAlias = normalizeForOcr(alias);
     if (normAlias && (normText.includes(normAlias) || lowerRaw.includes(normAlias))) return true;
 
-    const words = alias.split(/\s+/);
-    const acronym = words.map(w => w[0] ? w[0].toLowerCase() : '').join('');
-    if (acronym.length >= 3 && new RegExp('\\b' + acronym + '\\b', 'i').test(normText)) return true;
-
-    const fillerWords = ['school', 'university', 'college', 'of', 'and', 'the', 'inc', 'corp', 'campus', 'philippines', 'national', 'high'];
+    const fillerWords = ['school', 'university', 'college', 'colleges', 'of', 'and', 'the', 'inc', 'corp', 'campus', 'philippines', 'national', 'high', 'lipa', 'city', 'batangas'];
     const schoolWords = normAlias.split(' ').filter(w => w.length > 2 && !fillerWords.includes(w));
     if (schoolWords.length > 0) {
       const matched = schoolWords.filter(w => new RegExp('\\b' + w + '\\b').test(normText) || normText.includes(w) || lowerRaw.includes(w)).length;
-      const requiredRatio = schoolWords.length <= 2 ? 0.5 : 0.6;
-      if ((matched / schoolWords.length) >= requiredRatio) return true;
+      if (matched === schoolWords.length) return true;
     }
   }
 
@@ -7193,6 +7193,16 @@ const StudentInfo = () => {
       return;
     }
 
+    if (name === 'mobileNumber' || name === 'fatherPhoneNumber' || name === 'motherPhoneNumber') {
+      const sanitizedPhone = value.replace(/\D/g, '').slice(0, 11);
+      invalidateVerificationDependencies(name, sanitizedPhone);
+      setFormData(prev => ({
+        ...prev,
+        [name]: sanitizedPhone
+      }));
+      return;
+    }
+
     if (type === 'checkbox') {
       invalidateVerificationDependencies(name, checked);
       setFormData(prev => ({
@@ -7481,6 +7491,10 @@ const StudentInfo = () => {
 
     // Manual File Requirement Checks
     if (currentStep === 1) {
+      if (formData.mobileNumber && formData.mobileNumber.length !== 11) {
+        showPromptMessage('Mobile number must be exactly 11 digits (e.g., 09XXXXXXXXX).');
+        return;
+      }
       if (!idPicturePreview) {
         showPromptMessage('Please upload your 2x2 ID Picture.');
         return;
@@ -7491,6 +7505,17 @@ const StudentInfo = () => {
       }
       if (!isStep1DocumentsVerified) {
         showPromptMessage('Please verify your Certificate of Indigency before proceeding to the next step.');
+        return;
+      }
+    }
+
+    if (currentStep === 2) {
+      if (formData.fatherStatus === 'Living' && formData.fatherPhoneNumber && formData.fatherPhoneNumber.length !== 11) {
+        showPromptMessage("Father's phone number must be exactly 11 digits (e.g., 09XXXXXXXXX).");
+        return;
+      }
+      if (formData.motherStatus === 'Living' && formData.motherPhoneNumber && formData.motherPhoneNumber.length !== 11) {
+        showPromptMessage("Mother's phone number must be exactly 11 digits (e.g., 09XXXXXXXXX).");
         return;
       }
     }
@@ -7637,6 +7662,24 @@ const StudentInfo = () => {
     if (missingLabel) {
       setIsSubmitting(false);
       showPromptMessage(`Please fill in all fields: ${missingLabel} is missing.`);
+      return;
+    }
+
+    if (formData.mobileNumber && formData.mobileNumber.length !== 11) {
+      setIsSubmitting(false);
+      showPromptMessage('Mobile number must be exactly 11 digits (e.g., 09XXXXXXXXX).');
+      return;
+    }
+
+    if (formData.fatherStatus === 'Living' && formData.fatherPhoneNumber && formData.fatherPhoneNumber.length !== 11) {
+      setIsSubmitting(false);
+      showPromptMessage("Father's phone number must be exactly 11 digits (e.g., 09XXXXXXXXX).");
+      return;
+    }
+
+    if (formData.motherStatus === 'Living' && formData.motherPhoneNumber && formData.motherPhoneNumber.length !== 11) {
+      setIsSubmitting(false);
+      showPromptMessage("Mother's phone number must be exactly 11 digits (e.g., 09XXXXXXXXX).");
       return;
     }
 
@@ -9147,7 +9190,17 @@ const StudentInfo = () => {
                   </div>
                   <div className="form-group">
                     <label>Mobile Number <span style={{ color: '#e74c3c' }}>*</span></label>
-                    <input type="tel" name="mobileNumber" value={formData.mobileNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required />
+                    <input
+                      type="tel"
+                      name="mobileNumber"
+                      value={formData.mobileNumber}
+                      onChange={handleInputChange}
+                      placeholder="09XXXXXXXXX"
+                      maxLength={11}
+                      pattern="[0-9]{11}"
+                      inputMode="numeric"
+                      required
+                    />
                   </div>
                 </div>
 
@@ -9349,7 +9402,17 @@ const StudentInfo = () => {
                     </div>
                     <div className="form-group">
                       <label>Phone Number <span style={{ color: '#e74c3c' }}>*</span></label>
-                      <input type="tel" name="fatherPhoneNumber" value={formData.fatherPhoneNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required={currentStep === 2} />
+                      <input
+                        type="tel"
+                        name="fatherPhoneNumber"
+                        value={formData.fatherPhoneNumber}
+                        onChange={handleInputChange}
+                        placeholder="09XXXXXXXXX"
+                        maxLength={11}
+                        pattern="[0-9]{11}"
+                        inputMode="numeric"
+                        required={currentStep === 2 && formData.fatherStatus === 'Living'}
+                      />
                     </div>
                   </div>
                 </div>
@@ -9380,7 +9443,17 @@ const StudentInfo = () => {
                     </div>
                     <div className="form-group">
                       <label>Phone Number <span style={{ color: '#e74c3c' }}>*</span></label>
-                      <input type="tel" name="motherPhoneNumber" value={formData.motherPhoneNumber} onChange={handleInputChange} placeholder="09XXXXXXXXX" required={currentStep === 2} />
+                      <input
+                        type="tel"
+                        name="motherPhoneNumber"
+                        value={formData.motherPhoneNumber}
+                        onChange={handleInputChange}
+                        placeholder="09XXXXXXXXX"
+                        maxLength={11}
+                        pattern="[0-9]{11}"
+                        inputMode="numeric"
+                        required={currentStep === 2 && formData.motherStatus === 'Living'}
+                      />
                     </div>
                   </div>
                 </div>
