@@ -4281,7 +4281,7 @@ def get_announcements():
             if primary_key_column and foreign_key_column:
                 cur.execute(f"""
                     SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
-                           ai.{primary_key_column} AS image_id, (CASE WHEN ai.img LIKE 'http%' THEN ai.img ELSE NULL END) AS announcement_image_data
+                           ai.{primary_key_column} AS image_id, (CASE WHEN LEFT(ai.img, 4) = 'http' THEN ai.img ELSE NULL END) AS announcement_image_data
                     FROM announcements a
                     LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
                     LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}

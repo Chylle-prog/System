@@ -5309,7 +5309,7 @@ def get_admin_announcements(current_user_id, pro_no, role):
             """.format(
                 date_col=date_col,
                 is_removed_expr=is_removed_expr,
-                image_select=f"ai.{primary_key_column} AS image_id, (CASE WHEN ai.img LIKE 'http%' THEN ai.img ELSE NULL END) AS announcement_image_data" if primary_key_column and foreign_key_column else "NULL AS image_id, NULL AS announcement_image_data",
+                image_select=f"ai.{primary_key_column} AS image_id, (CASE WHEN LEFT(ai.img, 4) = 'http' THEN ai.img ELSE NULL END) AS announcement_image_data" if primary_key_column and foreign_key_column else "NULL AS image_id, NULL AS announcement_image_data",
                 image_join=f"LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}" if primary_key_column and foreign_key_column else "",
             )
             params = []
