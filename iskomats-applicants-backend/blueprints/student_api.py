@@ -2295,7 +2295,14 @@ def get_scholarship_by_id(req_no):
     try:
         with get_db() as conn:
             cur = conn.cursor()
-            cur.execute('SELECT * FROM scholarships WHERE req_no = %s AND COALESCE(is_removed, FALSE) = FALSE', (req_no,))
+            cur.execute("""
+                SELECT req_no, scholarship_name, deadline, gpa, parent_finance, location, 
+                       "desc" as description, semester, year, units, 
+                       COALESCE(residency_doc_type, 'Indigency Document') as "residencyDocType", 
+                       COALESCE(id_type, 'School ID') as "idType" 
+                FROM scholarships 
+                WHERE req_no = %s AND COALESCE(is_removed, FALSE) = FALSE
+            """, (req_no,))
             row = cur.fetchone()
             if not row:
                 return jsonify({'message': 'Scholarship not found'}), 404
@@ -2362,13 +2369,18 @@ def get_rankings():
                     print(f"[RANKINGS] Invalid user_no {user_no}: {e}", flush=True)
             
             cur.execute("""
-                SELECT s.*, p.provider_name,
-                       COUNT(ast.applicant_no) FILTER (WHERE LOWER(ast.is_accepted) = 'accepted') AS accepted_count
+                SELECT s.req_no, s.scholarship_name, s.gpa, s.location, s.parent_finance, s.slots, s.deadline, s.pro_no,
+                       p.provider_name,
+                       COALESCE(ast.accepted_count, 0) AS accepted_count
                 FROM scholarships s
                 LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
-                LEFT JOIN applicant_status ast ON ast.scholarship_no = s.req_no
+                LEFT JOIN (
+                    SELECT scholarship_no, COUNT(*) AS accepted_count
+                    FROM applicant_status
+                    WHERE LOWER(is_accepted) = 'accepted'
+                    GROUP BY scholarship_no
+                ) ast ON ast.scholarship_no = s.req_no
                 WHERE COALESCE(s.is_removed, FALSE) = FALSE
-                GROUP BY s.req_no, p.provider_name
                 ORDER BY s.scholarship_name ASC
             """)
             scholarships = cur.fetchall()
@@ -3317,8 +3329,12 @@ def check_sibling_restriction():
     try:
         with get_db() as conn:
             cur = conn.cursor()
-            # Fetch current student data to help with identity building
-            cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
+            # Fetch current student data to help with identity building (lean explicit columns)
+            cur.execute("""
+                SELECT applicant_no, first_name, middle_name, last_name, father_name, mother_name 
+                FROM applicants 
+                WHERE applicant_no = %s
+            """, (request.user_no,))
             applicant = cur.fetchone()
             
             if not applicant:

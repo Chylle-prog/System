@@ -293,10 +293,9 @@ const Portal = () => {
             };
           });
           setScholarships(rooms);
-          data.rooms.forEach(roomObj => {
-            const roomId = typeof roomObj === 'string' ? roomObj : roomObj.room;
-            socketService.loadHistory(roomId);
-          });
+          if (currentChatRoomRef.current) {
+            socketService.loadHistory(currentChatRoomRef.current);
+          }
         }
       });
 
@@ -479,7 +478,9 @@ const Portal = () => {
           }));
         }
         debouncedFetchNotifications();
-        debouncedFetchApplications();
+        if (data && (data.type === 'result' || data.type === 'application')) {
+          debouncedFetchApplications();
+        }
       });
       const unsubNewNotif = socketService.subscribe('new_notification', (data) => {
         console.log('[LIVE SYNC] New notification received live:', data);

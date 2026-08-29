@@ -857,6 +857,7 @@ export default function ScholarshipDashboard({
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [reportsView, setReportsView] = useState('tables'); // analytics | tables
   const [trackTab, setTrackTab] = useState('all'); // pending | all | accepted | declined
+  const [applicantTrackPage, setApplicantTrackPage] = useState(1);
   const [analyticsScholarshipFilter, setAnalyticsScholarshipFilter] = useState('all');
   const [trackScholarshipFilter, setTrackScholarshipFilter] = useState('all');
   const [data, setData] = useState(initialDashboardData);
@@ -1601,14 +1602,10 @@ export default function ScholarshipDashboard({
       });
 
       const unsubLogged = socketService.subscribe('logged_in', (data) => {
-        // Load history for authorized rooms returned by backend
-        if (data.rooms && data.rooms.length > 0) {
-          data.rooms.forEach(roomObj => {
-            const roomId = typeof roomObj === 'string' ? roomObj : roomObj.room;
-            if (roomId) {
-              socketService.loadHistory(roomId);
-            }
-          });
+        // Active room history is handled by inbox query and current active conversation.
+        // Avoid mass socket calls for all historical rooms to prevent DB connection pool starvation.
+        if (currentInboxRoomRef.current) {
+          socketService.loadHistory(currentInboxRoomRef.current);
         }
       });
 
@@ -4805,6 +4802,25 @@ export default function ScholarshipDashboard({
     const rejectedList = rejectedTagged;
     const cancelledList = cancelledTagged;
 
+    const currentTrackList = trackTab === 'pending'
+      ? pendingTagged
+      : trackTab === 'accepted'
+      ? acceptedList
+      : trackTab === 'rejected'
+      ? rejectedList
+      : trackTab === 'cancelled'
+      ? cancelledList
+      : allList;
+
+    const APPLICANT_PAGE_SIZE = 20;
+    const totalTrackItems = currentTrackList.length;
+    const totalTrackPages = Math.max(1, Math.ceil(totalTrackItems / APPLICANT_PAGE_SIZE));
+    const safeTrackPage = Math.min(Math.max(1, applicantTrackPage), totalTrackPages);
+    const paginatedTrackApplicants = currentTrackList.slice(
+      (safeTrackPage - 1) * APPLICANT_PAGE_SIZE,
+      safeTrackPage * APPLICANT_PAGE_SIZE
+    );
+
     return (
       <section className="bg-white p-3 sm:p-6 lg:p-8 rounded-2xl shadow-md border border-gray-50 animate-in fade-in duration-300">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 mb-4">
@@ -4820,7 +4836,7 @@ export default function ScholarshipDashboard({
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setTrackTab(t)}
+                  onClick={() => { setTrackTab(t); setApplicantTrackPage(1); }}
                   className={`px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg font-semibold text-[10px] sm:text-sm flex items-center gap-1 sm:gap-1.5 whitespace-nowrap flex-shrink-0 ${trackTab === t ? 'bg-[#800020] text-white' : 'bg-[#800020]/10 text-[#800020] border border-[#800020]'
                     }`}
                 >
@@ -4851,14 +4867,14 @@ export default function ScholarshipDashboard({
               type="text"
               placeholder="Search by name, school, or address..."
               value={searchTrack}
-              onChange={(e) => setSearchTrack(e.target.value)}
+              onChange={(e) => { setSearchTrack(e.target.value); setApplicantTrackPage(1); }}
               className="bg-transparent border-none outline-none w-full text-xs sm:text-sm font-medium"
             />
           </div>
           <div className="flex flex-wrap gap-2">
             <select
               value={trackScholarshipFilter}
-              onChange={(e) => setTrackScholarshipFilter(e.target.value)}
+              onChange={(e) => { setTrackScholarshipFilter(e.target.value); setApplicantTrackPage(1); }}
               className="flex-1 min-w-[120px] px-2.5 py-2 sm:px-4 sm:py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs sm:text-sm outline-none font-bold text-[#800020] shadow-sm focus:ring-2 focus:ring-[#800020] transition-all"
             >
               <option value="all">All Scholarships</option>
@@ -4885,7 +4901,7 @@ export default function ScholarshipDashboard({
 
             <button
               type="button"
-              onClick={() => setSortByPoints(prev => !prev)}
+              onClick={() => { setSortByPoints(prev => !prev); setApplicantTrackPage(1); }}
               className={`px-2.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm outline-none font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 border flex-shrink-0 ${sortByPoints
                 ? 'bg-[#800020] text-white border-[#800020] hover:bg-[#650018]'
                 : 'bg-gray-50 text-[#800020] border-gray-200 hover:bg-gray-100'
@@ -4917,7 +4933,7 @@ export default function ScholarshipDashboard({
           'Advanced Applicant Search',
           trackAdvancedSearch,
           setTrackAdvancedSearch,
-          () => setTrackAdvancedSearch({ ...EMPTY_ADVANCED_SEARCH }),
+          () => { setTrackAdvancedSearch({ ...EMPTY_ADVANCED_SEARCH }); setApplicantTrackPage(1); },
           true
         )}
 
@@ -4927,7 +4943,7 @@ export default function ScholarshipDashboard({
           </p>
         )}
 
-        <div className="overflow-x-auto overflow-y-auto rounded-xl border border-gray-200 min-h-[320px]" style={{ maxHeight: 'calc(100vh - 400px)' }}>
+        <div className="overflow-x-auto overflow-y-auto rounded-t-xl border border-gray-200 min-h-[320px]" style={{ maxHeight: 'calc(100vh - 400px)' }}>
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-20 bg-[#800020] text-white">
               <tr className="bg-[#800020] text-white select-none">
@@ -4941,30 +4957,65 @@ export default function ScholarshipDashboard({
               </tr>
             </thead>
             <tbody>
-              {trackTab === 'pending' &&
-                pendingTagged.map((a, i) => {
-                  const idx = a._listIdx;
+              {paginatedTrackApplicants.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="px-4 py-12 text-center text-gray-500 font-medium">
+                    No applicants found matching your criteria.
+                  </td>
+                </tr>
+              ) : (
+                paginatedTrackApplicants.map((a, localIdx) => {
+                  const i = (safeTrackPage - 1) * APPLICANT_PAGE_SIZE + localIdx;
+                  const idx = a._listIdx !== undefined ? a._listIdx : data.applicants.indexOf(a);
+                  const listType = a._listType || (a.status ? a.status.toLowerCase() : 'pending');
                   const processingState = getApplicantProcessingState(a);
+                  const statusColors = {
+                    pending: 'bg-yellow-100 text-yellow-700',
+                    accepted: 'bg-green-100 text-green-700',
+                    rejected: 'bg-red-100 text-red-700',
+                    cancelled: 'bg-gray-100 text-gray-700',
+                    declined: 'bg-red-100 text-red-700'
+                  };
+                  const statusLabels = {
+                    pending: 'Pending',
+                    accepted: 'Accepted',
+                    rejected: 'Rejected',
+                    cancelled: 'Cancelled',
+                    declined: 'Declined'
+                  };
+
                   return (
-                    <tr key={`pending-${a.applicant_no}-${a.scholarshipNo || i}`} className="border-b border-gray-200 hover:bg-gray-50">
+                    <tr key={`app-${a.applicant_no}-${a.scholarshipNo || i}`} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1.5 mb-0.5">
                           <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{i + 1}</span>
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700">Pending</span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${statusColors[listType] || 'bg-yellow-100 text-yellow-700'}`}>
+                            {statusLabels[listType] || (listType.charAt(0).toUpperCase() + listType.slice(1))}
+                          </span>
+                          {processingState && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
                         </div>
                         <div className="font-semibold text-sm">{a.name}</div>
                       </td>
-                      <td className="px-3 py-2 text-sm font-semibold text-gray-800" title={a.grade ? `Original GPA: ${a.grade}` : ''}>{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                      <td className="px-3 py-2 text-sm font-semibold text-gray-800" title={a.grade ? `Original GPA: ${a.grade}` : ''}>
+                        {formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}
+                      </td>
                       <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       {renderPointsCell(a)}
                       <td className="px-3 py-2 text-xs">
                         <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
                         <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
                       </td>
-                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{getApplicantAddressDisplay(a)}</td>
+                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">
+                        {a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{getApplicantAddressDisplay(a)}
+                      </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
-                          <button type="button" onClick={() => viewApplicantFn(idx, 'all')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
+                          <button
+                            type="button"
+                            onClick={() => viewApplicantFn(idx, listType)}
+                            className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors"
+                            disabled={!!processingState}
+                          >
                             View
                           </button>
                           {processingState && (
@@ -4977,139 +5028,38 @@ export default function ScholarshipDashboard({
                       </td>
                     </tr>
                   );
-                })}
-
-              {trackTab === 'all' &&
-                allList.map((a, i) => {
-                  const statusColors = { pending: 'bg-yellow-100 text-yellow-700', accepted: 'bg-green-100 text-green-700', rejected: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-700' };
-                  const statusLabels = { pending: 'Pending', accepted: 'Accepted', rejected: 'Rejected', cancelled: 'Cancelled' };
-                  const processingState = getApplicantProcessingState(a);
-                  return (
-                    <tr key={`all-${a.applicant_no}-${a.scholarshipNo || i}`} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{i + 1}</span>
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${statusColors[a._listType] || 'bg-yellow-100 text-yellow-700'}`}>{statusLabels[a._listType] || 'Pending'}</span>
-                          {processingState && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
-                        </div>
-                        <div className="font-semibold text-sm">{a.name}</div>
-                      </td>
-                      <td className="px-3 py-2 text-sm font-semibold text-gray-800" title={a.grade ? `Original GPA: ${a.grade}` : ''}>{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
-                      <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                      {renderPointsCell(a)}
-                      <td className="px-3 py-2 text-xs">
-                        <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
-                        <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
-                      </td>
-                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{getApplicantAddressDisplay(a)}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <button type="button" onClick={() => viewApplicantFn(a._listIdx, a._listType)} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors" disabled={!!processingState}>
-                            View
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-
-              {trackTab === 'accepted' &&
-                acceptedList.map((a, i) => {
-                  const idx = a._listIdx;
-                  return (
-                    <tr key={`accepted-${a.applicant_no}-${a.scholarshipNo || i}`} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{i + 1}</span>
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Accepted</span>
-                          {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
-                        </div>
-                        <div className="font-semibold text-sm">{a.name}</div>
-                      </td>
-                      <td className="px-3 py-2 text-sm font-semibold text-gray-800" title={a.grade ? `Original GPA: ${a.grade}` : ''}>{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
-                      <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                      {renderPointsCell(a)}
-                      <td className="px-3 py-2 text-xs">
-                        <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
-                        <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
-                      </td>
-                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{getApplicantAddressDisplay(a)}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex gap-1">
-                          <button type="button" onClick={() => viewApplicantFn(idx, 'accepted')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
-                            View
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-
-              {trackTab === 'rejected' &&
-                rejectedList.map((a, i) => {
-                  const idx = a._listIdx;
-                  return (
-                    <tr key={`rejected-${a.applicant_no}-${a.scholarshipNo || i}`} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{i + 1}</span>
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">Rejected</span>
-                          {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
-                        </div>
-                        <div className="font-semibold text-sm">{a.name}</div>
-                      </td>
-                      <td className="px-3 py-2 text-sm font-semibold text-gray-800" title={a.grade ? `Original GPA: ${a.grade}` : ''}>{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
-                      <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                      {renderPointsCell(a)}
-                      <td className="px-3 py-2 text-xs">
-                        <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
-                        <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
-                      </td>
-                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{getApplicantAddressDisplay(a)}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex gap-1">
-                          <button type="button" onClick={() => viewApplicantFn(idx, 'rejected')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
-                            View
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-
-              {trackTab === 'cancelled' &&
-                cancelledList.map((a, i) => {
-                  const idx = a._listIdx;
-                  return (
-                    <tr key={`cancelled-${a.applicant_no}-${a.scholarshipNo || i}`} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">#{i + 1}</span>
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">Cancelled</span>
-                          {getApplicantProcessingState(a) && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
-                        </div>
-                        <div className="font-semibold text-sm">{a.name}</div>
-                      </td>
-                      <td className="px-3 py-2 text-sm font-semibold text-gray-800" title={a.grade ? `Original GPA: ${a.grade}` : ''}>{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
-                      <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                      {renderPointsCell(a)}
-                      <td className="px-3 py-2 text-xs">
-                        <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
-                        <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
-                      </td>
-                      <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{getApplicantAddressDisplay(a)}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex gap-1">
-                          <button type="button" onClick={() => viewApplicantFn(idx, 'cancelled')} className="px-3 py-1 rounded bg-[#800020] text-white text-xs font-semibold hover:bg-[#650018] transition-colors">
-                            View
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                })
+              )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Controls */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-gray-50 border border-gray-200 border-t-0 rounded-b-xl">
+          <span className="text-xs text-gray-500 font-medium">
+            Showing <span className="font-bold text-gray-800">{totalTrackItems === 0 ? 0 : (safeTrackPage - 1) * APPLICANT_PAGE_SIZE + 1}</span> to <span className="font-bold text-gray-800">{Math.min(safeTrackPage * APPLICANT_PAGE_SIZE, totalTrackItems)}</span> of <span className="font-bold text-[#800020]">{totalTrackItems}</span> applicants
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={safeTrackPage <= 1}
+              onClick={() => setApplicantTrackPage(p => Math.max(1, p - 1))}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 bg-white text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 transition-all shadow-xs"
+            >
+              Previous
+            </button>
+            <span className="px-3 py-1 text-xs font-bold text-[#800020] bg-white border border-gray-200 rounded-lg shadow-xs">
+              Page {safeTrackPage} of {totalTrackPages}
+            </span>
+            <button
+              type="button"
+              disabled={safeTrackPage >= totalTrackPages}
+              onClick={() => setApplicantTrackPage(p => Math.min(totalTrackPages, p + 1))}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 bg-white text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 transition-all shadow-xs"
+            >
+              Next
+            </button>
+          </div>
         </div>
 
       </section>

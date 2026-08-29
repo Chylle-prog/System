@@ -91,8 +91,10 @@ def get_db_connection_kwargs():
         'keepalives_count': int(os.environ.get('DB_KEEPALIVES_COUNT', '5')),
     }
 
+    options_list = ['-c idle_in_transaction_session_timeout=15000', '-c statement_timeout=30000']
     if schema and schema != 'public':
-        connection_kwargs['options'] = f'-c search_path={schema}'
+        options_list.append(f'-c search_path={schema}')
+    connection_kwargs['options'] = ' '.join(options_list)
 
     return connection_kwargs
 
@@ -175,12 +177,21 @@ def get_db(cursor_factory=RealDictCursor, fast_startup=False):
         def close(self):
             if not self._returned:
                 try:
+                    if self._conn.closed == 0:
+                        try:
+                            # CRITICAL: Always rollback uncommitted transactions before returning to pool.
+                            # Any SELECT query in psycopg2 opens a transaction block when autocommit is False.
+                            # Without rollback(), the connection remains "idle in transaction" on Supabase/Supavisor,
+                            # exhausting connection pools and freezing all subsequent queries!
+                            self._conn.rollback()
+                        except Exception:
+                            pass
                     is_closed = (self._conn.closed != 0)
                     _CONNECTION_POOL.putconn(self._conn, close=is_closed)
-                except:
+                except Exception:
                     try:
-                        _CONNECTION_POOL.putconn(self._conn)
-                    except:
+                        _CONNECTION_POOL.putconn(self._conn, close=True)
+                    except Exception:
                         pass
                 self._returned = True
 
@@ -194,7 +205,11 @@ def get_db(cursor_factory=RealDictCursor, fast_startup=False):
             return self
 
         def __exit__(self, exc_type, exc_val, exc_tb):
-            # Crucial: Always return to pool even if exception occurs
+            if exc_type is not None:
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    pass
             self.close()
 
     return PooledConnectionProxy(conn, cursor_factory)

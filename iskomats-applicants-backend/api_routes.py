@@ -3787,12 +3787,19 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
                        {units_expr} as units,
                        {residency_doc_type_expr} as "residencyDocType",
                        {id_type_expr} as "idType",
-                       COUNT(ast.applicant_no) FILTER (WHERE LOWER(ast.is_accepted) = 'accepted') as "acceptedCount",
-                       COUNT(ast.applicant_no) FILTER (WHERE LOWER(ast.is_accepted) = 'pending' OR ast.is_accepted IS NULL) as "pendingCount",
-                       COUNT(ast.applicant_no) FILTER (WHERE LOWER(ast.is_accepted) IN ('rejected', 'declined')) as "declinedCount"
+                       COALESCE(ast.accepted_count, 0) as "acceptedCount",
+                       COALESCE(ast.pending_count, 0) as "pendingCount",
+                       COALESCE(ast.declined_count, 0) as "declinedCount"
                 FROM scholarships s
                 LEFT JOIN scholarship_providers p ON s.pro_no = p.pro_no
-                LEFT JOIN applicant_status ast ON ast.scholarship_no = s.req_no
+                LEFT JOIN (
+                    SELECT scholarship_no,
+                           COUNT(*) FILTER (WHERE LOWER(is_accepted) = 'accepted') as accepted_count,
+                           COUNT(*) FILTER (WHERE LOWER(is_accepted) = 'pending' OR is_accepted IS NULL) as pending_count,
+                           COUNT(*) FILTER (WHERE LOWER(is_accepted) IN ('rejected', 'declined')) as declined_count
+                    FROM applicant_status
+                    GROUP BY scholarship_no
+                ) ast ON ast.scholarship_no = s.req_no
             '''.format(
                 is_removed_expr=is_removed_expr,
                 description_expr=description_expr,
@@ -3819,43 +3826,10 @@ def get_scholarship_by_program(current_user_id, pro_no, role, program):
                 query += (' AND ' if where_clauses else ' WHERE ') + 'p.provider_name ILIKE %s'
                 params.append(f"%{program}%")
             
-            group_by_columns = [
-                's.req_no',
-                's.scholarship_name',
-                's.gpa',
-                's.location',
-                's.parent_finance',
-                's.slots',
-                's.deadline',
-                's.pro_no',
-                'p.provider_name',
-            ]
-            if 'is_removed' in scholarship_columns:
-                group_by_columns.append('s.is_removed')
-            if 'desc' in scholarship_columns:
-                group_by_columns.append('s."desc"')
-            if 'date_created' in scholarship_columns:
-                group_by_columns.append('s.date_created')
-            if 'semester' in scholarship_columns:
-                group_by_columns.append('s.semester')
-            if 'year' in scholarship_columns:
-                group_by_columns.append('s.year')
-            if 'grades_sem' in scholarship_columns:
-                group_by_columns.append('s.grades_sem')
-            if 'grades_year' in scholarship_columns:
-                group_by_columns.append('s.grades_year')
-            if 'units' in scholarship_columns:
-                group_by_columns.append('s.units')
-            if 'residency_doc_type' in scholarship_columns:
-                group_by_columns.append('s.residency_doc_type')
-            if 'id_type' in scholarship_columns:
-                group_by_columns.append('s.id_type')
-
             # Add Pagination
             limit = int(request.args.get('limit', 100))
             offset = int(request.args.get('offset', 0))
-            
-            query += '\n            GROUP BY ' + ', '.join(group_by_columns) + '\n            ORDER BY s.req_no DESC LIMIT %s OFFSET %s\n        '
+            query += ' ORDER BY s.req_no DESC LIMIT %s OFFSET %s'
             params.extend([limit, offset])
             
             cursor.execute(query, params)
@@ -4291,7 +4265,8 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
                         user_no=applicant_no,
                         title="Application Closed",
                         message=f"Your application for {ds['scholarship_name']} has been closed because you were accepted into another scholarship. Students may only hold one active scholarship.",
-                        notif_type='result'
+                        notif_type='result',
+                        db_conn=conn
                     )
                 except: pass
 
@@ -4302,7 +4277,8 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
                     user_no=applicant_no,
                     title='Application Accepted',
                     message=f"Congratulations! We are pleased to inform you that your application for {status_row['scholarship_name']} has been accepted.",
-                    notif_type='result'
+                    notif_type='result',
+                    db_conn=conn
                 )
                 # Notify the student portal instantly via room-targeted socket
                 safe_emit('notification_update', {'user_no': applicant_no}, room=f"applicant_{applicant_no}")
@@ -4356,7 +4332,8 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
                     user_no=applicant_no,
                     title='Application Declined',
                     message=f"Thank you for your interest in {status_row['scholarship_name']}. We regret to inform you that your application has been declined.",
-                    notif_type='result'
+                    notif_type='result',
+                    db_conn=conn
                 )
                 # Notify the student portal instantly via room-targeted socket
                 safe_emit('notification_update', {'user_no': applicant_no}, room=f"applicant_{applicant_no}")
@@ -5328,6 +5305,12 @@ def get_admin_announcements(current_user_id, pro_no, role):
                 query += f' ORDER BY {order_col}, ai.{primary_key_column}'
             else:
                 query += f' ORDER BY {order_col}, a.ann_no DESC'
+
+            limit = int(request.args.get('limit', 50))
+            offset = int(request.args.get('offset', 0))
+            query += ' LIMIT %s OFFSET %s'
+            params.extend([limit, offset])
+
             cur.execute(query, params)
             rows = cur.fetchall()
 
@@ -5493,7 +5476,6 @@ def create_announcement(current_user_id, pro_no, role):
                 'provider': provider_name,
                 'pro_no': target_pro_no
             }, broadcast=True)
-            safe_emit('notification_update', {'type': 'announcement', 'ann_no': ann_no}, broadcast=True)
             safe_invalidate_public_caches()
         
             # Dispatch notifications asynchronously in background thread
