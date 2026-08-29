@@ -4,26 +4,46 @@
  * LRU blob cache, and parallel image preloading.
  */
 
-const ENCRYPTION_KEY_STR = import.meta.env.VITE_ENCRYPTION_KEY || 'iskomats-system-secret-key-2024';
+const CANDIDATE_KEY_STRS = [
+  import.meta.env.VITE_ENCRYPTION_KEY,
+  '4uLE7rdLawGyh8a7cT33ZAdMxDfZ_NpBUyjS4oYWiPw=',
+  'iskomats-system-secret-key-2024'
+].filter(Boolean);
+
 const MAGIC_PREFIX = 'ENC:';
 
 // Fast in-memory cache for resolved URLs
 const urlCache = new Map();
-let cryptoKeyPromise = null;
+let cryptoKeysPromise = null;
 
-const getCryptoKey = async () => {
-  if (!cryptoKeyPromise) {
-    const enc = new TextEncoder();
-    const keyData = enc.encode(ENCRYPTION_KEY_STR.padEnd(32, '0').slice(0, 32));
-    cryptoKeyPromise = crypto.subtle.importKey(
-      'raw',
-      keyData,
-      { name: 'AES-GCM' },
-      false,
-      ['encrypt', 'decrypt']
-    );
+const getCryptoKeys = async () => {
+  if (!cryptoKeysPromise) {
+    cryptoKeysPromise = (async () => {
+      const enc = new TextEncoder();
+      const keys = [];
+      const seen = new Set();
+      for (const str of CANDIDATE_KEY_STRS) {
+        const keyData = enc.encode(str.padEnd(32, '0').slice(0, 32));
+        const keyId = Array.from(keyData).join(',');
+        if (seen.has(keyId)) continue;
+        seen.add(keyId);
+        try {
+          const k = await crypto.subtle.importKey(
+            'raw',
+            keyData,
+            { name: 'AES-GCM' },
+            false,
+            ['encrypt', 'decrypt']
+          );
+          keys.push(k);
+        } catch (e) {
+          console.warn('[CRYPTO] Failed to import key candidate:', e);
+        }
+      }
+      return keys;
+    })();
   }
-  return cryptoKeyPromise;
+  return cryptoKeysPromise;
 };
 
 export const decryptDocument = async (blob, originalType = 'image/jpeg') => {
@@ -39,17 +59,26 @@ export const decryptDocument = async (blob, originalType = 'image/jpeg') => {
 
     if (!isEncrypted) return blob;
 
-    const key = await getCryptoKey();
+    const keys = await getCryptoKeys();
     const iv = new Uint8Array(buffer.slice(prefixBytes.length, prefixBytes.length + 12));
     const encryptedData = buffer.slice(prefixBytes.length + 12);
 
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
-      key,
-      encryptedData
-    );
+    for (const key of keys) {
+      try {
+        const decrypted = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv },
+          key,
+          encryptedData
+        );
+        return new Blob([decrypted], { type: originalType });
+      } catch {
+        // Try next candidate key
+        continue;
+      }
+    }
 
-    return new Blob([decrypted], { type: originalType });
+    console.warn('[CRYPTO] None of the candidate keys could decrypt the document');
+    return blob;
   } catch (error) {
     console.error('[CRYPTO] Decryption failed:', error);
     return blob;

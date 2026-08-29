@@ -3278,7 +3278,8 @@ def update_profile():
                 sql = f"UPDATE applicants SET {', '.join(f'{col} = %s' for col in cols)} WHERE applicant_no = %s"
                 cur.execute(sql, tuple(params))
             if document_updates:
-                persist_applicant_document_values(cur, request.user_no, document_updates)
+                # Do not mutate historical applicant_documents of submitted applications
+                persist_applicant_document_values(cur, request.user_no, document_updates, update_base_profile=False)
 
             # ── MERIT PROOFS PERSISTENCE (1NF merit_proofs table) ──
             merit_entries_to_save = None
@@ -4072,7 +4073,7 @@ def ocr_check():
                     verification_updates['id_verified'] = verified
             
             if verification_updates:
-                persist_applicant_document_values(cur, request.user_no, verification_updates)
+                persist_applicant_document_values(cur, request.user_no, verification_updates, update_base_profile=False)
                 conn.commit()
 
         return jsonify({

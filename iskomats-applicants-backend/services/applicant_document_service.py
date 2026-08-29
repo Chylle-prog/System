@@ -342,21 +342,7 @@ def create_applicant_document_record(cursor, applicant_no, values):
         if real_key and value is not None:
             filtered_values[real_key] = value
 
-    # Automatically inherit any missing document values from previous snapshots for this applicant
-    try:
-        cursor.execute(
-            f'SELECT * FROM {document_table} WHERE applicant_no = %s ORDER BY app_doc_no DESC LIMIT 1',
-            (applicant_no,)
-        )
-        prev_row = cursor.fetchone()
-        if prev_row:
-            prev_dict = dict(prev_row)
-            for col in APPLICANT_DOCUMENT_COLUMNS:
-                real_col = doc_col_map.get(col.lower())
-                if real_col and (real_col not in filtered_values or filtered_values[real_col] is None) and prev_dict.get(real_col) is not None:
-                    filtered_values[real_col] = prev_dict[real_col]
-    except Exception as inherit_err:
-        print(f"[DOC SERVICE] Non-fatal document inheritance error: {inherit_err}", flush=True)
+    # Each application snapshot is isolated; do not inherit old documents from previous applications
 
     # Generate next app_doc_no
     cursor.execute(f'SELECT COALESCE(MAX(app_doc_no), 0) + 1 AS next_id FROM {document_table}')
@@ -428,11 +414,19 @@ def persist_applicant_document_values(cursor, applicant_no, values, app_doc_no=N
                     tuple(update_params),
                 )
             elif update_base_profile:
-                # Update latest existing row or insert default
-                update_assignments = ', '.join(f'"{col}" = %s' for col in filtered_values.keys())
+                # IMPORTANT: Never mutate an app_doc_no that belongs to an already-submitted application!
+                # Submitted applications in applicant_status are frozen historical records.
                 cursor.execute(
-                    f'SELECT app_doc_no FROM {document_table} WHERE applicant_no = %s ORDER BY app_doc_no DESC LIMIT 1',
-                    (applicant_no,)
+                    f'''
+                    SELECT app_doc_no FROM {document_table} 
+                    WHERE applicant_no = %s 
+                      AND app_doc_no NOT IN (
+                          SELECT app_doc_no FROM applicant_status 
+                          WHERE applicant_no = %s AND app_doc_no IS NOT NULL
+                      )
+                    ORDER BY app_doc_no DESC LIMIT 1
+                    ''',
+                    (applicant_no, applicant_no)
                 )
                 existing = cursor.fetchone()
                 if existing:
@@ -443,16 +437,8 @@ def persist_applicant_document_values(cursor, applicant_no, values, app_doc_no=N
                         tuple(update_params),
                     )
                 else:
-                    cursor.execute(f'SELECT COALESCE(MAX(app_doc_no), 0) + 1 AS next_id FROM {document_table}')
-                    next_res = cursor.fetchone()
-                    next_doc_no = next_res['next_id'] if isinstance(next_res, dict) else next_res[0]
-                    insert_columns = ['"app_doc_no"', '"applicant_no"', *[f'"{col}"' for col in filtered_values.keys()]]
-                    val_exprs = ['%s'] * len(insert_columns)
-                    insert_params = [next_doc_no, applicant_no, *filtered_values.values()]
-                    cursor.execute(
-                        f'INSERT INTO {document_table} ({", ".join(insert_columns)}) VALUES ({", ".join(val_exprs)})',
-                        tuple(insert_params)
-                    )
+                    # All existing rows belong to submitted applications; do not overwrite them
+                    pass
     
     applicant_columns = get_table_columns(cursor, 'applicants')
     applicant_col_map = {col.lower(): col for col in applicant_columns}
