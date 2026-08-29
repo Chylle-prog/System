@@ -252,7 +252,16 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names, app_doc_
         query = f'SELECT {", ".join(select_parts)} FROM applicants a{joins}WHERE a.applicant_no = %s LIMIT 1'
         cursor.execute(query, (applicant_no,))
     row = cursor.fetchone()
-    row_dict = dict(row) if row else {}
+    if row:
+        if hasattr(row, 'keys'):
+            row_dict = dict(row)
+        elif cursor.description:
+            colnames = [d[0] for d in cursor.description]
+            row_dict = dict(zip(colnames, row))
+        else:
+            row_dict = {}
+    else:
+        row_dict = {}
 
     # Robust Fallback: If any requested document column is NULL in the joined row,
     # find the most recent non-null value from applicant_documents for this applicant.
@@ -261,22 +270,33 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names, app_doc_
         doc_col_map = {c.lower(): c for c in document_columns}
         needed_cols = [col for col in requested_columns if row_dict.get(col) is None and doc_col_map.get(col.lower())]
         if needed_cols:
-            real_needed = list({doc_col_map[col.lower()] for col in needed_cols})
-            select_cols_sql = ', '.join(f'"{c}"' for c in real_needed)
-            try:
-                cursor.execute(
-                    f'SELECT {select_cols_sql} FROM {document_table} WHERE applicant_no = %s ORDER BY app_doc_no DESC LIMIT 1',
-                    (applicant_no,)
-                )
-                fb_row = cursor.fetchone()
-                if fb_row:
-                    fb_dict = dict(fb_row) if hasattr(fb_row, 'keys') else {}
-                    for col in needed_cols:
-                        rc = doc_col_map[col.lower()]
-                        if fb_dict.get(rc) is not None and row_dict.get(col) is None:
-                            row_dict[col] = fb_dict[rc]
-            except Exception as fb_err:
-                print(f"[DOC SERVICE] Fallback fetch error: {fb_err}", flush=True)
+            for col in needed_cols:
+                rc = doc_col_map[col.lower()]
+                if row_dict.get(col) is None:
+                    try:
+                        cursor.execute(
+                            f'SELECT "{rc}" FROM {document_table} WHERE applicant_no = %s AND "{rc}" IS NOT NULL ORDER BY app_doc_no DESC LIMIT 1',
+                            (applicant_no,)
+                        )
+                        fb_val = cursor.fetchone()
+                        if fb_val:
+                            val = fb_val.get(rc) if isinstance(fb_val, dict) else fb_val[0]
+                            if val is not None:
+                                row_dict[col] = val
+                    except Exception as fb_err:
+                        print(f"[DOC SERVICE] Fallback fetch error for {col}: {fb_err}", flush=True)
+
+            # Additional fallback for id_pic: fallback to applicants.profile_picture if still null
+            if 'id_pic' in requested_columns and row_dict.get('id_pic') is None:
+                try:
+                    cursor.execute('SELECT profile_picture FROM applicants WHERE applicant_no = %s AND profile_picture IS NOT NULL LIMIT 1', (applicant_no,))
+                    p_row = cursor.fetchone()
+                    if p_row:
+                        p_val = p_row.get('profile_picture') if isinstance(p_row, dict) else p_row[0]
+                        if p_val is not None:
+                            row_dict['id_pic'] = p_val
+                except Exception as p_err:
+                    print(f"[DOC SERVICE] Profile picture fallback error for id_pic: {p_err}", flush=True)
 
     return row_dict
 

@@ -3061,6 +3061,9 @@ def update_profile():
                         add_update('last_name', name_parts[-1])
 
             document_field_mapping = {
+                'id_pic': 'id_pic',
+                'face_photo': 'id_pic',
+                'facePhoto': 'id_pic',
                 'id_vid_url': 'id_vid_url',
                 'face_video': 'id_vid_url',
                 'mayorIndigency_video': 'indigency_vid_url',
@@ -3547,12 +3550,14 @@ def submit_application():
         
             signature_bytes = get_doc_bytes('signature_data', 'signature_image_data')
 
-            doc_keys = ['mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo', 'mayorValidID_photo', 'schoolID_photo']
+            doc_keys = ['mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo', 'mayorValidID_photo', 'id_pic', 'face_photo', 'schoolID_photo']
             doc_column_map = {
                 'mayorCOE_photo': 'enrollment_certificate_doc',
                 'mayorGrades_photo': 'grades_doc',
                 'mayorIndigency_photo': 'indigency_doc',
                 'mayorValidID_photo': 'id_pic',
+                'id_pic': 'id_pic',
+                'face_photo': 'id_pic',
                 'schoolID_photo': 'schoolID_photo',
             }
 
@@ -3661,6 +3666,9 @@ def submit_application():
             }
 
             document_field_mapping = {
+                'id_pic': 'id_pic',
+                'face_photo': 'id_pic',
+                'facePhoto': 'id_pic',
                 'id_vid_url': 'id_vid_url',
                 'face_video': 'id_vid_url',
                 'mayorIndigency_video': 'indigency_vid_url',
@@ -3716,7 +3724,7 @@ def submit_application():
                 'enrollment_certificate_doc': doc_bytes['mayorCOE_photo'],
                 'grades_doc': doc_bytes['mayorGrades_photo'],
                 'indigency_doc': doc_bytes['mayorIndigency_photo'],
-                'id_pic': doc_bytes['mayorValidID_photo'],
+                'id_pic': doc_bytes.get('id_pic') or doc_bytes.get('face_photo') or doc_bytes.get('mayorValidID_photo'),
                 'schoolID_photo': doc_bytes['schoolID_photo'],
             }
 

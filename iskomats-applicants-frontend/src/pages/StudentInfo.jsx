@@ -7768,7 +7768,7 @@ const StudentInfo = () => {
       submissionData.append('streetBarangay', fullAddress);
 
       const imageKeys = [
-        'profile_picture', 'id_front', 'id_back',
+        'profile_picture', 'id_front', 'id_back', 'id_pic', 'face_photo', 'photo_face_photo',
         'mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo',
         'applicantSignatureName', 'signature_data', 'barangay', 'streetBarangay'
       ];
@@ -7815,6 +7815,8 @@ const StudentInfo = () => {
 
       appendSmartDocPhoto('id_front', [photos.id_front, schoolIdPhotos.front, formData.schoolIdFront, formData.id_front]);
       appendSmartDocPhoto('id_back', [photos.id_back, schoolIdPhotos.back, formData.schoolIdBack, formData.id_back]);
+      appendSmartDocPhoto('id_pic', [photos.face_photo, formData.face_photo, formData.id_pic, photos.id_pic, faceVerificationPreview]);
+      appendSmartDocPhoto('face_photo', [photos.face_photo, formData.face_photo, formData.id_pic, photos.id_pic, faceVerificationPreview]);
 
       const finalSignature = signaturePreview || drawnSignature || formData.applicantSignatureName;
       if (finalSignature) {

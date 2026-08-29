@@ -37,7 +37,11 @@ import {
   FaSpinner,
   FaPlay,
   FaAward,
-  FaSearchPlus
+  FaSearchPlus,
+  FaUserCheck,
+  FaIdCard,
+  FaCamera,
+  FaUserSlash
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { adminAPI, scholarshipAPI, announcementService, messagingAPI } from '../../services/api';
@@ -4996,6 +5000,11 @@ export default function ScholarshipDashboard({
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${statusColors[listType] || 'bg-yellow-100 text-yellow-700'}`}>
                             {statusLabels[listType] || (listType.charAt(0).toUpperCase() + listType.slice(1))}
                           </span>
+                          {(a.id_pic || a.has_id_pic || a.face_photo || a.profile_picture || a.has_profile_picture) && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 flex items-center gap-1" title="Face Verification Photo Available">
+                              <FaCheckCircle className="text-[8px] text-emerald-600" /> Face Verified
+                            </span>
+                          )}
                           {processingState && <FaSpinner className="animate-spin text-[#800020] text-xs" />}
                         </div>
                         <div className="font-semibold text-sm">{a.name}</div>
@@ -6086,6 +6095,10 @@ export default function ScholarshipDashboard({
       const imageMediaUrls = [
         a.profile_picture,
         a.signature,
+        a.id_pic,
+        a.face_photo,
+        a.facePhoto,
+        a.idPic,
         ...(a.coeFiles || []).filter(f => f.type && f.type.startsWith('image')).map(f => f.src),
         ...(a.indigencyFiles || []).filter(f => f.type && f.type.startsWith('image')).map(f => f.src),
         ...(a.gradesFiles || []).filter(f => f.type && f.type.startsWith('image')).map(f => f.src),
@@ -6385,37 +6398,87 @@ export default function ScholarshipDashboard({
         </div>
 
         {/* FACE VERIFICATION PHOTO SECTION */}
-        <div className="mb-10">
-          <h3 className="bg-[#800020] text-white px-4 py-2 text-sm font-black uppercase tracking-widest mb-4 rounded-t-lg">Face Verification Photo</h3>
-          <div className="p-6 border-2 border-gray-100 rounded-b-lg bg-gray-50/50 flex flex-col items-center justify-center">
-            {a.id_pic ? (
-              <div className="flex flex-col items-center gap-3">
-                <div
-                  className="relative group max-w-xs overflow-hidden rounded-xl border-2 border-[#800020] shadow-md bg-white cursor-pointer"
-                  onClick={() => setImageModalSrc(a.id_pic)}
-                >
-                  <DecryptedMedia
-                    src={a.id_pic || a.face_photo || a.facePhoto || a.idPic}
-                    alt="Face Verification Capture"
-                    type="image/jpeg"
-                    className="w-48 h-56 object-cover rounded-lg transition-transform duration-300 group-hover:scale-105"
-                  />
-                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1 pointer-events-none">
-                    <i className="fas fa-search-plus"></i> View Image
+        {(() => {
+          const facePhotoSrc = a.id_pic || a.face_photo || a.facePhoto || a.idPic || a.profile_picture;
+          const frontIdSrc = idFiles.find(f => f.name === 'ID Front' || f.name?.includes('Front'))?.src || a.id_img_front || a.schoolIdFront;
+          const isFallbackProfilePic = !a.id_pic && !a.face_photo && !a.facePhoto && !a.idPic && Boolean(a.profile_picture);
+
+          return (
+            <div className="mb-10">
+              <div className="flex items-center justify-between bg-[#800020] text-white px-3 sm:px-4 py-2 rounded-t-lg">
+                <h3 className="text-xs sm:text-sm font-black uppercase tracking-widest flex items-center gap-2">
+                  <FaUserCheck className="text-emerald-400 text-sm" /> Face Verification
+                </h3>
+                {facePhotoSrc && (
+                  <span className="text-[9px] sm:text-[10px] bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
+                    <FaCheckCircle className="text-[8px]" /> Verified
+                  </span>
+                )}
+              </div>
+              <div className="p-4 sm:p-6 border-2 border-gray-100 rounded-b-lg bg-gray-50/50">
+                {facePhotoSrc ? (
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-xl">
+                      {/* ID Front Reference (if available) */}
+                      {frontIdSrc && (
+                        <div className="flex flex-col items-center">
+                          <span className="text-[10px] font-black text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                            <FaIdCard className="text-[#800020]" /> Reference Front ID
+                          </span>
+                          <div
+                            className="relative group w-full h-56 overflow-hidden rounded-xl border-2 border-gray-200 hover:border-[#800020] shadow-xs bg-white cursor-pointer transition-all flex items-center justify-center"
+                            onClick={() => setImageModalSrc({ src: frontIdSrc, type: 'image/jpeg' })}
+                          >
+                            <DecryptedMedia
+                              src={frontIdSrc}
+                              alt="Front ID Reference"
+                              type="image/jpeg"
+                              className="w-full h-full object-contain p-1 group-hover:scale-105 transition-transform"
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1 pointer-events-none">
+                              <FaSearchPlus /> View ID
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Live Face Verification Photo */}
+                      <div className={`flex flex-col items-center ${!frontIdSrc ? 'sm:col-span-2' : ''}`}>
+                        <span className="text-[10px] font-black text-[#800020] uppercase tracking-wider mb-2 flex items-center gap-1">
+                          <FaCamera className="text-[#800020]" /> {isFallbackProfilePic ? 'Identity / Profile Photo' : 'Live Face Capture'}
+                        </span>
+                        <div
+                          className="relative group w-48 sm:w-52 h-56 overflow-hidden rounded-xl border-2 border-[#800020] shadow-md bg-white cursor-pointer transition-all flex items-center justify-center"
+                          onClick={() => setImageModalSrc({ src: facePhotoSrc, type: 'image/jpeg' })}
+                        >
+                          <DecryptedMedia
+                            src={facePhotoSrc}
+                            alt="Face Verification Capture"
+                            type="image/jpeg"
+                            className="w-full h-full object-cover rounded-lg group-hover:scale-105 transition-transform"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1 pointer-events-none">
+                            <FaSearchPlus /> View Face Photo
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 text-xs px-3.5 py-1.5 rounded-full font-bold border border-emerald-200 shadow-xs">
+                      <FaCheckCircle className="text-emerald-600 text-xs" />
+                      {isFallbackProfilePic ? 'Profile Picture Verified' : 'Step 4 Live Face Match Verified'}
+                    </div>
                   </div>
-                </div>
-                <span className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 text-xs px-3 py-1 rounded-full font-bold border border-emerald-200">
-                  <i className="fas fa-user-check text-emerald-600"></i> Verified Step 4 Selfie
-                </span>
+                ) : (
+                  <div className="text-center p-6 text-gray-400">
+                    <FaUserSlash className="text-3xl mb-2 mx-auto text-gray-300" />
+                    <p className="text-xs font-semibold">No face verification photo recorded for this applicant</p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="text-center p-4 text-gray-400">
-                <i className="fas fa-user-slash text-3xl mb-2 text-gray-300"></i>
-                <p className="text-xs font-semibold">No face verification photo recorded for this applicant</p>
-              </div>
-            )}
-          </div>
-        </div>
+            </div>
+          );
+        })()}
 
         {/* FAMILY BACKGROUND SECTION */}
         <div className="mb-8">

@@ -3956,7 +3956,7 @@ def get_applicants(current_user_id, pro_no, role, program):
                         ({applicant_document_expr(cursor, 'grades_doc', 'a', 'ad')} IS NOT NULL) as "has_grades_doc",
                         ({applicant_document_expr(cursor, 'id_img_front', 'a', 'ad')} IS NOT NULL) as "has_id_img_front",
                         ({applicant_document_expr(cursor, 'id_img_back', 'a', 'ad')} IS NOT NULL) as "has_id_img_back",
-                        ({applicant_document_expr(cursor, 'id_pic', 'a', 'ad')} IS NOT NULL) as "has_id_pic",
+                        (COALESCE({applicant_document_expr(cursor, 'id_pic', 'a', 'ad')}, (SELECT sub_ad.id_pic FROM applicant_documents sub_ad WHERE sub_ad.applicant_no = a.applicant_no AND sub_ad.id_pic IS NOT NULL ORDER BY sub_ad.app_doc_no DESC LIMIT 1)) IS NOT NULL) as "has_id_pic",
                         ({applicant_document_expr(cursor, 'signature_image_data', 'a', 'ad')} IS NOT NULL) as "has_signature",
                         {profile_picture_expr} as "has_profile_picture",
                         {applicant_document_expr(cursor, 'indigency_vid_url', 'a', 'ad')} as indigency_vid_url,
@@ -4095,13 +4095,17 @@ def get_applicants(current_user_id, pro_no, role, program):
                     a['profile_picture'] = None
 
                 # Proxy face verification photo (id_pic)
-                if a.get('has_id_pic'):
+                has_face_photo = a.get('has_id_pic') or a.get('has_profile_picture')
+                if has_face_photo:
                     id_pic_params = {'applicant_no': app_no, 'column_name': 'id_pic', '_external': True}
                     if row_doc_no: id_pic_params['app_doc_no'] = row_doc_no
                     if row_scholarship_no: id_pic_params['scholarship_no'] = row_scholarship_no
                     a['id_pic'] = url_for('admin_api.get_applicant_image', **id_pic_params)
                 else:
                     a['id_pic'] = None
+                a['face_photo'] = a['id_pic']
+                a['facePhoto'] = a['id_pic']
+                a['idPic'] = a['id_pic']
                 
                 # Ensure income is float (might be Decimal from DB)
                 if a.get('income') is not None:
