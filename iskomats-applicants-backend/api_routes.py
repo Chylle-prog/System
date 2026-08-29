@@ -1404,6 +1404,7 @@ def notify_announcement_applicants(
     send_to_all_applicants=True,
     send_email_alerts=True,
     notification_title_prefix='New Announcement',
+    skip_db_insert=False,
 ):
     log_path = os.path.join(os.getcwd(), 'announcement_dispatch.log')
     def log(msg):
@@ -1491,7 +1492,7 @@ def notify_announcement_applicants(
             else: a_no = r[0]
             if a_no: app_ids.append(a_no)
 
-        if app_ids:
+        if not skip_db_insert and app_ids:
             try:
                 with get_db() as bulk_conn:
                     bcur = bulk_conn.cursor()
@@ -5464,6 +5465,39 @@ def create_announcement(current_user_id, pro_no, role):
                         print(f"[ANNOUNCEMENT ERROR] Storage failed for image {idx}. Check Supabase credentials/bucket.", flush=True)
                         raise ValueError("Failed to upload announcement image to cloud storage bucket 'announcement_images'.")
 
+            # Synchronously insert in-app notifications for all eligible applicants
+            notif_title = f"New Announcement: {title}"
+            notif_msg = message[:100] + ('...' if len(message) > 100 else '')
+            if provider_name and provider_name.lower() != 'iskomats':
+                notif_msg = f"{provider_name}: {notif_msg}"
+
+            try:
+                if not send_to_all_applicants and target_pro_no:
+                    cur.execute("""
+                        SELECT DISTINCT ast.applicant_no
+                        FROM applicant_status ast
+                        JOIN scholarships s ON ast.scholarship_no = s.req_no
+                        WHERE s.pro_no = %s AND ast.applicant_no IS NOT NULL
+                    """, (target_pro_no,))
+                    recip_ids = [r['applicant_no'] for r in cur.fetchall() if r.get('applicant_no')]
+                else:
+                    cur.execute("SELECT applicant_no FROM applicants WHERE applicant_no IS NOT NULL")
+                    recip_ids = [r['applicant_no'] for r in cur.fetchall() if r.get('applicant_no')]
+
+                if recip_ids:
+                    from psycopg2.extras import execute_values
+                    execute_values(
+                        cur,
+                        """
+                        INSERT INTO notifications (user_no, title, message, type, expires_at)
+                        VALUES %s
+                        """,
+                        [(aid, notif_title, notif_msg, 'announcement') for aid in recip_ids],
+                        template="(%s, %s, %s, %s, NOW() + INTERVAL '10 days')"
+                    )
+            except Exception as inapp_err:
+                print(f"[ANNOUNCEMENT NOTIF ERROR] Synchronous in-app insert: {inapp_err}", flush=True)
+
             conn.commit()
         
             record_admin_activity(
@@ -5491,11 +5525,16 @@ def create_announcement(current_user_id, pro_no, role):
                 'pro_no': target_pro_no
             }, broadcast=True)
             safe_emit('notification_update', {'type': 'announcement', 'ann_no': ann_no}, broadcast=True)
-            safe_emit('new_notification', {'title': title, 'message': message, 'type': 'announcement'}, broadcast=True)
+            safe_emit('new_notification', {
+                'id': f"ann_{ann_no}",
+                'title': notif_title,
+                'message': notif_msg,
+                'type': 'announcement'
+            }, broadcast=True)
             safe_invalidate_public_caches()
         
-            # Dispatch notifications asynchronously in background thread
-            print(f"[ANNOUNCEMENT] Dispatching notifications for ann_no {ann_no} (SendToAll: {send_to_all_applicants})", flush=True)
+            # Dispatch background email delivery
+            print(f"[ANNOUNCEMENT] Queuing background emails for ann_no {ann_no} (SendToAll: {send_to_all_applicants})", flush=True)
             try:
                 run_background_task(
                     notify_announcement_applicants,
@@ -5505,10 +5544,12 @@ def create_announcement(current_user_id, pro_no, role):
                     provider_name,
                     send_to_all_applicants,
                     True,
+                    notification_title_prefix='New Announcement',
+                    skip_db_insert=True
                 )
-                print(f"[ANNOUNCEMENT] Background notification delivery queued successfully for ann_no {ann_no}.")
+                print(f"[ANNOUNCEMENT] Background email delivery queued successfully for ann_no {ann_no}.")
             except Exception as notif_err:
-                print(f"[ANNOUNCEMENT WARN] Notification dispatch error: {notif_err}", flush=True)
+                print(f"[ANNOUNCEMENT WARN] Email dispatch queue error: {notif_err}", flush=True)
 
             return jsonify({'message': 'Announcement created', 'ann_no': ann_no}), 201
     except Exception as e:
@@ -5693,6 +5734,13 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
                 'pro_no': target_provider_no
             }, broadcast=True)
             safe_emit('notification_update', {'type': 'announcement', 'ann_no': ann_no}, broadcast=True)
+            if should_notify:
+                safe_emit('new_notification', {
+                    'id': f"ann_{ann_no}",
+                    'title': f"Announcement Updated: {title}",
+                    'message': message[:100] + ('...' if len(message) > 100 else ''),
+                    'type': 'announcement'
+                }, broadcast=True)
             safe_invalidate_public_caches()
 
             if should_notify:

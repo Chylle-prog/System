@@ -427,14 +427,51 @@ const Portal = () => {
               return !notifTitle.includes(deleteTitleLower) && !notifMsg.includes(deleteTitleLower);
             }));
           }
+        } else if (data && data.action === 'create' && data.title) {
+          const formattedNotif = {
+            id: data.ann_no ? `ann_${data.ann_no}` : `live_ann_${Date.now()}`,
+            title: data.title.toLowerCase().startsWith('new announcement') ? data.title : `New Announcement: ${data.title}`,
+            message: data.content || data.message || '',
+            type: 'announcement',
+            read: false,
+            time: 'Just now',
+            icon: 'fa-bullhorn'
+          };
+          setNotifications(prev => {
+            const exists = prev.some(n => 
+              (n.id && String(n.id) === String(formattedNotif.id)) || 
+              (n.title && n.title.includes(data.title))
+            );
+            if (exists) return prev;
+            return [formattedNotif, ...prev];
+          });
         }
         debouncedFetchAnnouncements();
-        debouncedFetchNotifications();
+        fetchNotifications();
       });
-      const unsubNewAnnounce = socketService.subscribe('new_announcement', () => {
-        console.log('[LIVE SYNC] New announcement received live');
+      const unsubNewAnnounce = socketService.subscribe('new_announcement', (data) => {
+        console.log('[LIVE SYNC] New announcement received live:', data);
+        if (data && (data.title || data.content)) {
+          const formattedNotif = {
+            id: data.ann_no ? `ann_${data.ann_no}` : `live_ann_${Date.now()}`,
+            title: data.title ? (data.title.toLowerCase().startsWith('new announcement') ? data.title : `New Announcement: ${data.title}`) : 'New Announcement',
+            message: data.content || data.message || '',
+            type: 'announcement',
+            read: false,
+            time: 'Just now',
+            icon: 'fa-bullhorn'
+          };
+          setNotifications(prev => {
+            const exists = prev.some(n => 
+              (n.id && String(n.id) === String(formattedNotif.id)) || 
+              (n.title && n.title.includes(data.title))
+            );
+            if (exists) return prev;
+            return [formattedNotif, ...prev];
+          });
+        }
         debouncedFetchAnnouncements();
-        debouncedFetchNotifications();
+        fetchNotifications();
       });
 
       // Live real-time updates for scholarships (debounced)
