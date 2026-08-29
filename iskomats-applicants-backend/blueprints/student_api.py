@@ -3818,17 +3818,7 @@ def submit_application():
 
             # Create a dedicated separate document snapshot for this scholarship application
             all_submitted_docs = dict(document_updates) if document_updates else {}
-            base_docs = fetch_applicant_document_values(cur, current_user_id, [
-                'signature_image_data', 'id_img_front', 'id_img_back', 'schoolID_photo',
-                'enrollment_certificate_doc', 'grades_doc', 'indigency_doc', 'id_pic',
-                'id_vid_url', 'indigency_vid_url', 'grades_vid_url',
-                'enrollment_certificate_vid_url', 'schoolid_front_vid_url', 'schoolid_back_vid_url'
-            ])
-            for k, v in base_docs.items():
-                if v and k not in all_submitted_docs:
-                    all_submitted_docs[k] = v
-
-            application_doc_no = create_applicant_document_record(cur, current_user_id, all_submitted_docs) if all_submitted_docs else None
+            application_doc_no = create_applicant_document_record(cur, current_user_id, all_submitted_docs)
 
             # ── CREATE/UPDATE STATUS ──────────────────────────────────────────────
             cur.execute(
@@ -3836,7 +3826,7 @@ def submit_application():
                 INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, app_doc_no, created_at)
                 VALUES (%s, %s, 'Pending', %s, NOW())
                 ON CONFLICT (scholarship_no, applicant_no) 
-                DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = 'Pending', app_doc_no = COALESCE(EXCLUDED.app_doc_no, applicant_status.app_doc_no)
+                DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = 'Pending', app_doc_no = EXCLUDED.app_doc_no
                 """,
                 (scholarship_id, current_user_id, application_doc_no),
             )

@@ -264,8 +264,8 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names, app_doc_
         row_dict = {}
 
     # Robust Fallback: If any requested document column is NULL in the joined row,
-    # find the most recent non-null value from applicant_documents for this applicant.
-    if document_table:
+    # find the most recent non-null value from applicant_documents for this applicant (only if no specific snapshot was requested)
+    if document_table and app_doc_no is None:
         document_columns = get_table_columns(cursor, document_table)
         doc_col_map = {c.lower(): c for c in document_columns}
         needed_cols = [col for col in requested_columns if row_dict.get(col) is None and doc_col_map.get(col.lower())]
@@ -357,9 +357,6 @@ def create_applicant_document_record(cursor, applicant_no, values):
     inserted_row = cursor.fetchone()
     app_doc_no = inserted_row['app_doc_no'] if isinstance(inserted_row, dict) else (inserted_row[0] if inserted_row else next_app_doc_no)
     print(f"[DOCUMENT SERVICE] Created separate document snapshot app_doc_no={app_doc_no} for applicant_no={applicant_no}", flush=True)
-
-    # Also keep base profile documents updated for backward compatibility
-    persist_applicant_document_values(cursor, applicant_no, values, update_base_profile=True)
 
     return app_doc_no
 

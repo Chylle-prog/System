@@ -3874,53 +3874,6 @@ const StudentInfo = () => {
     face_video: null
   });
 
-  useEffect(() => {
-    let active = true;
-    const loadSavedVideos = async () => {
-      try {
-        const profile = await applicantAPI.getProfile();
-        if (!active || !profile) return;
-        const token = localStorage.getItem('authToken');
-        const apiOrigin = API_ORIGIN;
-
-        const hasIndigencyVid = profile.has_indigency_vid || profile.indigency_vid_url || profile.mayorIndigency_video;
-        const hasGradesVid = profile.has_grades_vid || profile.grades_vid_url || profile.mayorGrades_video;
-        const hasCoeVid = profile.has_enrollment_certificate_vid || profile.enrollment_certificate_vid_url || profile.mayorCOE_video;
-        const hasSchoolIdFrontVid = profile.has_schoolid_front_vid || profile.schoolid_front_vid_url || profile.schoolIdFront_video;
-        const hasSchoolIdBackVid = profile.has_schoolid_back_vid || profile.schoolid_back_vid_url || profile.schoolIdBack_video;
-
-        const rawVideos = {
-          face_video: null, // Strictly left empty on reload to force taking a fresh live photo/video
-          mayorIndigency_video: (profile.indigency_vid_url && String(profile.indigency_vid_url).startsWith('http')) ? profile.indigency_vid_url : (hasIndigencyVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null),
-          mayorGrades_video: (profile.grades_vid_url && String(profile.grades_vid_url).startsWith('http')) ? profile.grades_vid_url : (hasGradesVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorGrades_video?token=${token}` : null),
-          mayorCOE_video: (profile.enrollment_certificate_vid_url && String(profile.enrollment_certificate_vid_url).startsWith('http')) ? profile.enrollment_certificate_vid_url : (hasCoeVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorCOE_video?token=${token}` : null),
-          schoolIdFront_video: (profile.schoolid_front_vid_url && String(profile.schoolid_front_vid_url).startsWith('http')) ? profile.schoolid_front_vid_url : (hasSchoolIdFrontVid ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdFront_video?token=${token}` : null),
-          schoolIdBack_video: (profile.schoolid_back_vid_url && String(profile.schoolid_back_vid_url).startsWith('http')) ? profile.schoolid_back_vid_url : (hasSchoolIdBackVid ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null)
-        };
-
-        const activeEntries = Object.entries(rawVideos).filter(([, urlVal]) => Boolean(urlVal));
-        const resolvedPairs = await Promise.all(
-          activeEntries.map(async ([k, urlVal]) => {
-            const resolved = await applicantAPI.resolveDocument(k, urlVal);
-            return [k, resolved];
-          })
-        );
-
-        const activeVids = Object.fromEntries(resolvedPairs.filter(([, res]) => Boolean(res)));
-
-        if (active && Object.keys(activeVids).length > 0) {
-          setDocumentVideos(prev => ({ ...prev, ...activeVids }));
-          setFormData(prev => ({ ...prev, ...activeVids }));
-        }
-      } catch (err) {
-        console.warn('[VIDEOS AUTO-LOAD] Note:', err);
-      }
-    };
-
-    loadSavedVideos();
-    return () => { active = false; };
-  }, []);
-
   const [uploadingFields, setUploadingFields] = useState({}); // { fieldName: Promise }
   const [uploadProgress, setUploadProgress] = useState({});
 
@@ -6506,91 +6459,44 @@ const StudentInfo = () => {
         if (targetProvince) updates.province = targetProvince;
         if (targetZip) updates.zipCode = targetZip;
 
-        // 1. Map document photos from server profile if available
-        const newPhotos = {};
-        if (profile.has_mayorIndigency_photo || profile.indigency_doc) {
-          const indigencyUrl = `${apiOrigin}/api/student/applicant/document/raw/indigency_doc?token=${token}`;
-          newPhotos.mayorIndigency_photo = indigencyUrl;
-          newPhotos.indigency = indigencyUrl;
-          updates.mayorIndigency_photo = indigencyUrl;
-          updates.indigency = indigencyUrl;
-        }
-
-        if (profile.has_mayorCOE_photo || profile.enrollment_certificate_doc) {
-          const coeUrl = `${apiOrigin}/api/student/applicant/document/raw/enrollment_certificate_doc?token=${token}`;
-          newPhotos.mayorCOE_photo = coeUrl;
-          newPhotos.enrollment = coeUrl;
-          updates.mayorCOE_photo = coeUrl;
-          updates.enrollment = coeUrl;
-        }
-
-        if (profile.has_mayorGrades_photo || profile.grades_doc) {
-          const gradesUrl = `${apiOrigin}/api/student/applicant/document/raw/grades_doc?token=${token}`;
-          newPhotos.mayorGrades_photo = gradesUrl;
-          newPhotos.grades = gradesUrl;
-          updates.mayorGrades_photo = gradesUrl;
-          updates.grades = gradesUrl;
-        }
-
-        const rawProfilePic = profile.profile_picture || profile.id_pic || ((profile.has_profile_picture || profile.has_id_pic) ? `${apiOrigin}/api/student/applicant/document/raw/${profile.has_profile_picture ? 'profile_picture' : 'id_pic'}?token=${token}` : null) || savedDraft?.idPicturePreview;
-
+        // Profile picture for user avatar in Step 1/Header
+        const rawProfilePic = profile.profile_picture || profile.id_pic || savedDraft?.idPicturePreview;
         if (rawProfilePic) {
           if (typeof rawProfilePic === 'string' && (rawProfilePic.startsWith('http://') || rawProfilePic.startsWith('https://'))) {
             applicantAPI.resolveDocument('profile_picture', rawProfilePic).then(resolved => {
               if (resolved) {
                 setIdPicturePreview(resolved);
-                setPhotos(prev => ({ ...prev, profile_picture: resolved }));
-                setFormData(prev => ({ ...prev, profile_picture: resolved }));
               }
             }).catch(() => {
               setIdPicturePreview(rawProfilePic);
-              setPhotos(prev => ({ ...prev, profile_picture: rawProfilePic }));
             });
           } else {
             setIdPicturePreview(rawProfilePic);
-            setPhotos(prev => ({ ...prev, profile_picture: rawProfilePic }));
-            updates.profile_picture = rawProfilePic;
           }
         }
 
-        const newIdPhotos = {};
-        if (profile.has_id || profile.id_img_front) {
-          const frontUrl = `${apiOrigin}/api/student/applicant/document/raw/id_img_front?token=${token}`;
-          newIdPhotos.front = frontUrl;
-          updates.schoolIdFront = frontUrl;
+        // Fresh application state: Never load document images or videos from previous applications
+        // Only restore documents/videos if there is an active in-progress draft for this specific scholarship
+        if (savedDraft?.photos) {
+          setPhotos(savedDraft.photos);
         }
-
-        if (profile.has_id_back || profile.id_img_back) {
-          const backUrl = `${apiOrigin}/api/student/applicant/document/raw/id_img_back?token=${token}`;
-          newIdPhotos.back = backUrl;
-          updates.schoolIdBack = backUrl;
+        if (savedDraft?.schoolIdPhotos) {
+          setSchoolIdPhotos(savedDraft.schoolIdPhotos);
         }
-
-        if (Object.keys(newPhotos).length > 0) {
-          setPhotos(prev => ({ ...prev, ...newPhotos }));
+        if (savedDraft?.documentVideos) {
+          setDocumentVideos(savedDraft.documentVideos);
         }
-        if (newIdPhotos.front || newIdPhotos.back) {
-          setSchoolIdPhotos(prev => ({ ...prev, ...newIdPhotos }));
+        if (savedDraft?.verificationStates) {
+          if (savedDraft.verificationStates.ocrVerified) setOcrVerified(savedDraft.verificationStates.ocrVerified);
+          if (savedDraft.verificationStates.coeVerified) setCoeVerified(savedDraft.verificationStates.coeVerified);
+          if (savedDraft.verificationStates.gradesVerified) setGradesVerified(savedDraft.verificationStates.gradesVerified);
+          if (savedDraft.verificationStates.idVerified) setIdVerified(savedDraft.verificationStates.idVerified);
+          if (savedDraft.verificationStates.signatureVerified) setSignatureVerified(savedDraft.verificationStates.signatureVerified);
         }
-
-        // 2. Map video URLs from server profile if available
-        const nextVideos = {
-          face_video: (profile.id_vid_url && String(profile.id_vid_url).startsWith('http')) ? profile.id_vid_url : (profile.id_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/face_video?token=${token}` : null),
-          mayorIndigency_video: (profile.indigency_vid_url && String(profile.indigency_vid_url).startsWith('http')) ? profile.indigency_vid_url : (profile.indigency_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null),
-          mayorGrades_video: (profile.grades_vid_url && String(profile.grades_vid_url).startsWith('http')) ? profile.grades_vid_url : (profile.grades_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorGrades_video?token=${token}` : null),
-          mayorCOE_video: (profile.enrollment_certificate_vid_url && String(profile.enrollment_certificate_vid_url).startsWith('http')) ? profile.enrollment_certificate_vid_url : (profile.enrollment_certificate_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/mayorCOE_video?token=${token}` : null),
-          schoolIdFront_video: (profile.schoolid_front_vid_url && String(profile.schoolid_front_vid_url).startsWith('http')) ? profile.schoolid_front_vid_url : (profile.schoolid_front_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdFront_video?token=${token}` : null),
-          schoolIdBack_video: (profile.schoolid_back_vid_url && String(profile.schoolid_back_vid_url).startsWith('http')) ? profile.schoolid_back_vid_url : (profile.schoolid_back_vid_url ? `${apiOrigin}/api/student/applicant/document/raw/schoolIdBack_video?token=${token}` : null)
-        };
-        const activeVideos = {};
-        Object.keys(nextVideos).forEach(k => {
-          if (nextVideos[k]) {
-            activeVideos[k] = nextVideos[k];
-            updates[k] = nextVideos[k];
-          }
-        });
-        if (Object.keys(activeVideos).length > 0) {
-          setDocumentVideos(prev => ({ ...prev, ...activeVideos }));
+        if (savedDraft?.meritList && Array.isArray(savedDraft.meritList)) {
+          setMeritList(savedDraft.meritList);
+        } else {
+          setMeritList([]);
         }
 
         setFormData(prev => {
@@ -6610,76 +6516,6 @@ const StudentInfo = () => {
             middleName: targetMiddleName
           };
         });
-
-        // 3. Set verification states from database if present
-        if (profile.indigency_verified && profile.indigency_vid_url && profile.has_mayorIndigency_photo) {
-          setOcrVerified('success');
-          setOcrStatus('Indigency verified successfully client-side!');
-          setIndigencyResults([{ doc: 'Indigency', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Last Name": true, "Barangay Address": true } }]);
-        }
-
-        if (profile.enrollment_verified && profile.enrollment_certificate_vid_url && profile.has_mayorCOE_photo) {
-          setCoeVerified('success');
-          setCoeStatus('COE verified successfully client-side!');
-          setCoeResults([{ doc: 'Enrollment', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Middle Name": targetMiddleName ? true : null, "Last Name": true, "School Name": true } }]);
-        }
-
-        if (profile.grades_verified && profile.grades_vid_url && profile.has_mayorGrades_photo) {
-          setGradesVerified('success');
-          setGradesStatus('Grades verified successfully client-side!');
-          setGradesResults([{ doc: 'Grades', verified: true, message: 'Verified from database records.', score_details: { "First Name": true, "Middle Name": targetMiddleName ? true : null, "Last Name": true, "GPA Requirement": true } }]);
-        }
-
-        const restoredIdType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
-        const isRestoredNationalId = restoredIdType === 'National ID';
-
-        if (profile.id_verified && profile.schoolid_front_vid_url && (isRestoredNationalId || (profile.schoolid_back_vid_url && profile.has_id_back)) && profile.has_id) {
-          setIdVerified('success');
-          setIdStatus(isRestoredNationalId ? 'National ID verified successfully client-side!' : 'School ID verified successfully client-side!');
-          setIdResults([{
-            doc: 'SchoolID',
-            verified: true,
-            message: 'Verified from database records.',
-            score_details: isRestoredNationalId ? { "First Name": true, "Middle Name": targetMiddleName ? true : null, "Last Name": true, "Barangay Address": true, "Video Proof": true } : { "First Name": true, "Last Name": true, "Video Proof": true }
-          }]);
-        }
-
-        // Face verification is intentionally never auto-verified from database on reload
-        if (profile.signature_verified && profile.has_signature) setSignatureVerified('success');
-
-        // Populate document photos from database profile
-        if (profile.id_img_front || profile.id_img_back) {
-          setSchoolIdPhotos(prev => ({
-            front: prev.front || profile.id_img_front || null,
-            back: prev.back || profile.id_img_back || null,
-          }));
-          setFormData(prev => ({
-            ...prev,
-            schoolIdFront: prev.schoolIdFront || profile.id_img_front || null,
-            schoolIdBack: prev.schoolIdBack || profile.id_img_back || null,
-          }));
-        }
-
-        if (profile.indigency_doc || profile.enrollment_certificate_doc || profile.grades_doc) {
-          setPhotos(prev => ({
-            ...prev,
-            indigency: prev.indigency || profile.indigency_doc || null,
-            enrollment: prev.enrollment || profile.enrollment_certificate_doc || null,
-            grades: prev.grades || profile.grades_doc || null,
-            face_photo: null, // Strictly left empty on reload to force user to take a fresh live photo
-          }));
-        }
-
-        // Populate document videos from database profile
-        setDocumentVideos(prev => ({
-          ...prev,
-          schoolIdFront_video: prev.schoolIdFront_video || profile.schoolid_front_vid_url || null,
-          schoolIdBack_video: prev.schoolIdBack_video || profile.schoolid_back_vid_url || null,
-          mayorIndigency_video: prev.mayorIndigency_video || profile.indigency_vid_url || null,
-          mayorCOE_video: prev.mayorCOE_video || profile.enrollment_certificate_vid_url || null,
-          mayorGrades_video: prev.mayorGrades_video || profile.grades_vid_url || null,
-          face_video: null, // Strictly left empty on reload to force user to take a fresh live photo/video
-        }));
 
         if (profile.has_other_assistance) {
           setHasOtherAssistance('Yes');
