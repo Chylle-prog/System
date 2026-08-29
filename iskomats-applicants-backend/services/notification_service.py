@@ -404,7 +404,7 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
             with get_db() as local_conn:
                 return _create_notification_internal(local_conn, user_no, title, message, notif_type, send_email, google_access_token, sync_email, commit=True)
         else:
-            return _create_notification_internal(conn, user_no, title, message, notif_type, send_email, google_access_token, sync_email, commit=False)
+            return _create_notification_internal(conn, user_no, title, message, notif_type, send_email, google_access_token, sync_email, commit=True)
             
     except Exception as e:
         print(f"[NOTIF ERROR] Notification creation failed: {e}", flush=True)

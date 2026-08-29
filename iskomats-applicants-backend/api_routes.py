@@ -4280,6 +4280,7 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
                     notif_type='result',
                     db_conn=conn
                 )
+                conn.commit()
                 # Notify the student portal instantly via room-targeted and broadcast socket
                 safe_emit('notification_update', {'user_no': applicant_no, 'type': 'result'}, room=f"applicant_{applicant_no}")
                 safe_emit('applicant_status_update', {'applicant_no': applicant_no, 'status': 'Accepted', 'scholarship_no': scholarship_no}, room=f"applicant_{applicant_no}")
@@ -4338,6 +4339,7 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
                     notif_type='result',
                     db_conn=conn
                 )
+                conn.commit()
                 # Notify the student portal instantly via room-targeted and broadcast socket
                 safe_emit('notification_update', {'user_no': applicant_no, 'type': 'result'}, room=f"applicant_{applicant_no}")
                 safe_emit('applicant_status_update', {'applicant_no': applicant_no, 'status': 'Rejected', 'scholarship_no': scholarship_no}, room=f"applicant_{applicant_no}")

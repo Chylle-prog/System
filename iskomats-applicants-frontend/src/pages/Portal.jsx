@@ -217,7 +217,13 @@ const Portal = () => {
     const fetchNotifications = async () => {
       try {
         const data = await notificationAPI.getAll();
-        setNotifications(data || []);
+        if (Array.isArray(data)) {
+          setNotifications(prev => {
+            const serverIds = new Set(data.map(d => String(d.id || d.notif_id)));
+            const pendingLive = prev.filter(p => !p.read && !serverIds.has(String(p.id)));
+            return [...pendingLive, ...data];
+          });
+        }
       } catch (err) {
         console.error("Failed to load notifications:", err);
       }
@@ -232,9 +238,9 @@ const Portal = () => {
       fetchNotifications()
     ]).catch(() => undefined);
 
-    // Lightweight polling fallback (every 2 minutes) for background recovery if sockets disconnect
-    const notifInterval = setInterval(fetchNotifications, 120000);
-    const announcementInterval = setInterval(fetchAnnouncements, 120000);
+    // Lightweight polling fallback (every 25 seconds) for background recovery if sockets disconnect
+    const notifInterval = setInterval(fetchNotifications, 25000);
+    const announcementInterval = setInterval(fetchAnnouncements, 60000);
 
     // Debounce helpers to prevent socket event cascades from firing multiple heavy API calls in the same second
     let debounceAnnounceTimer = null;
@@ -463,18 +469,18 @@ const Portal = () => {
       // Live real-time updates for applicant status changes & notifications (debounced)
       const unsubStatus = socketService.subscribe('applicant_status_update', (data) => {
         console.log('[LIVE SYNC] Applicant status update received live:', data);
-        const currentAppNo = localStorage.getItem('applicantNo') || applicantNo;
-        if (data?.applicant_no && currentAppNo && String(data.applicant_no) !== String(currentAppNo)) {
+        const currentAppNo = localStorage.getItem('applicantNo') || applicantNo || userProfile?.applicant_no;
+        if (data?.applicant_no && currentAppNo && String(data.applicant_no).trim() !== String(currentAppNo).trim()) {
           return;
         }
         debouncedFetchApplications();
         fetchProfile();
-        debouncedFetchNotifications();
+        fetchNotifications();
       });
       const unsubNotifUpdate = socketService.subscribe('notification_update', (data) => {
         console.log('[LIVE SYNC] Notification update received live:', data);
-        const currentAppNo = localStorage.getItem('applicantNo') || applicantNo;
-        if (data?.user_no && currentAppNo && String(data.user_no) !== String(currentAppNo)) {
+        const currentAppNo = localStorage.getItem('applicantNo') || applicantNo || userProfile?.applicant_no;
+        if (data?.user_no && currentAppNo && String(data.user_no).trim() !== String(currentAppNo).trim()) {
           return;
         }
         if (data && data.action === 'delete' && data.title) {
@@ -485,15 +491,15 @@ const Portal = () => {
             return !notifTitle.includes(deleteTitleLower) && !notifMsg.includes(deleteTitleLower);
           }));
         }
-        debouncedFetchNotifications();
+        fetchNotifications();
         if (data && (data.type === 'result' || data.type === 'application')) {
           debouncedFetchApplications();
         }
       });
       const unsubNewNotif = socketService.subscribe('new_notification', (data) => {
         console.log('[LIVE SYNC] New notification received live:', data);
-        const currentAppNo = localStorage.getItem('applicantNo') || applicantNo;
-        if (data?.user_no && currentAppNo && String(data.user_no) !== String(currentAppNo)) {
+        const currentAppNo = localStorage.getItem('applicantNo') || applicantNo || userProfile?.applicant_no;
+        if (data?.user_no && currentAppNo && String(data.user_no).trim() !== String(currentAppNo).trim()) {
           return;
         }
         if (data && (data.id || data.title)) {
@@ -503,7 +509,7 @@ const Portal = () => {
             'scholarship': 'fa-graduation-cap',
             'result': 'fa-file-signature'
           };
-          const notifId = data.id || data.notif_id || `${data.title}_${data.message}`;
+          const notifId = data.id || data.notif_id || `live_${Date.now()}`;
           const formattedNotif = {
             id: notifId,
             title: data.title || 'New Notification',
@@ -519,7 +525,7 @@ const Portal = () => {
             return [formattedNotif, ...prev];
           });
         }
-        debouncedFetchNotifications();
+        fetchNotifications();
         debouncedFetchApplications();
       });
 

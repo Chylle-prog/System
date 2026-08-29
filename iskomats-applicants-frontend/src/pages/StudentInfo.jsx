@@ -3883,7 +3883,6 @@ const StudentInfo = () => {
         const token = localStorage.getItem('authToken');
         const apiOrigin = API_ORIGIN;
 
-        const hasFaceVid = profile.has_id_vid || profile.id_vid_url || profile.face_video;
         const hasIndigencyVid = profile.has_indigency_vid || profile.indigency_vid_url || profile.mayorIndigency_video;
         const hasGradesVid = profile.has_grades_vid || profile.grades_vid_url || profile.mayorGrades_video;
         const hasCoeVid = profile.has_enrollment_certificate_vid || profile.enrollment_certificate_vid_url || profile.mayorCOE_video;
@@ -3891,7 +3890,7 @@ const StudentInfo = () => {
         const hasSchoolIdBackVid = profile.has_schoolid_back_vid || profile.schoolid_back_vid_url || profile.schoolIdBack_video;
 
         const rawVideos = {
-          face_video: (profile.id_vid_url && String(profile.id_vid_url).startsWith('http')) ? profile.id_vid_url : (hasFaceVid ? `${apiOrigin}/api/student/applicant/document/raw/face_video?token=${token}` : null),
+          face_video: null, // Strictly left empty on reload to force taking a fresh live photo/video
           mayorIndigency_video: (profile.indigency_vid_url && String(profile.indigency_vid_url).startsWith('http')) ? profile.indigency_vid_url : (hasIndigencyVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorIndigency_video?token=${token}` : null),
           mayorGrades_video: (profile.grades_vid_url && String(profile.grades_vid_url).startsWith('http')) ? profile.grades_vid_url : (hasGradesVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorGrades_video?token=${token}` : null),
           mayorCOE_video: (profile.enrollment_certificate_vid_url && String(profile.enrollment_certificate_vid_url).startsWith('http')) ? profile.enrollment_certificate_vid_url : (hasCoeVid ? `${apiOrigin}/api/student/applicant/document/raw/mayorCOE_video?token=${token}` : null),
@@ -4348,9 +4347,9 @@ const StudentInfo = () => {
       currentStep: nextStep,
       hasOtherAssistance,
       formData: serializeDraftFormData(nextFormData),
-      photos: extraState.photos || photos,
+      photos: { ...(extraState.photos || photos), face_photo: null },
       schoolIdPhotos: extraState.schoolIdPhotos || schoolIdPhotos,
-      documentVideos: extraState.documentVideos || documentVideos,
+      documentVideos: { ...(extraState.documentVideos || documentVideos), face_video: null },
       drawnSignature: extraState.drawnSignature !== undefined ? extraState.drawnSignature : drawnSignature,
       signaturePreview: extraState.signaturePreview !== undefined ? extraState.signaturePreview : signaturePreview,
       idPicturePreview: extraState.idPicturePreview !== undefined ? extraState.idPicturePreview : idPicturePreview,
@@ -4360,7 +4359,7 @@ const StudentInfo = () => {
         gradesVerified: (extraState.gradesVerified !== undefined ? extraState.gradesVerified : gradesVerified) === 'verifying' ? null : (extraState.gradesVerified !== undefined ? extraState.gradesVerified : gradesVerified),
         idVerified: (extraState.idVerified !== undefined ? extraState.idVerified : idVerified) === 'verifying' ? null : (extraState.idVerified !== undefined ? extraState.idVerified : idVerified),
         meritScanVerified: (extraState.meritScanVerified !== undefined ? extraState.meritScanVerified : meritScanVerified) === 'verifying' ? null : (extraState.meritScanVerified !== undefined ? extraState.meritScanVerified : meritScanVerified),
-        faceVerified: (extraState.faceVerified !== undefined ? extraState.faceVerified : faceVerified) === 'verifying' ? null : (extraState.faceVerified !== undefined ? extraState.faceVerified : faceVerified),
+        faceVerified: null,
         signatureVerified: (extraState.signatureVerified !== undefined ? extraState.signatureVerified : signatureVerified) === 'verifying' ? null : (extraState.signatureVerified !== undefined ? extraState.signatureVerified : signatureVerified),
         meritScanStatus: extraState.meritScanStatus !== undefined ? extraState.meritScanStatus : meritScanStatus,
         meritResults: extraState.meritResults || meritResults,
@@ -4369,7 +4368,7 @@ const StudentInfo = () => {
         gradesStatus: extraState.gradesStatus !== undefined ? extraState.gradesStatus : gradesStatus,
         idStatus: extraState.idStatus !== undefined ? extraState.idStatus : idStatus,
         signatureStatus: extraState.signatureStatus !== undefined ? extraState.signatureStatus : signatureStatus,
-        faceMatchResult: extraState.faceMatchResult !== undefined ? extraState.faceMatchResult : faceMatchResult,
+        faceMatchResult: null,
         signatureResults: extraState.signatureResults !== undefined ? extraState.signatureResults : signatureResults,
         indigencyResults: extraState.indigencyResults || indigencyResults,
         coeResults: extraState.coeResults || coeResults,
@@ -6645,7 +6644,7 @@ const StudentInfo = () => {
           }]);
         }
 
-        if (profile.face_verified && profile.id_vid_url && profile.has_profile_picture) setFaceVerified('success');
+        // Face verification is intentionally never auto-verified from database on reload
         if (profile.signature_verified && profile.has_signature) setSignatureVerified('success');
 
         // Populate document photos from database profile
@@ -6661,13 +6660,13 @@ const StudentInfo = () => {
           }));
         }
 
-        if (profile.indigency_doc || profile.enrollment_certificate_doc || profile.grades_doc || profile.id_pic) {
+        if (profile.indigency_doc || profile.enrollment_certificate_doc || profile.grades_doc) {
           setPhotos(prev => ({
             ...prev,
             indigency: prev.indigency || profile.indigency_doc || null,
             enrollment: prev.enrollment || profile.enrollment_certificate_doc || null,
             grades: prev.grades || profile.grades_doc || null,
-            face_photo: prev.face_photo || profile.id_pic || profile.profile_picture || null,
+            face_photo: null, // Strictly left empty on reload to force user to take a fresh live photo
           }));
         }
 
@@ -6679,7 +6678,7 @@ const StudentInfo = () => {
           mayorIndigency_video: prev.mayorIndigency_video || profile.indigency_vid_url || null,
           mayorCOE_video: prev.mayorCOE_video || profile.enrollment_certificate_vid_url || null,
           mayorGrades_video: prev.mayorGrades_video || profile.grades_vid_url || null,
-          face_video: prev.face_video || profile.id_vid_url || null,
+          face_video: null, // Strictly left empty on reload to force user to take a fresh live photo/video
         }));
 
         if (profile.has_other_assistance) {
@@ -6752,19 +6751,21 @@ const StudentInfo = () => {
             setPhotos(prev => {
               const updated = { ...prev };
               Object.entries(savedDraft.photos).forEach(([k, v]) => {
-                if (v && !(typeof v === 'string' && v.startsWith('blob:'))) {
+                if (k !== 'face_photo' && v && !(typeof v === 'string' && v.startsWith('blob:'))) {
                   updated[k] = v;
                 }
               });
+              updated.face_photo = null; // Strictly left empty on reload to force taking a fresh live photo
               return updated;
             });
             setFormData(prev => {
               const updated = { ...prev };
               Object.entries(savedDraft.photos).forEach(([k, v]) => {
-                if (v && !(typeof v === 'string' && v.startsWith('blob:'))) {
+                if (k !== 'face_photo' && v && !(typeof v === 'string' && v.startsWith('blob:'))) {
                   updated[k] = v;
                 }
               });
+              updated.face_photo = null; // Strictly left empty on reload to force taking a fresh live photo
               return updated;
             });
           }
@@ -6793,19 +6794,21 @@ const StudentInfo = () => {
             setDocumentVideos(prev => {
               const updated = { ...prev };
               Object.entries(savedDraft.documentVideos).forEach(([k, v]) => {
-                if (v && !(typeof v === 'string' && v.startsWith('blob:'))) {
+                if (k !== 'face_video' && v && !(typeof v === 'string' && v.startsWith('blob:'))) {
                   updated[k] = v;
                 }
               });
+              updated.face_video = null; // Strictly left empty on reload to force taking a fresh live photo/video
               return updated;
             });
             setFormData(prev => {
               const updated = { ...prev };
               Object.entries(savedDraft.documentVideos).forEach(([k, v]) => {
-                if (v && !(typeof v === 'string' && v.startsWith('blob:'))) {
+                if (k !== 'face_video' && v && !(typeof v === 'string' && v.startsWith('blob:'))) {
                   updated[k] = v;
                 }
               });
+              updated.face_video = null; // Strictly left empty on reload to force taking a fresh live photo/video
               return updated;
             });
           }
@@ -6825,14 +6828,15 @@ const StudentInfo = () => {
           const safeCoeVerified = vs.coeVerified === 'verifying' ? null : vs.coeVerified;
           const safeGradesVerified = vs.gradesVerified === 'verifying' ? null : vs.gradesVerified;
           const safeIdVerified = vs.idVerified === 'verifying' ? null : vs.idVerified;
-          const safeFaceVerified = vs.faceVerified === 'verifying' ? null : vs.faceVerified;
           const safeSigVerified = vs.signatureVerified === 'verifying' ? null : vs.signatureVerified;
 
           if (safeOcrVerified !== undefined && safeOcrVerified !== null) setOcrVerified(safeOcrVerified);
           if (safeCoeVerified !== undefined && safeCoeVerified !== null) setCoeVerified(safeCoeVerified);
           if (safeGradesVerified !== undefined && safeGradesVerified !== null) setGradesVerified(safeGradesVerified);
           if (safeIdVerified !== undefined && safeIdVerified !== null) setIdVerified(safeIdVerified);
-          if (safeFaceVerified !== undefined && safeFaceVerified !== null) setFaceVerified(safeFaceVerified);
+          // Face verification is strictly left empty on reload to force taking a fresh live photo
+          setFaceVerified(null);
+          setFaceMatchResult(null);
           if (safeSigVerified !== undefined && safeSigVerified !== null) setSignatureVerified(safeSigVerified);
 
           const sanitizeStatusStr = (s) => (s && (s.includes('Initializing') || s.includes('Scanning')) ? '' : s);
@@ -6842,8 +6846,6 @@ const StudentInfo = () => {
           if (vs.gradesStatus) setGradesStatus(sanitizeStatusStr(vs.gradesStatus));
           if (vs.idStatus) setIdStatus(sanitizeStatusStr(vs.idStatus));
           if (vs.signatureStatus) setSignatureStatus(sanitizeStatusStr(vs.signatureStatus));
-
-          if (vs.faceMatchResult) setFaceMatchResult(vs.faceMatchResult);
           if (vs.signatureResults) setSignatureResults(vs.signatureResults);
           if (vs.indigencyResults && vs.indigencyResults.length > 0) setIndigencyResults(vs.indigencyResults);
           if (vs.coeResults && vs.coeResults.length > 0) setCoeResults(vs.coeResults);
