@@ -202,9 +202,22 @@ def applicant_document_expr(cursor, column_name, applicant_alias='a', document_a
         real_doc_col = doc_col_map.get(column_name.lower())
         if real_doc_col:
             document_expr = f'{document_alias}."{real_doc_col}"'
+            subquery_fallback = f'(SELECT sub_d."{real_doc_col}" FROM {document_table} sub_d WHERE sub_d.applicant_no = {applicant_alias}.applicant_no AND sub_d."{real_doc_col}" IS NOT NULL ORDER BY sub_d.app_doc_no DESC LIMIT 1)'
+            
+            # For face photo / id_pic, if not found, also coalesce with profile_picture
+            if column_name.lower() in ('id_pic', 'face_photo', 'facephoto', 'idpic'):
+                prof_expr = f'{applicant_alias}.profile_picture' if 'profile_picture' in applicant_col_map else None
+                if prof_expr and applicant_expr:
+                    return f'COALESCE({document_expr}, {subquery_fallback}, {applicant_expr}, {prof_expr})'
+                elif prof_expr:
+                    return f'COALESCE({document_expr}, {subquery_fallback}, {prof_expr})'
+
             if applicant_expr:
-                return f'COALESCE({document_expr}, {applicant_expr})'
-            return document_expr
+                return f'COALESCE({document_expr}, {subquery_fallback}, {applicant_expr})'
+            return f'COALESCE({document_expr}, {subquery_fallback})'
+
+    if column_name.lower() in ('id_pic', 'face_photo', 'facephoto', 'idpic') and 'profile_picture' in applicant_col_map:
+        return f'{applicant_alias}.profile_picture'
 
     if applicant_expr:
         return applicant_expr
@@ -264,8 +277,8 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names, app_doc_
         row_dict = {}
 
     # Robust Fallback: If any requested document column is NULL in the joined row,
-    # find the most recent non-null value from applicant_documents for this applicant (only if no specific snapshot was requested)
-    if document_table and app_doc_no is None:
+    # find the most recent non-null value from applicant_documents for this applicant
+    if document_table:
         document_columns = get_table_columns(cursor, document_table)
         doc_col_map = {c.lower(): c for c in document_columns}
         needed_cols = [col for col in requested_columns if row_dict.get(col) is None and doc_col_map.get(col.lower())]
@@ -286,17 +299,29 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names, app_doc_
                     except Exception as fb_err:
                         print(f"[DOC SERVICE] Fallback fetch error for {col}: {fb_err}", flush=True)
 
-            # Additional fallback for id_pic: fallback to applicants.profile_picture if still null
-            if 'id_pic' in requested_columns and row_dict.get('id_pic') is None:
-                try:
-                    cursor.execute('SELECT profile_picture FROM applicants WHERE applicant_no = %s AND profile_picture IS NOT NULL LIMIT 1', (applicant_no,))
-                    p_row = cursor.fetchone()
-                    if p_row:
-                        p_val = p_row.get('profile_picture') if isinstance(p_row, dict) else p_row[0]
-                        if p_val is not None:
-                            row_dict['id_pic'] = p_val
-                except Exception as p_err:
-                    print(f"[DOC SERVICE] Profile picture fallback error for id_pic: {p_err}", flush=True)
+        # Additional fallback for id_pic: fallback to applicants.profile_picture if still null
+        if ('id_pic' in requested_columns or 'face_photo' in requested_columns or 'facePhoto' in requested_columns) and (row_dict.get('id_pic') is None and row_dict.get('face_photo') is None):
+            try:
+                cursor.execute('SELECT profile_picture FROM applicants WHERE applicant_no = %s AND profile_picture IS NOT NULL LIMIT 1', (applicant_no,))
+                p_row = cursor.fetchone()
+                if p_row:
+                    p_val = p_row.get('profile_picture') if isinstance(p_row, dict) else p_row[0]
+                    if p_val is not None:
+                        row_dict['id_pic'] = p_val
+                        row_dict['face_photo'] = p_val
+            except Exception as p_err:
+                print(f"[DOC SERVICE] Profile picture fallback error for id_pic: {p_err}", flush=True)
+
+        if 'profile_picture' in requested_columns and row_dict.get('profile_picture') is None:
+            try:
+                cursor.execute('SELECT profile_picture FROM applicants WHERE applicant_no = %s AND profile_picture IS NOT NULL LIMIT 1', (applicant_no,))
+                p_row = cursor.fetchone()
+                if p_row:
+                    p_val = p_row.get('profile_picture') if isinstance(p_row, dict) else p_row[0]
+                    if p_val is not None:
+                        row_dict['profile_picture'] = p_val
+            except Exception as p_err:
+                print(f"[DOC SERVICE] Profile picture fallback error: {p_err}", flush=True)
 
     return row_dict
 
@@ -338,8 +363,33 @@ def create_applicant_document_record(cursor, applicant_no, values):
     filtered_values = {}
     for key, value in document_values.items():
         real_key = doc_col_map.get(key.lower())
-        if real_key:
+        if real_key and value is not None:
             filtered_values[real_key] = value
+
+    # Automatically inherit any missing document values from previous snapshots for this applicant
+    try:
+        cursor.execute(
+            f'SELECT * FROM {document_table} WHERE applicant_no = %s ORDER BY app_doc_no DESC LIMIT 1',
+            (applicant_no,)
+        )
+        prev_row = cursor.fetchone()
+        if prev_row:
+            prev_dict = dict(prev_row)
+            for col in APPLICANT_DOCUMENT_COLUMNS:
+                real_col = doc_col_map.get(col.lower())
+                if real_col and (real_col not in filtered_values or filtered_values[real_col] is None) and prev_dict.get(real_col) is not None:
+                    filtered_values[real_col] = prev_dict[real_col]
+        # Also inherit profile_picture into id_pic if still missing
+        id_pic_col = doc_col_map.get('id_pic')
+        if id_pic_col and (id_pic_col not in filtered_values or filtered_values[id_pic_col] is None):
+            cursor.execute('SELECT profile_picture FROM applicants WHERE applicant_no = %s AND profile_picture IS NOT NULL LIMIT 1', (applicant_no,))
+            p_res = cursor.fetchone()
+            if p_res:
+                p_pic = p_res.get('profile_picture') if isinstance(p_res, dict) else p_res[0]
+                if p_pic:
+                    filtered_values[id_pic_col] = p_pic
+    except Exception as inherit_err:
+        print(f"[DOC SERVICE] Non-fatal document inheritance error: {inherit_err}", flush=True)
 
     # Generate next app_doc_no
     cursor.execute(f'SELECT COALESCE(MAX(app_doc_no), 0) + 1 AS next_id FROM {document_table}')

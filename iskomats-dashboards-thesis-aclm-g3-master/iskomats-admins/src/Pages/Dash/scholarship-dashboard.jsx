@@ -54,10 +54,11 @@ Chart.register(...registerables);
 /**
  * Helper component to handle encrypted images and videos in the dossier
  */
-const DecryptedMedia = ({ src, type, className, controls = false, autoPlay = false, onClick = null, alt = "Document" }) => {
+const DecryptedMedia = ({ src, fallbackSrc = null, type, className, controls = false, autoPlay = false, onClick = null, alt = "Document" }) => {
+  const [activeSrc, setActiveSrc] = useState(src);
   const isVideo = Boolean(
     (type && type.startsWith('video')) ||
-    (typeof src === 'string' && (src.includes('.mp4') || src.includes('.webm') || src.includes('.mov') || src.includes('/video/') || src.includes('_vid_url')))
+    (typeof activeSrc === 'string' && (activeSrc.includes('.mp4') || activeSrc.includes('.webm') || activeSrc.includes('.mov') || activeSrc.includes('/video/') || activeSrc.includes('_vid_url')))
   );
 
   const [decryptedSrc, setDecryptedSrc] = useState(src);
@@ -65,26 +66,34 @@ const DecryptedMedia = ({ src, type, className, controls = false, autoPlay = fal
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
+    setActiveSrc(src);
+  }, [src]);
+
+  useEffect(() => {
     let isMounted = true;
     setHasError(false);
 
-    if (!src || typeof src !== 'string' || !src.startsWith('http')) {
-      setDecryptedSrc(src);
+    if (!activeSrc || typeof activeSrc !== 'string' || !activeSrc.startsWith('http')) {
+      setDecryptedSrc(activeSrc);
       setIsLoading(false);
       return;
     }
 
     if (isVideo) {
-      setDecryptedSrc(src);
+      setDecryptedSrc(activeSrc);
       setIsLoading(false);
       return;
     }
 
-    decryptUrl(src, type)
+    decryptUrl(activeSrc, type)
       .then((decrypted) => {
         if (!isMounted) return;
         if (!decrypted) {
-          setHasError(true);
+          if (fallbackSrc && activeSrc !== fallbackSrc) {
+            setActiveSrc(fallbackSrc);
+          } else {
+            setHasError(true);
+          }
         } else {
           setDecryptedSrc(decrypted);
         }
@@ -92,17 +101,21 @@ const DecryptedMedia = ({ src, type, className, controls = false, autoPlay = fal
       })
       .catch(() => {
         if (!isMounted) return;
-        setHasError(true);
+        if (fallbackSrc && activeSrc !== fallbackSrc) {
+          setActiveSrc(fallbackSrc);
+        } else {
+          setHasError(true);
+        }
         setIsLoading(false);
       });
 
     return () => {
       isMounted = false;
     };
-  }, [src, type, isVideo]);
+  }, [activeSrc, type, isVideo, fallbackSrc]);
 
   if (isVideo) {
-    if (hasError || !src) {
+    if (hasError || !activeSrc) {
       return (
         <div className={`${className} bg-gray-900 flex flex-col items-center justify-center text-gray-400`} onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default', minHeight: '60px' }}>
           <FaPlay className="text-xl mb-1 text-gray-500" />
@@ -112,14 +125,20 @@ const DecryptedMedia = ({ src, type, className, controls = false, autoPlay = fal
     }
     return (
       <video
-        src={decryptedSrc || src}
+        src={decryptedSrc || activeSrc}
         controls={controls}
         autoPlay={autoPlay}
         preload="metadata"
         playsInline
         className={className}
         onClick={onClick}
-        onError={() => setHasError(true)}
+        onError={() => {
+          if (fallbackSrc && activeSrc !== fallbackSrc) {
+            setActiveSrc(fallbackSrc);
+          } else {
+            setHasError(true);
+          }
+        }}
       />
     );
   }
@@ -148,7 +167,13 @@ const DecryptedMedia = ({ src, type, className, controls = false, autoPlay = fal
       loading="lazy"
       className={className}
       onClick={onClick}
-      onError={() => setHasError(true)}
+      onError={() => {
+        if (fallbackSrc && activeSrc !== fallbackSrc) {
+          setActiveSrc(fallbackSrc);
+        } else {
+          setHasError(true);
+        }
+      }}
     />
   );
 };
@@ -6400,7 +6425,7 @@ export default function ScholarshipDashboard({
         {/* FACE VERIFICATION PHOTO SECTION */}
         {(() => {
           const facePhotoSrc = a.id_pic || a.face_photo || a.facePhoto || a.idPic || a.profile_picture;
-          const frontIdSrc = idFiles.find(f => f.name === 'ID Front' || f.name?.includes('Front'))?.src || a.id_img_front || a.schoolIdFront;
+          const frontIdSrc = idFiles.find(f => (f.name === 'ID Front' || (f.name?.includes('Front') && !f.name?.toLowerCase().includes('video'))) && (!f.type || !f.type.startsWith('video')))?.src || a.id_img_front || a.schoolIdFront;
           const isFallbackProfilePic = !a.id_pic && !a.face_photo && !a.facePhoto && !a.idPic && Boolean(a.profile_picture);
 
           return (
@@ -6453,6 +6478,7 @@ export default function ScholarshipDashboard({
                         >
                           <DecryptedMedia
                             src={facePhotoSrc}
+                            fallbackSrc={a.profile_picture}
                             alt="Face Verification Capture"
                             type="image/jpeg"
                             className="w-full h-full object-cover rounded-lg group-hover:scale-105 transition-transform"

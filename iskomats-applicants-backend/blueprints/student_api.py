@@ -3687,6 +3687,19 @@ def submit_application():
                 'id_pic': 'id_pic',
                 'face_photo': 'id_pic',
                 'facePhoto': 'id_pic',
+                'id_front': 'id_img_front',
+                'id_back': 'id_img_back',
+                'schoolID_photo': 'id_img_front',
+                'schoolIdFront': 'id_img_front',
+                'schoolIdBack': 'id_img_back',
+                'mayorCOE_photo': 'enrollment_certificate_doc',
+                'enrollment': 'enrollment_certificate_doc',
+                'mayorGrades_photo': 'grades_doc',
+                'grades': 'grades_doc',
+                'mayorIndigency_photo': 'indigency_doc',
+                'indigency': 'indigency_doc',
+                'signature_data': 'signature_image_data',
+                'signature': 'signature_image_data',
                 'id_vid_url': 'id_vid_url',
                 'face_video': 'id_vid_url',
                 'mayorIndigency_video': 'indigency_vid_url',
@@ -3835,7 +3848,7 @@ def submit_application():
                 save_merit_proofs(cur, current_user_id, merit_entries_to_save)
 
             # Create a dedicated separate document snapshot for this scholarship application
-            all_submitted_docs = dict(document_updates) if document_updates else {}
+            all_submitted_docs = {**(document_values or {}), **(document_updates or {})}
             application_doc_no = create_applicant_document_record(cur, current_user_id, all_submitted_docs)
 
             # ── CREATE/UPDATE STATUS ──────────────────────────────────────────────

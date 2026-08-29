@@ -5080,9 +5080,19 @@ def get_applicant_image(applicant_no, column_name):
                 cursor.close()
             
             if not row or not row.get(column_name):
-                return jsonify({'message': 'Image not found'}), 404
-            
-            data = row[column_name]
+                # Ultimate fallback for face photo/selfie: check profile_picture in applicants table
+                if column_name in ('id_pic', 'face_photo', 'facePhoto', 'profile_picture', 'profile_pic'):
+                    with get_db() as conn_fb:
+                        c_fb = conn_fb.cursor()
+                        c_fb.execute("SELECT profile_picture FROM applicants WHERE applicant_no = %s AND profile_picture IS NOT NULL LIMIT 1", (applicant_no,))
+                        p_row = c_fb.fetchone()
+                        c_fb.close()
+                        if p_row:
+                            data = p_row.get('profile_picture') if isinstance(p_row, dict) else p_row[0]
+                if not data:
+                    return jsonify({'message': 'Image not found'}), 404
+            else:
+                data = row[column_name]
             
             if hasattr(data, 'tobytes'):
                 data = data.tobytes()
