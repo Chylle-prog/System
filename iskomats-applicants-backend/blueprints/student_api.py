@@ -656,9 +656,10 @@ def is_trusted_storage_url(url):
     return parsed_url.netloc.lower().endswith('.supabase.co')
 
 
-def upload_image_to_storage(image_data, applicant_no, field_name, is_update=False):
+def upload_image_to_storage(image_data, applicant_no, field_name, is_update=False, scholarship_no=None):
     """
     Uploads image data to Supabase storage and returns the public URL.
+    Option C: Organizes images under applicant_{applicant_no}/scholarship_{scholarship_no}/
     """
     try:
         from project_config import use_storage, get_storage_bucket, get_supabase_client
@@ -698,10 +699,27 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
             print(f"[STORAGE ERROR] Supabase client unavailable for {field_name}", flush=True)
             return None
 
+        # Resolve active scholarship number if available
+        active_scholarship = scholarship_no
+        if not active_scholarship and request:
+            try:
+                active_scholarship = (
+                    request.form.get('scholarship_id') or 
+                    request.form.get('scholarship_no') or 
+                    request.form.get('reqNo') or 
+                    request.args.get('scholarship_id') or 
+                    request.args.get('reqNo') or 
+                    request.args.get('scholarship_no')
+                )
+            except Exception:
+                pass
+
+        scope_folder = f"scholarship_{active_scholarship}" if active_scholarship else "profile"
+
         # Generate unique path with timestamp to keep separate documents per application snapshot
         import uuid
         unique_token = f"{int(time.time() * 1000)}-{uuid.uuid4().hex[:6]}"
-        file_path = f"{folder}/{applicant_no}-{field_name}-{unique_token}.jpg"
+        file_path = f"applicant_{applicant_no}/{scope_folder}/{folder}-{field_name}-{unique_token}.jpg"
         mime_type = "image/jpeg"
         
         # Ensure we have bytes
@@ -3745,7 +3763,7 @@ def submit_application():
                 import concurrent.futures
                 def _do_submit_upload(task):
                     col_name, val_bytes = task
-                    uploaded_url = upload_image_to_storage(val_bytes, current_user_id, col_name, is_update=False)
+                    uploaded_url = upload_image_to_storage(val_bytes, current_user_id, col_name, is_update=False, scholarship_no=scholarship_id)
                     return col_name, uploaded_url
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(submit_upload_tasks))) as executor:
@@ -3784,7 +3802,7 @@ def submit_application():
                         else:
                             blob = decode_base64(m_photo) if isinstance(m_photo, str) else m_photo
                             if blob:
-                                url = upload_image_to_storage(blob, current_user_id, f'merit_doc_{idx+1}', is_update=False)
+                                url = upload_image_to_storage(blob, current_user_id, f'merit_doc_{idx+1}', is_update=False, scholarship_no=scholarship_id)
                                 if url:
                                     merit_entries_to_save.append({'title': m_title, 'document': url})
             else:
@@ -3809,7 +3827,7 @@ def submit_application():
                             else:
                                 blob = decode_base64(raw_val) if isinstance(raw_val, str) else raw_val
                                 if blob:
-                                    url = upload_image_to_storage(blob, current_user_id, f'merit_doc_{idx}', is_update=False)
+                                    url = upload_image_to_storage(blob, current_user_id, f'merit_doc_{idx}', is_update=False, scholarship_no=scholarship_id)
                                     if url:
                                         merit_entries_to_save.append({'title': m_title, 'document': url})
 
@@ -4619,10 +4637,19 @@ def upload_video():
             }
             
             folder = folder_map.get(field_name, 'others')
+            active_scholarship = (
+                request.form.get('scholarship_id') or 
+                request.form.get('scholarship_no') or 
+                request.form.get('reqNo') or 
+                request.args.get('scholarship_id') or 
+                request.args.get('reqNo') or 
+                request.args.get('scholarship_no')
+            )
+            scope_folder = f"scholarship_{active_scholarship}" if active_scholarship else "profile"
             # For videos, we use the dedicated document_videos bucket as seen in your setup
             bucket_name = 'document_videos'
-            file_name = f"{current_user_id}_{int(time.time())}{ext}"
-            file_path = f"videos/{folder}/{file_name}"
+            file_name = f"{folder}_video_{int(time.time())}{ext}"
+            file_path = f"applicant_{current_user_id}/{scope_folder}/{file_name}"
 
             # --- OVERWRITE PREVIOUS VIDEO CLEANUP (non-blocking) ---
             db_column_map = {

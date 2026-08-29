@@ -2860,7 +2860,11 @@ const StudentInfo = () => {
     if (typeof fileOrDataUrl === 'string' && (fileOrDataUrl.startsWith('http://') || fileOrDataUrl.startsWith('https://'))) {
       return;
     }
-    const promise = uploadDocumentImageDirect(fieldName, fileOrDataUrl)
+    const currentScholarshipNo = searchParams.get('reqNo') || searchParams.get('scholarship_id') || scholarshipDetails?.req_no || scholarshipDetails?.reqNo || scholarshipDetails?.id || 'general';
+    if (currentScholarshipNo && currentScholarshipNo !== 'general') {
+      localStorage.setItem('activeScholarshipNo', String(currentScholarshipNo));
+    }
+    const promise = uploadDocumentImageDirect(fieldName, fileOrDataUrl, null, currentScholarshipNo)
       .then(url => {
         if (url && typeof url === 'string' && url.startsWith('http')) {
           if (fieldName === 'mayorIndigency_photo' || fieldName === 'indigency_doc') {
@@ -6144,7 +6148,8 @@ const StudentInfo = () => {
 
       // Queue parallel direct upload to Supabase Storage
       directUploadKeys.push(fieldName);
-      const uploadPromise = uploadDocumentImageDirect(fieldName, sourceValue);
+      const currentScholarshipNo = searchParams.get('reqNo') || searchParams.get('scholarship_id') || scholarshipDetails?.req_no || scholarshipDetails?.reqNo || scholarshipDetails?.id || 'general';
+      const uploadPromise = uploadDocumentImageDirect(fieldName, sourceValue, null, currentScholarshipNo);
       activeImageUploadPromisesRef.current[fieldName] = uploadPromise;
       directUploadTasks.push(uploadPromise);
       hasPayload = true;

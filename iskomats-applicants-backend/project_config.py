@@ -236,7 +236,12 @@ def use_storage():
 
 
 def get_storage_bucket(default='document_images'):
-    return os.environ.get('SUPABASE_STORAGE_BUCKET', default).strip() or default
+    raw = os.environ.get('SUPABASE_STORAGE_BUCKET', default).strip()
+    if not raw:
+        return default
+    if ',' in raw:
+        return raw.split(',')[0].strip() or default
+    return raw
 
 
 _SUPABASE_CLIENT = None

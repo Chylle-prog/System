@@ -112,7 +112,7 @@ export const compressImageForUpload = async (fileOrBlob, maxDimension = 1600, qu
 };
 
 // Upload document image directly to Supabase Storage and return public URL
-export const uploadDocumentImageDirect = async (fieldName, fileOrDataUrl, onProgress) => {
+export const uploadDocumentImageDirect = async (fieldName, fileOrDataUrl, onProgress, scholarshipNo) => {
   if (!fileOrDataUrl) return null;
 
   // If already a remote URL, return immediately
@@ -121,23 +121,27 @@ export const uploadDocumentImageDirect = async (fieldName, fileOrDataUrl, onProg
   }
 
   const folderMap = {
-    signature_data: 'signatures',
-    signature_image_data: 'signatures',
-    grades_doc: 'grades',
-    mayorGrades_photo: 'grades',
-    enrollment_certificate_doc: 'coe',
-    mayorCOE_photo: 'coe',
-    indigency_doc: 'indigency',
     mayorIndigency_photo: 'indigency',
-    id_front: 'id_verification',
-    id_img_front: 'id_verification',
+    indigency_doc: 'indigency',
+    indigency: 'indigency',
+    mayorCOE_photo: 'coe',
+    enrollment_certificate_doc: 'coe',
+    enrollment: 'coe',
+    mayorGrades_photo: 'grades',
+    grades_doc: 'grades',
+    grades: 'grades',
     schoolIdFront: 'id_verification',
-    id_back: 'id_verification',
-    id_img_back: 'id_verification',
     schoolIdBack: 'id_verification',
-    profile_picture: 'profile_pictures',
+    id_front: 'id_verification',
+    id_back: 'id_verification',
     id_pic: 'face_verification',
     face_photo: 'face_verification',
+    facePhoto: 'face_verification',
+    idPic: 'face_verification',
+    profile_picture: 'profile_pictures',
+    signature_data: 'signatures',
+    signature: 'signatures',
+    merit_proof: 'merit_documents',
     merit_doc_1: 'merit_documents',
     merit_doc_2: 'merit_documents',
     merit_doc_3: 'merit_documents',
@@ -147,39 +151,42 @@ export const uploadDocumentImageDirect = async (fieldName, fileOrDataUrl, onProg
   };
 
   const canonicalFieldMap = {
-    signature_data: 'signature_image_data',
-    signature_image_data: 'signature_image_data',
-    grades_doc: 'grades_doc',
-    mayorGrades_photo: 'grades_doc',
-    enrollment_certificate_doc: 'enrollment_certificate_doc',
-    mayorCOE_photo: 'enrollment_certificate_doc',
-    indigency_doc: 'indigency_doc',
     mayorIndigency_photo: 'indigency_doc',
-    id_front: 'id_img_front',
-    id_img_front: 'id_img_front',
+    indigency: 'indigency_doc',
+    mayorCOE_photo: 'enrollment_certificate_doc',
+    enrollment: 'enrollment_certificate_doc',
+    mayorGrades_photo: 'grades_doc',
+    grades: 'grades_doc',
     schoolIdFront: 'id_img_front',
-    id_back: 'id_img_back',
-    id_img_back: 'id_img_back',
+    id_front: 'id_img_front',
     schoolIdBack: 'id_img_back',
-    profile_picture: 'profile_picture',
-    id_pic: 'id_pic',
+    id_back: 'id_img_back',
     face_photo: 'id_pic',
-    merit_doc_1: 'merit_doc_1',
-    merit_doc_2: 'merit_doc_2',
-    merit_doc_3: 'merit_doc_3',
+    facePhoto: 'id_pic',
+    idPic: 'id_pic',
+    signature: 'signature_image_data',
+    signature_data: 'signature_image_data',
+    merit_proof: 'merit_doc_1',
     merit_proof_1: 'merit_doc_1',
     merit_proof_2: 'merit_doc_2',
     merit_proof_3: 'merit_doc_3',
   };
 
   const applicantNo = sanitizeStorageSegment(localStorage.getItem('applicantNo'), 'unknown-applicant');
+  const activeScholarshipNo = sanitizeStorageSegment(
+    scholarshipNo || 
+    localStorage.getItem('activeScholarshipNo') || 
+    sessionStorage.getItem('activeScholarshipNo') || 
+    (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('reqNo') || new URLSearchParams(window.location.search).get('scholarship_id') : null) || 
+    'general'
+  );
   let folder = folderMap[fieldName] || 'others';
   if (fieldName && fieldName.toLowerCase().includes('merit')) {
     folder = 'merit_documents';
   }
   const dbCol = canonicalFieldMap[fieldName] || fieldName;
   const uniqueToken = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const objectPath = `${folder}/${applicantNo}-${dbCol}-${uniqueToken}.jpg`;
+  const objectPath = `applicant_${applicantNo}/scholarship_${activeScholarshipNo}/${folder}-${dbCol}-${uniqueToken}.jpg`;
 
   let blob = null;
   if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
@@ -235,7 +242,7 @@ export const uploadProfilePicture = async (file) => {
   const currentUser = sanitizeStorageSegment(localStorage.getItem('currentUser'), 'unknown-user');
   const ext = resolveImageUploadExtension(file);
   const uniqueToken = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const objectPath = `profile_pictures/${applicantNo}-${currentUser}-${uniqueToken}${ext}`;
+  const objectPath = `applicant_${applicantNo}/profile/profile_picture-${currentUser}-${uniqueToken}${ext}`;
 
   let uploadFile = file;
   try {
@@ -358,7 +365,7 @@ const shouldDirectUploadVideo = (file) => {
          mimeType.includes('video/webm');
 };
 
-const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
+const uploadRequirementVideoDirect = async (fieldName, file, onProgress, scholarshipNo) => {
   const folderMap = {
     mayorIndigency_video: 'indigency',
     mayorCOE_video: 'coe',
@@ -370,11 +377,17 @@ const uploadRequirementVideoDirect = async (fieldName, file, onProgress) => {
   };
 
   const applicantNo = sanitizeStorageSegment(localStorage.getItem('applicantNo'), 'unknown-applicant');
-  const currentUser = sanitizeStorageSegment(localStorage.getItem('currentUser'), 'unknown-user');
+  const activeScholarshipNo = sanitizeStorageSegment(
+    scholarshipNo || 
+    localStorage.getItem('activeScholarshipNo') || 
+    sessionStorage.getItem('activeScholarshipNo') || 
+    (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('reqNo') || new URLSearchParams(window.location.search).get('scholarship_id') : null) || 
+    'general'
+  );
   const folder = folderMap[fieldName] || 'others';
   const ext = resolveVideoUploadExtension(file);
   const uniqueToken = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const objectPath = `videos/${folder}/${applicantNo}-${currentUser}/${fieldName}-${uniqueToken}${ext}`;
+  const objectPath = `applicant_${applicantNo}/scholarship_${activeScholarshipNo}/${folder}_video-${uniqueToken}${ext}`;
 
   const { encryptDocument } = await import('./CryptoService');
   const encryptedFile = await encryptDocument(file);
@@ -1244,8 +1257,14 @@ export const applicantAPI = {
       const bucketName = 'document_videos';
       const ext = uploadFile.name && uploadFile.name.includes('.') ? uploadFile.name.slice(uploadFile.name.lastIndexOf('.')) : (uploadFile.type === 'video/mp4' ? '.mp4' : '.webm');
       const userNo = localStorage.getItem('applicantNo') || 'user';
-      const fileName = `${userNo}_${Date.now()}${ext}`;
-      const filePath = `videos/${folder}/${fileName}`;
+      const activeScholarshipNo = sanitizeStorageSegment(
+        localStorage.getItem('activeScholarshipNo') || 
+        sessionStorage.getItem('activeScholarshipNo') || 
+        (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('reqNo') || new URLSearchParams(window.location.search).get('scholarship_id') : null) || 
+        'general'
+      );
+      const fileName = `${folder}_video_${Date.now()}${ext}`;
+      const filePath = `applicant_${userNo}/scholarship_${activeScholarshipNo}/${fileName}`;
 
       // 1. Direct Supabase SDK upload (Fast, zero-hop, direct CDN)
       if (typeof supabase !== 'undefined' && supabase.storage) {
