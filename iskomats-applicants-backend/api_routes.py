@@ -4280,9 +4280,12 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
                     notif_type='result',
                     db_conn=conn
                 )
-                # Notify the student portal instantly via room-targeted socket
-                safe_emit('notification_update', {'user_no': applicant_no}, room=f"applicant_{applicant_no}")
+                # Notify the student portal instantly via room-targeted and broadcast socket
+                safe_emit('notification_update', {'user_no': applicant_no, 'type': 'result'}, room=f"applicant_{applicant_no}")
                 safe_emit('applicant_status_update', {'applicant_no': applicant_no, 'status': 'Accepted', 'scholarship_no': scholarship_no}, room=f"applicant_{applicant_no}")
+                safe_emit('notification_update', {'user_no': applicant_no, 'type': 'result'}, broadcast=True)
+                safe_emit('applicant_status_update', {'applicant_no': applicant_no, 'status': 'Accepted', 'scholarship_no': scholarship_no}, broadcast=True)
+                safe_emit('new_notification', {'title': 'Application Accepted', 'message': f"Congratulations! We are pleased to inform you that your application for {status_row['scholarship_name']} has been accepted.", 'type': 'result', 'user_no': applicant_no}, broadcast=True)
             except Exception as notif_err:
                 print(f"[NOTIF ERROR] Failed to notify accepted applicant {applicant_no}: {notif_err}", flush=True)
 
@@ -4335,9 +4338,12 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
                     notif_type='result',
                     db_conn=conn
                 )
-                # Notify the student portal instantly via room-targeted socket
-                safe_emit('notification_update', {'user_no': applicant_no}, room=f"applicant_{applicant_no}")
+                # Notify the student portal instantly via room-targeted and broadcast socket
+                safe_emit('notification_update', {'user_no': applicant_no, 'type': 'result'}, room=f"applicant_{applicant_no}")
                 safe_emit('applicant_status_update', {'applicant_no': applicant_no, 'status': 'Rejected', 'scholarship_no': scholarship_no}, room=f"applicant_{applicant_no}")
+                safe_emit('notification_update', {'user_no': applicant_no, 'type': 'result'}, broadcast=True)
+                safe_emit('applicant_status_update', {'applicant_no': applicant_no, 'status': 'Rejected', 'scholarship_no': scholarship_no}, broadcast=True)
+                safe_emit('new_notification', {'title': 'Application Declined', 'message': f"Thank you for your interest in {status_row['scholarship_name']}. We regret to inform you that your application has been declined.", 'type': 'result', 'user_no': applicant_no}, broadcast=True)
             except Exception as notif_err:
                 print(f"[NOTIF ERROR] Failed to notify declined applicant {applicant_no}: {notif_err}", flush=True)
 
@@ -5476,6 +5482,8 @@ def create_announcement(current_user_id, pro_no, role):
                 'provider': provider_name,
                 'pro_no': target_pro_no
             }, broadcast=True)
+            safe_emit('notification_update', {'type': 'announcement', 'ann_no': ann_no}, broadcast=True)
+            safe_emit('new_notification', {'title': title, 'message': message, 'type': 'announcement'}, broadcast=True)
             safe_invalidate_public_caches()
         
             # Dispatch notifications asynchronously in background thread

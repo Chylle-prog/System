@@ -586,25 +586,35 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
     try {
       if (signal?.aborted) return "";
 
-      // Compress large payloads to ~1024px for fast upload
-      if (resolvedBlob && resolvedBlob.size > 400000) {
-        const compressed = await compressImageForOcr(resolvedBlob, 1024, 0.80);
+      // Convert base64 data URIs directly to binary blobs to avoid base64 JSON payload inflation
+      if (base64Image && !resolvedBlob) {
+        const b = dataUrlToBlob(base64Image);
+        if (b) {
+          resolvedBlob = b;
+          base64Image = null;
+        }
+      }
+
+      // Compress large payloads to ~960px max dimension for fast transmission (<80KB)
+      if (resolvedBlob && resolvedBlob.size > 200000) {
+        const compressed = await compressImageForOcr(resolvedBlob, 960, 0.78);
         if (compressed instanceof Blob) resolvedBlob = compressed;
-      } else if (base64Image && base64Image.length > 400000) {
-        const compressed = await compressImageForOcr(base64Image, 1024, 0.80);
+      } else if (base64Image && base64Image.length > 250000) {
+        const compressed = await compressImageForOcr(base64Image, 960, 0.78);
         if (compressed instanceof Blob) {
           resolvedBlob = compressed;
           base64Image = null;
         }
       }
 
-      const primaryOrigin = (API_ORIGIN || '').replace(/\/+$/, '') || window.location.origin;
-      const isLocalhost = typeof window !== 'undefined' && 
-        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      // Target active backend directly without probing dead localhost ports or static frontend origin
+      const targetBackend = (API_ORIGIN && typeof API_ORIGIN === 'string' && API_ORIGIN.startsWith('http'))
+        ? API_ORIGIN.replace(/\/+$/, '')
+        : 'https://iskomats-backend.onrender.com';
 
       const originsToTry = [
-        primaryOrigin,
-        ...(isLocalhost ? ['http://localhost:10000', 'https://iskomats-backend.onrender.com'] : ['https://iskomats-backend.onrender.com'])
+        targetBackend,
+        'https://iskomats-backend.onrender.com'
       ].filter((v, i, a) => v && a.indexOf(v) === i);
 
       for (const origin of originsToTry) {
@@ -657,7 +667,7 @@ const performGoogleVisionOcrScan = async (imageInput, signal = null) => {
               return "";
             }
             if (attempt < 2) {
-              await new Promise(r => setTimeout(r, 400));
+              await new Promise(r => setTimeout(r, 200));
             }
           }
         }
@@ -3720,6 +3730,7 @@ const StudentInfo = () => {
     else if (fieldName === 'face_video') { setFaceVerified(null); }
 
     // Start background upload immediately
+    setUploadingFields(prev => ({ ...prev, [fieldName]: true }));
     const uploadPromise = applicantAPI.uploadRequirementVideo(fieldName, blob, (percent) => {
       setUploadProgress(prev => ({ ...prev, [fieldName]: percent }));
     })
@@ -4830,9 +4841,11 @@ const StudentInfo = () => {
       let resolvedParam = docParam;
 
       if (docType === 'SchoolID') {
+        const isLocalFront = typeof docParam?.front === 'string' && (docParam.front.startsWith('blob:') || docParam.front.startsWith('data:'));
+        const isLocalBack = typeof docParam?.back === 'string' && (docParam.back.startsWith('blob:') || docParam.back.startsWith('data:'));
         const [resolvedFront, resolvedBack] = await Promise.all([
-          docParam?.front ? applicantAPI.resolveDocument('id_img_front', docParam.front) : Promise.resolve(null),
-          docParam?.back ? applicantAPI.resolveDocument('id_img_back', docParam.back) : Promise.resolve(null)
+          docParam?.front ? (isLocalFront ? Promise.resolve(docParam.front) : applicantAPI.resolveDocument('id_img_front', docParam.front)) : Promise.resolve(null),
+          docParam?.back ? (isLocalBack ? Promise.resolve(docParam.back) : applicantAPI.resolveDocument('id_img_back', docParam.back)) : Promise.resolve(null)
         ]);
         if (!silent) setStatus("Enhancing ID images for OCR...");
         const [enhancedFront, enhancedBack] = await Promise.all([

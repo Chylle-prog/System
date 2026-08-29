@@ -47,8 +47,20 @@ class SocketService {
       this._notifyHandlers('account_change', data);
     });
 
+    this.socket.on('new_application', (data) => {
+      this._notifyHandlers('new_application', data);
+    });
+
+    this.socket.on('new_applicant', (data) => {
+      this._notifyHandlers('new_applicant', data);
+    });
+
     this.socket.on('applicant_status_update', (data) => {
       this._notifyHandlers('applicant_status_update', data);
+    });
+
+    this.socket.on('notification_update', (data) => {
+      this._notifyHandlers('notification_update', data);
     });
 
     this.socket.on('scholarship_update', (data) => {

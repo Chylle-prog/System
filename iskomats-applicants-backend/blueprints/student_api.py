@@ -3068,7 +3068,7 @@ def update_profile():
                 if frontend_key in data:
                     value = data[frontend_key]
                     # Numeric columns — coerce safely
-                    if db_col in ('school_id_no', 'semester', 'grades_sem', 'grades_year'):
+                    if db_col in ('semester', 'grades_sem', 'grades_year'):
                         try:
                             if isinstance(value, str):
                                 # Handle "1st", "2nd" etc for semesters
@@ -3080,6 +3080,8 @@ def update_profile():
                             value = int(value) if value not in (None, '', 'null') else None
                         except (ValueError, TypeError):
                             value = None
+                    elif db_col == 'school_id_no':
+                        value = str(value).strip() if value not in (None, '', 'null') else None
                     elif db_col in ('overall_gpa', 'financial_income_of_parents'):
                         try:
                             value = float(value) if value not in (None, '', 'null') else None
@@ -3665,12 +3667,9 @@ def submit_application():
             for form_key, db_col in field_mapping.items():
                 if form_key in request_payload:
                     value = request_payload[form_key]
-                    # school_id_no is an INTEGER column — coerce safely
+                    # school_id_no is now TEXT to safely store IDs of any length or alphanumeric format
                     if db_col == 'school_id_no':
-                        try:
-                            value = int(value) if value not in (None, '', 'null') else None
-                        except (ValueError, TypeError):
-                            value = None
+                        value = str(value).strip() if value not in (None, '', 'null') else None
                     add_update(db_col, value)
 
             if 'fatherName' in request_payload:

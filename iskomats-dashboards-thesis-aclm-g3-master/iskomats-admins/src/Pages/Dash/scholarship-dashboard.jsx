@@ -1620,8 +1620,11 @@ export default function ScholarshipDashboard({
       const debouncedLoadApplicants = () => {
         clearTimeout(debounceApplicantsTimer);
         debounceApplicantsTimer = setTimeout(() => {
+          if (scholarshipAPI.getApplicants?.invalidate) {
+            scholarshipAPI.getApplicants.invalidate();
+          }
           loadApplicants();
-        }, 400);
+        }, 300);
       };
 
       // Subscribe to applicant updates from students and other admins

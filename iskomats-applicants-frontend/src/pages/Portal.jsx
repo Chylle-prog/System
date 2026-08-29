@@ -463,12 +463,20 @@ const Portal = () => {
       // Live real-time updates for applicant status changes & notifications (debounced)
       const unsubStatus = socketService.subscribe('applicant_status_update', (data) => {
         console.log('[LIVE SYNC] Applicant status update received live:', data);
+        const currentAppNo = localStorage.getItem('applicantNo') || applicantNo;
+        if (data?.applicant_no && currentAppNo && String(data.applicant_no) !== String(currentAppNo)) {
+          return;
+        }
         debouncedFetchApplications();
         fetchProfile();
         debouncedFetchNotifications();
       });
       const unsubNotifUpdate = socketService.subscribe('notification_update', (data) => {
         console.log('[LIVE SYNC] Notification update received live:', data);
+        const currentAppNo = localStorage.getItem('applicantNo') || applicantNo;
+        if (data?.user_no && currentAppNo && String(data.user_no) !== String(currentAppNo)) {
+          return;
+        }
         if (data && data.action === 'delete' && data.title) {
           const deleteTitleLower = String(data.title).toLowerCase().trim();
           setNotifications(prev => prev.filter(n => {
@@ -484,6 +492,10 @@ const Portal = () => {
       });
       const unsubNewNotif = socketService.subscribe('new_notification', (data) => {
         console.log('[LIVE SYNC] New notification received live:', data);
+        const currentAppNo = localStorage.getItem('applicantNo') || applicantNo;
+        if (data?.user_no && currentAppNo && String(data.user_no) !== String(currentAppNo)) {
+          return;
+        }
         if (data && (data.id || data.title)) {
           const typeIcons = {
             'message': 'fa-comment-alt',

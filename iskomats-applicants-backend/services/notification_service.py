@@ -458,6 +458,9 @@ def _create_notification_internal(conn, user_no, title, message, notif_type='mes
                 }
                 _socketio.emit('new_notification', payload, room=room)
                 _socketio.emit('notification_update', payload, room=room)
+                # Also broadcast so students whose room join was delayed still receive real-time alerts
+                _socketio.emit('new_notification', payload)
+                _socketio.emit('notification_update', payload)
                 print(f"[NOTIF SOCKET] Emit successful for user {user_no}")
             except Exception as socket_err:
                 print(f"[NOTIF SOCKET ERROR] Failed to emit: {socket_err}")
