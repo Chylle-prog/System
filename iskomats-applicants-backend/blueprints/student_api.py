@@ -3844,12 +3844,12 @@ def submit_application():
                                     if url:
                                         merit_entries_to_save.append({'title': m_title, 'document': url})
 
-            if merit_entries_to_save is not None:
-                save_merit_proofs(cur, current_user_id, merit_entries_to_save)
-
             # Create a dedicated separate document snapshot for this scholarship application
             all_submitted_docs = {**(document_values or {}), **(document_updates or {})}
             application_doc_no = create_applicant_document_record(cur, current_user_id, all_submitted_docs)
+
+            if merit_entries_to_save is not None:
+                save_merit_proofs(cur, current_user_id, merit_entries_to_save, scholarship_no=scholarship_id, app_doc_no=application_doc_no)
 
             # ── CREATE/UPDATE STATUS ──────────────────────────────────────────────
             cur.execute(

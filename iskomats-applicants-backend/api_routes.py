@@ -4049,7 +4049,7 @@ def get_applicants(current_user_id, pro_no, role, program):
                     app_ids = [aid for aid in app_ids if aid is not None]
                     if app_ids:
                         cursor.execute("""
-                            SELECT merit_id, applicant_no, merit_document, merit_title, created_at
+                            SELECT merit_id, applicant_no, merit_document, merit_title, scholarship_no, app_doc_no, created_at
                             FROM merit_proofs
                             WHERE applicant_no = ANY(%s)
                             ORDER BY merit_id ASC
@@ -4095,7 +4095,7 @@ def get_applicants(current_user_id, pro_no, role, program):
                     a['profile_picture'] = None
 
                 # Proxy face verification photo (id_pic)
-                has_face_photo = a.get('has_id_pic') or a.get('has_profile_picture')
+                has_face_photo = bool(a.get('has_id_pic'))
                 if has_face_photo:
                     id_pic_params = {'applicant_no': app_no, 'column_name': 'id_pic', '_external': True}
                     if row_doc_no: id_pic_params['app_doc_no'] = row_doc_no
@@ -4153,8 +4153,14 @@ def get_applicants(current_user_id, pro_no, role, program):
                 # Fill in ID# with school_id_no
                 a['idNumber'] = a.get('school_id_no') or a.get('schoolId')
 
-                # Merit proofs from merit_proofs table (1NF)
-                a_merit_proofs = merit_proofs_by_app.get(app_no, [])
+                # Merit proofs from merit_proofs table (1NF) scoped to this application snapshot
+                all_app_merits = merit_proofs_by_app.get(app_no, [])
+                a_merit_proofs = [
+                    mp for mp in all_app_merits
+                    if (row_doc_no and mp.get('app_doc_no') == row_doc_no)
+                    or (row_scholarship_no and mp.get('scholarship_no') == row_scholarship_no)
+                    or (mp.get('app_doc_no') is None and mp.get('scholarship_no') is None)
+                ]
                 a['merit_proofs'] = a_merit_proofs
                 merit_files = []
                 for idx, mp in enumerate(a_merit_proofs):
@@ -5080,8 +5086,8 @@ def get_applicant_image(applicant_no, column_name):
                 cursor.close()
             
             if not row or not row.get(column_name):
-                # Ultimate fallback for face photo/selfie: check profile_picture in applicants table
-                if column_name in ('id_pic', 'face_photo', 'facePhoto', 'profile_picture', 'profile_pic'):
+                # Fallback only for profile picture
+                if column_name in ('profile_picture', 'profile_pic'):
                     with get_db() as conn_fb:
                         c_fb = conn_fb.cursor()
                         c_fb.execute("SELECT profile_picture FROM applicants WHERE applicant_no = %s AND profile_picture IS NOT NULL LIMIT 1", (applicant_no,))

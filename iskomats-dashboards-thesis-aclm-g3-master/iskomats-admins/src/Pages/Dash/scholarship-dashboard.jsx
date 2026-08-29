@@ -6422,26 +6422,32 @@ export default function ScholarshipDashboard({
           </div>
         </div>
 
-        {/* FACE VERIFICATION PHOTO SECTION */}
+        {/* FACE VERIFICATION SECTION */}
         {(() => {
-          const facePhotoSrc = a.id_pic || a.face_photo || a.facePhoto || a.idPic || a.profile_picture;
+          const faceVideoSrc = a.id_vid_url || a.face_video || a.faceVideo;
+          const facePhotoSrc = a.id_pic || a.face_photo || a.facePhoto || a.idPic;
           const frontIdSrc = idFiles.find(f => (f.name === 'ID Front' || (f.name?.includes('Front') && !f.name?.toLowerCase().includes('video'))) && (!f.type || !f.type.startsWith('video')))?.src || a.id_img_front || a.schoolIdFront;
-          const isFallbackProfilePic = !a.id_pic && !a.face_photo && !a.facePhoto && !a.idPic && Boolean(a.profile_picture);
+          const hasLiveVerification = Boolean(facePhotoSrc || faceVideoSrc);
+          const hasProfilePic = Boolean(a.profile_picture);
 
           return (
             <div className="mb-10">
               <div className="flex items-center justify-between bg-[#800020] text-white px-3 sm:px-4 py-2 rounded-t-lg">
                 <h3 className="text-xs sm:text-sm font-black uppercase tracking-widest flex items-center gap-2">
-                  <FaUserCheck className="text-emerald-400 text-sm" /> Face Verification
+                  <FaUserCheck className={hasLiveVerification ? "text-emerald-400 text-sm" : "text-amber-300 text-sm"} /> Face Verification
                 </h3>
-                {facePhotoSrc && (
+                {hasLiveVerification ? (
                   <span className="text-[9px] sm:text-[10px] bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
-                    <FaCheckCircle className="text-[8px]" /> Verified
+                    <FaCheckCircle className="text-[8px]" /> {faceVideoSrc && !facePhotoSrc ? 'Video Verified' : 'Live Selfie Verified'}
+                  </span>
+                ) : (
+                  <span className="text-[9px] sm:text-[10px] bg-amber-500/20 text-amber-200 border border-amber-400/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
+                    <FaInfoCircle className="text-[8px]" /> Unverified Step 4
                   </span>
                 )}
               </div>
               <div className="p-4 sm:p-6 border-2 border-gray-100 rounded-b-lg bg-gray-50/50">
-                {facePhotoSrc ? (
+                {hasLiveVerification ? (
                   <div className="flex flex-col items-center gap-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-xl">
                       {/* ID Front Reference (if available) */}
@@ -6467,38 +6473,86 @@ export default function ScholarshipDashboard({
                         </div>
                       )}
 
-                      {/* Live Face Verification Photo */}
+                      {/* Live Face Verification (Photo or Video) */}
                       <div className={`flex flex-col items-center ${!frontIdSrc ? 'sm:col-span-2' : ''}`}>
                         <span className="text-[10px] font-black text-[#800020] uppercase tracking-wider mb-2 flex items-center gap-1">
-                          <FaCamera className="text-[#800020]" /> {isFallbackProfilePic ? 'Identity / Profile Photo' : 'Live Face Capture'}
+                          {faceVideoSrc ? <FaPlay className="text-[#800020]" /> : <FaCamera className="text-[#800020]" />}
+                          {facePhotoSrc ? 'Step 4 Live Face Capture' : 'Step 4 Face Verification Video'}
                         </span>
                         <div
                           className="relative group w-48 sm:w-52 h-56 overflow-hidden rounded-xl border-2 border-[#800020] shadow-md bg-white cursor-pointer transition-all flex items-center justify-center"
-                          onClick={() => setImageModalSrc({ src: facePhotoSrc, type: 'image/jpeg' })}
+                          onClick={() => {
+                            if (facePhotoSrc) setImageModalSrc({ src: facePhotoSrc, type: 'image/jpeg' });
+                            else if (faceVideoSrc) setImageModalSrc({ src: faceVideoSrc, type: 'video/mp4' });
+                          }}
                         >
                           <DecryptedMedia
-                            src={facePhotoSrc}
-                            fallbackSrc={a.profile_picture}
+                            src={facePhotoSrc || faceVideoSrc}
                             alt="Face Verification Capture"
-                            type="image/jpeg"
+                            type={facePhotoSrc ? 'image/jpeg' : 'video/mp4'}
+                            controls={Boolean(faceVideoSrc && !facePhotoSrc)}
                             className="w-full h-full object-cover rounded-lg group-hover:scale-105 transition-transform"
                           />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1 pointer-events-none">
-                            <FaSearchPlus /> View Face Photo
-                          </div>
+                          {facePhotoSrc && (
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1 pointer-events-none">
+                              <FaSearchPlus /> View Face Photo
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
 
+                    {/* If both video and photo exist, also show video playback */}
+                    {facePhotoSrc && faceVideoSrc && (
+                      <div className="w-full max-w-xl mt-2 p-3 bg-white rounded-xl border border-gray-200">
+                        <span className="text-[10px] font-black text-[#800020] uppercase tracking-wider mb-2 flex items-center gap-1">
+                          <FaPlay /> Accompanying Face Verification Video
+                        </span>
+                        <div className="h-44 rounded-lg overflow-hidden bg-black">
+                          <DecryptedMedia
+                            src={faceVideoSrc}
+                            type="video/mp4"
+                            controls={true}
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     <div className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 text-xs px-3.5 py-1.5 rounded-full font-bold border border-emerald-200 shadow-xs">
                       <FaCheckCircle className="text-emerald-600 text-xs" />
-                      {isFallbackProfilePic ? 'Profile Picture Verified' : 'Step 4 Live Face Match Verified'}
+                      Step 4 Facial Identity Match Recorded
                     </div>
                   </div>
                 ) : (
-                  <div className="text-center p-6 text-gray-400">
-                    <FaUserSlash className="text-3xl mb-2 mx-auto text-gray-300" />
-                    <p className="text-xs font-semibold">No face verification photo recorded for this applicant</p>
+                  <div className="flex flex-col items-center justify-center p-4">
+                    <div className="text-center p-4 text-gray-400">
+                      <FaUserSlash className="text-3xl mb-2 mx-auto text-gray-300" />
+                      <p className="text-xs font-semibold text-gray-600">No Step 4 face verification captured for this applicant</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">Applicant did not submit a live camera selfie or face video in Step 4.</p>
+                    </div>
+
+                    {hasProfilePic && (
+                      <div className="mt-3 flex flex-col items-center bg-white border border-gray-200 rounded-xl p-3 shadow-xs">
+                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                          <FaUsers className="text-gray-400" /> Reference Profile Picture Only
+                        </span>
+                        <div
+                          className="w-28 h-28 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 cursor-pointer"
+                          onClick={() => setImageModalSrc({ src: a.profile_picture, type: 'image/jpeg' })}
+                        >
+                          <DecryptedMedia
+                            src={a.profile_picture}
+                            alt="Profile Picture"
+                            type="image/jpeg"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full mt-2">
+                          Profile Avatar &bull; Not Live Step 4 Match
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

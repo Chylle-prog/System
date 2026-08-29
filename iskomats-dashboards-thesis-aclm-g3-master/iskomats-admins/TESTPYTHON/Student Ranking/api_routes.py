@@ -5056,8 +5056,8 @@ def get_applicant_image(applicant_no, column_name):
             row = fetch_applicant_document_values(cursor, applicant_no, [column_name], app_doc_no=app_doc_no)
         
             if not row or not row.get(column_name):
-                # Ultimate fallback for face photo/selfie: check profile_picture in applicants table
-                if column_name in ('id_pic', 'face_photo', 'facePhoto', 'profile_picture', 'profile_pic'):
+                # Fallback only for profile picture
+                if column_name in ('profile_picture', 'profile_pic'):
                     cursor.execute("SELECT profile_picture FROM applicants WHERE applicant_no = %s AND profile_picture IS NOT NULL LIMIT 1", (applicant_no,))
                     p_row = cursor.fetchone()
                     if p_row:

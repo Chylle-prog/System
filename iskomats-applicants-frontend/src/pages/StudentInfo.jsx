@@ -6200,6 +6200,12 @@ const StudentInfo = () => {
       if (signatureToSave) {
         queueSmartUpload('signature_data', signatureToSave);
       }
+      const facePhotoVal = (formData.face_photo && typeof formData.face_photo === 'string' && formData.face_photo.startsWith('http'))
+        ? formData.face_photo
+        : (photos.face_photo || faceVerificationPreview || formData.face_photo);
+      if (facePhotoVal) {
+        queueSmartUpload('face_photo', facePhotoVal);
+      }
     }
 
     // Common: Handle video URLs if they exist in formData (e.g. from previous loads)
@@ -6456,7 +6462,7 @@ const StudentInfo = () => {
           gpa: urlGpa || scholarshipSearchProfile?.gpa || profile.overall_gpa || savedDraft?.formData?.gpa || '',
           numberOfSiblings: profile.sibling_no || '',
           course: profile.course || '',
-          meritsAwardsReceived: profile.merits_awards_received || ''
+          meritsAwardsReceived: savedDraft?.formData?.meritsAwardsReceived || ''
         };
 
         if (targetBarangay) updates.barangay = normalizeSelectValue(targetBarangay, BARANGAYS);
@@ -6498,10 +6504,10 @@ const StudentInfo = () => {
           if (savedDraft.verificationStates.idVerified) setIdVerified(savedDraft.verificationStates.idVerified);
           if (savedDraft.verificationStates.signatureVerified) setSignatureVerified(savedDraft.verificationStates.signatureVerified);
         }
-        if (savedDraft?.meritList && Array.isArray(savedDraft.meritList)) {
+        if (savedDraft?.meritList && Array.isArray(savedDraft.meritList) && savedDraft.meritList.length > 0) {
           setMeritList(savedDraft.meritList);
         } else {
-          setMeritList([]);
+          setMeritList([{ id: 1, title: '', photo: null, verified: null, status: '', scoreDetails: null }]);
         }
 
         setFormData(prev => {
@@ -6526,21 +6532,6 @@ const StudentInfo = () => {
           setHasOtherAssistance('Yes');
         } else if (profile.has_other_assistance === false) {
           setHasOtherAssistance('No');
-        }
-
-        // Populate 1NF merit proofs from profile
-        if (profile.merit_proofs && Array.isArray(profile.merit_proofs) && profile.merit_proofs.length > 0) {
-          const mapped = profile.merit_proofs.map((mp, i) => ({
-            id: mp.merit_id || i + 1,
-            title: mp.merit_title || '',
-            photo: mp.merit_document || null,
-            verified: 'success',
-            status: 'Verified Certificate',
-            scoreDetails: null
-          }));
-          setMeritList(mapped);
-          setMeritScanVerified('success');
-          setMeritScanStatus('All merit certificates verified successfully!');
         }
 
         // Fetch scholarship requirements
@@ -6963,6 +6954,7 @@ const StudentInfo = () => {
       setFaceVerificationPreview(dataUrl);
       setFaceVerified(null);
       setFaceMatchResult(null);
+      triggerBackgroundUpload('face_photo', dataUrl);
     }
 
     closeCamera();
@@ -6984,6 +6976,7 @@ const StudentInfo = () => {
           setFaceVerificationPreview(compressedBase64);
           setFaceVerified(null);
           setFaceMatchResult(null);
+          triggerBackgroundUpload('face_photo', compressedBase64);
         } else if (type === 'mayorIndigency_photo') {
           setOcrVerified(null);
           setOcrStatus('');
@@ -9664,7 +9657,12 @@ const StudentInfo = () => {
                                   }}
                                   onClick={() => setLightboxSrc(merit.photo)}
                                 >
-                                  <img src={merit.photo} alt={`Merit ${index + 1} Certificate`} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#1e293b' }} />
+                                  <img 
+                                    src={merit.photo} 
+                                    alt={`Merit ${index + 1} Certificate`} 
+                                    style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#1e293b' }} 
+                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                  />
                                   <div style={{ position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '4px 8px', borderRadius: '8px', fontSize: '0.65rem' }}>
                                     <i className="fas fa-expand-alt" style={{ marginRight: '4px' }}></i> Tap to enlarge
                                   </div>
