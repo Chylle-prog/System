@@ -10,18 +10,33 @@ class SocketService {
   }
 
   connect(token) {
-    if (this.socket) return;
+    if (this.socket?.connected) {
+      if (token) {
+        this.socket.emit('login', { token });
+      }
+      return;
+    }
+    if (this.socket) {
+      this.socket.connect();
+      return;
+    }
 
     const socketUrl = resolveSocketUrl ? resolveSocketUrl() : SOCKET_URL;
 
     this.socket = io(socketUrl, {
       auth: { token },
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 500
     });
 
     this.socket.on('connect', () => {
       console.log('Connected to socket server');
-      this.socket.emit('login', { token });
+      const activeToken = token || localStorage.getItem('authToken');
+      if (activeToken) {
+        this.socket.emit('login', { token: activeToken });
+      }
     });
 
     this.socket.on('message', (data) => {

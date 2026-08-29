@@ -1865,7 +1865,12 @@ def student_verify_email():
 
             conn.commit()
 
-        # 4. Generate session token
+            try:
+                from api_routes import safe_emit
+                safe_emit('account_change', {'type': 'new_applicant', 'applicant_no': applicant_no}, broadcast=True)
+                safe_emit('new_applicant', {'applicant_no': applicant_no}, broadcast=True)
+            except Exception as _emit_err:
+                print(f"[REGISTRATION SOCKET ERROR]: {_emit_err}", flush=True)
         payload = {
             'exp': datetime.utcnow() + timedelta(hours=24),
             'iat': datetime.utcnow(),

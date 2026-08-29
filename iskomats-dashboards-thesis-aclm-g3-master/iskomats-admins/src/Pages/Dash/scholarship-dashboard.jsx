@@ -1624,6 +1624,7 @@ export default function ScholarshipDashboard({
             scholarshipAPI.getApplicants.invalidate();
           }
           loadApplicants();
+          loadScholarships(false);
         }, 300);
       };
 

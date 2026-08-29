@@ -36,7 +36,13 @@ def safe_emit(event, data, **kwargs):
     """
     try:
         if _socketio_instance:
-            _socketio_instance.emit(event, data, **kwargs)
+            kwargs.pop('broadcast', None)
+            to = kwargs.pop('to', None) or kwargs.pop('room', None)
+            if to:
+                _socketio_instance.emit(event, data, to=to, **kwargs)
+            else:
+                _socketio_instance.emit(event, data, **kwargs)
+            print(f"[SOCKETIO EMIT] Emitted '{event}' (to={to})", flush=True)
         else:
             print(f"[SOCKETIO EMIT] Skipped '{event}': SocketIO not initialized yet", flush=True)
     except Exception as _e:
