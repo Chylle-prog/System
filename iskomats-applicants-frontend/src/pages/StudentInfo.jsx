@@ -5363,7 +5363,11 @@ const StudentInfo = () => {
                 ? (videoTypeErrorMessage || videoCheck?.reason || "Grades video proof failed validation.")
                 : (!gpaOk
                   ? `GPA mismatch: document shows ${detectedDocGpa || 'N/A'}, you entered ${gpa}.`
-                  : "Grades verification mismatch.")));
+                  : (!ayOk
+                    ? `Academic Year mismatch: grades document must be for Academic Year ${academicYear}.`
+                    : (!semOk
+                      ? `Semester mismatch: grades document must be for ${semester}.`
+                      : "Grades verification mismatch.")))));
           resultsList = [{ doc: 'Grades', verified: isSuccess, message: finalMessage, score_details: scoreDetails }];
         }
         else if (docType === 'Indigency') {
@@ -5842,10 +5846,9 @@ const StudentInfo = () => {
       return;
     }
 
-    setLoadingMessage({ title: 'Scanning Grades', message: 'Verifying your Grades document and Video Content...' });
-
     try {
-      const targetAcademicYear = scholarshipDetails?.grades_year || getScholarshipConfiguredAcademicYear(scholarshipDetails, formData.schoolYear);
+      // Ensure Grades verification uses the grades_year column from the scholarship table, NOT the scholarship's overall year
+      const targetAcademicYear = String(scholarshipDetails?.grades_year || scholarshipDetails?.gradesYear || '').trim();
       const res = await performOcrVerification('Grades', gradesDoc, {
         schoolName: formData.schoolName,
         idNumber: formData.schoolIdNumber,

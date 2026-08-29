@@ -2278,7 +2278,7 @@ def get_all_scholarships():
     try:
         with get_db() as conn:
             cur = conn.cursor()
-            cur.execute('SELECT req_no, scholarship_name, deadline, gpa, parent_finance, location, "desc" as description, semester, year, units, COALESCE(residency_doc_type, \'Indigency Document\') as "residencyDocType", COALESCE(id_type, \'School ID\') as "idType" FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
+            cur.execute('SELECT req_no, scholarship_name, deadline, gpa, parent_finance, location, "desc" as description, semester, year, grades_sem, grades_year, grades_sem as "gradesSem", grades_year as "gradesYear", units, COALESCE(residency_doc_type, \'Indigency Document\') as "residencyDocType", COALESCE(id_type, \'School ID\') as "idType" FROM scholarships WHERE COALESCE(is_removed, FALSE) = FALSE ORDER BY scholarship_name LIMIT %s OFFSET %s', (limit, offset))
             rows = cur.fetchall()
             set_cached_response(cache_key, rows, ttl_seconds=30)
             print(f"[PERF] /scholarships DB query took {time.time() - start:.3f}s (limit={limit}, offset={offset})", flush=True)
@@ -2297,7 +2297,8 @@ def get_scholarship_by_id(req_no):
             cur = conn.cursor()
             cur.execute("""
                 SELECT req_no, scholarship_name, deadline, gpa, parent_finance, location, 
-                       "desc" as description, semester, year, units, 
+                       "desc" as description, semester, year, grades_sem, grades_year,
+                       grades_sem as "gradesSem", grades_year as "gradesYear", units, 
                        COALESCE(residency_doc_type, 'Indigency Document') as "residencyDocType", 
                        COALESCE(id_type, 'School ID') as "idType" 
                 FROM scholarships 
