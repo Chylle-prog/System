@@ -222,23 +222,58 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names, app_doc_
 
     applicant_columns = get_table_columns(cursor, 'applicants')
     
-    join_param = None
     if app_doc_no is not None and document_table:
         try:
             str_doc_no = str(app_doc_no).strip()
             if str_doc_no and str_doc_no.isdigit():
-                doc_cols = [c.lower() for c in get_table_columns(cursor, document_table)]
-                if 'app_doc_no' in doc_cols:
-                    joins = f' LEFT JOIN {document_table} ad ON ad.app_doc_no = %s '
-                    join_param = int(str_doc_no)
+                doc_no_int = int(str_doc_no)
+                cursor.execute(
+                    f'SELECT * FROM {document_table} WHERE app_doc_no = %s AND applicant_no = %s LIMIT 1',
+                    (doc_no_int, applicant_no)
+                )
+                exact_doc_row = cursor.fetchone()
+                if exact_doc_row:
+                    if hasattr(exact_doc_row, 'keys'):
+                        doc_row_dict = dict(exact_doc_row)
+                    else:
+                        colnames = [d[0] for d in cursor.description]
+                        doc_row_dict = dict(zip(colnames, exact_doc_row))
                 else:
-                    joins = applicant_document_join_sql(cursor, 'a', 'ad')
-            else:
-                joins = applicant_document_join_sql(cursor, 'a', 'ad')
-        except (ValueError, TypeError):
-            joins = applicant_document_join_sql(cursor, 'a', 'ad')
-    else:
-        joins = applicant_document_join_sql(cursor, 'a', 'ad')
+                    doc_row_dict = {}
+                
+                # Check applicants table for profile_picture if requested
+                if 'profile_picture' in requested_columns and doc_row_dict.get('profile_picture') is None:
+                    cursor.execute('SELECT profile_picture FROM applicants WHERE applicant_no = %s LIMIT 1', (applicant_no,))
+                    p_res = cursor.fetchone()
+                    if p_res:
+                        p_val = p_res.get('profile_picture') if isinstance(p_res, dict) else p_res[0]
+                        if p_val:
+                            doc_row_dict['profile_picture'] = p_val
+                            
+                # Also handle common alias mappings
+                alias_map = {
+                    'face_photo': 'id_pic',
+                    'face_video': 'id_vid_url',
+                    'id_front': 'id_img_front',
+                    'id_back': 'id_img_back',
+                    'mayorIndigency_video': 'indigency_vid_url',
+                    'mayorGrades_video': 'grades_vid_url',
+                    'mayorCOE_video': 'enrollment_certificate_vid_url',
+                    'schoolIdFront_video': 'schoolid_front_vid_url',
+                    'schoolIdBack_video': 'schoolid_back_vid_url',
+                }
+                res_dict = {}
+                for col in requested_columns:
+                    val = doc_row_dict.get(col)
+                    if val is None and col in alias_map:
+                        val = doc_row_dict.get(alias_map[col])
+                    res_dict[col] = val
+                return res_dict
+        except Exception as e:
+            print(f"[DOC SERVICE] Error querying exact app_doc_no {app_doc_no}: {e}", flush=True)
+
+    join_param = None
+    joins = applicant_document_join_sql(cursor, 'a', 'ad')
 
     select_parts = []
     for column_name in requested_columns:

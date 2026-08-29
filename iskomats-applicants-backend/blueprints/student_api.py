@@ -4132,6 +4132,11 @@ def get_my_applications():
     try:
         with get_db() as conn:
             cur = conn.cursor()
+            token_str = None
+            auth_header = request.headers.get('Authorization')
+            if auth_header:
+                token_str = auth_header[7:] if auth_header.startswith('Bearer ') else auth_header
+
             cur.execute(
                 """
                 SELECT
@@ -4151,21 +4156,126 @@ def get_my_applications():
                         WHEN ast.is_accepted = 'Cancelled' THEN 'Cancelled'
                         ELSE 'Pending'
                     END as status,
-                    ast.status_updated
+                    ast.status_updated,
+                    ast.app_doc_no,
+                    ast.created_at as applied_date,
+                    ad.id_img_front,
+                    ad.id_img_back,
+                    ad.grades_doc,
+                    ad.enrollment_certificate_doc,
+                    ad.indigency_doc,
+                    ad.signature_image_data,
+                    ad.id_pic,
+                    ad.id_vid_url,
+                    ad.indigency_vid_url,
+                    ad.grades_vid_url,
+                    ad.enrollment_certificate_vid_url,
+                    ad.schoolid_front_vid_url,
+                    ad.schoolid_back_vid_url,
+                    a.profile_picture
                 FROM applicant_status ast
                 LEFT JOIN scholarships s ON ast.scholarship_no = s.req_no
                 LEFT JOIN scholarship_providers sp ON s.pro_no = sp.pro_no
+                LEFT JOIN applicant_documents ad ON ast.app_doc_no = ad.app_doc_no
+                LEFT JOIN applicants a ON ast.applicant_no = a.applicant_no
                 WHERE ast.applicant_no = %s
+                ORDER BY ast.created_at DESC, ast.app_doc_no DESC
                 """,
                 (request.user_no,),
             )
             rows = cur.fetchall()
+
+            # Batch fetch merit proofs for these applications
+            app_doc_nos = [r['app_doc_no'] for r in rows if r.get('app_doc_no')]
+            merits_by_app_doc = {}
+            if app_doc_nos:
+                cur.execute(
+                    "SELECT merit_id, applicant_no, merit_document, merit_title, scholarship_no, app_doc_no FROM merit_proofs WHERE app_doc_no = ANY(%s) ORDER BY merit_id ASC",
+                    (app_doc_nos,)
+                )
+                m_rows = cur.fetchall()
+                for m in m_rows:
+                    m_dict = dict(m)
+                    adn = m_dict.get('app_doc_no')
+                    if adn not in merits_by_app_doc:
+                        merits_by_app_doc[adn] = []
+                    merits_by_app_doc[adn].append(m_dict)
+
+            doc_keys = [
+                'profile_picture', 'id_img_front', 'id_img_back', 'grades_doc',
+                'enrollment_certificate_doc', 'indigency_doc', 'signature_image_data', 'id_pic',
+                'id_vid_url', 'indigency_vid_url', 'grades_vid_url',
+                'enrollment_certificate_vid_url', 'schoolid_front_vid_url', 'schoolid_back_vid_url'
+            ]
+            result = []
             for row in rows:
-                if row.get('deadline'):
-                    row['deadline'] = str(row['deadline'])
-                if row.get('status_updated'):
-                    row['status_updated'] = str(row['status_updated'])
-            return jsonify(rows)
+                r = dict(row)
+                if r.get('deadline'):
+                    r['deadline'] = str(r['deadline'])
+                if r.get('status_updated'):
+                    r['status_updated'] = str(r['status_updated'])
+                if r.get('applied_date'):
+                    r['applied_date'] = str(r['applied_date'])
+
+                app_doc_no = r.get('app_doc_no')
+                sch_no = r.get('scholarship_no')
+                
+                # Provide document raw stream URLs specifically scoped to THIS app_doc_no
+                for k in doc_keys:
+                    if r.get(k):
+                        params = {'field_name': k, '_external': True}
+                        if app_doc_no:
+                            params['app_doc_no'] = app_doc_no
+                        elif sch_no:
+                            params['scholarship_no'] = sch_no
+                        if token_str:
+                            params['token'] = token_str
+                        r[k] = url_for('student_api.get_applicant_document_raw', **params)
+                    else:
+                        r[k] = None
+
+                # Common aliases for frontend ease of access
+                r['schoolID_photo'] = r.get('id_img_front')
+                r['schoolIdFront'] = r.get('id_img_front')
+                r['schoolIdBack'] = r.get('id_img_back')
+                r['mayorGrades_photo'] = r.get('grades_doc')
+                r['grades'] = r.get('grades_doc')
+                r['mayorCOE_photo'] = r.get('enrollment_certificate_doc')
+                r['enrollment'] = r.get('enrollment_certificate_doc')
+                r['mayorIndigency_photo'] = r.get('indigency_doc')
+                r['indigency'] = r.get('indigency_doc')
+                r['signature'] = r.get('signature_image_data')
+                r['face_photo'] = r.get('id_pic')
+
+                # Merit proofs
+                app_merits = merits_by_app_doc.get(app_doc_no, [])
+                r['merit_proofs'] = app_merits
+
+                # Human-readable list of submitted documents for this specific application
+                submitted_docs = []
+                doc_labels = [
+                    ('profile_picture', 'Profile Picture'),
+                    ('id_img_front', 'School ID (Front)'),
+                    ('id_img_back', 'School ID (Back)'),
+                    ('grades_doc', 'Scholastic Record / Grades'),
+                    ('enrollment_certificate_doc', 'Certificate of Enrollment'),
+                    ('indigency_doc', 'Certificate of Indigency'),
+                    ('signature_image_data', 'Digital Signature'),
+                    ('id_pic', 'Face Verification Photo'),
+                    ('id_vid_url', 'Face Verification Video'),
+                    ('grades_vid_url', 'Grades Video'),
+                    ('enrollment_certificate_vid_url', 'Enrollment Video'),
+                    ('indigency_vid_url', 'Indigency Video'),
+                ]
+                for doc_field, label in doc_labels:
+                    if r.get(doc_field):
+                        submitted_docs.append(label)
+                for m in app_merits:
+                    submitted_docs.append(f"Merit: {m.get('merit_title') or 'Certificate'}")
+                r['submitted_documents'] = submitted_docs
+
+                result.append(r)
+            return jsonify(result)
     except Exception as exc:
         traceback.print_exc()
         return jsonify({'message': str(exc)}), 500

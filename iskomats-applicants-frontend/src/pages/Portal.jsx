@@ -4505,41 +4505,69 @@ const Portal = () => {
                       <i className="fas fa-file-contract"></i> Submitted Documents
                     </div>
                     <div className="doc-gallery">
-                      {userProfile?.profile_picture && (
-                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.profile_picture))}>
+                      {(selectedAppForView?.profile_picture || userProfile?.profile_picture) && (
+                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(selectedAppForView?.profile_picture || userProfile?.profile_picture))}>
                           <div className="doc-icon"><i className="fas fa-user-image"></i></div>
                           <div className="doc-name">Profile Picture</div>
                           <div className="doc-status available">View File</div>
                         </div>
                       )}
-                      {userProfile?.id_img_front && (
-                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.id_img_front))}>
+                      {(selectedAppForView?.id_img_front || selectedAppForView?.schoolID_photo || selectedAppForView?.schoolIdFront) && (
+                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(selectedAppForView?.id_img_front || selectedAppForView?.schoolID_photo || selectedAppForView?.schoolIdFront))}>
                           <div className="doc-icon"><i className="fas fa-id-card"></i></div>
                           <div className="doc-name">School ID (Front)</div>
                           <div className="doc-status available">View File</div>
                         </div>
                       )}
-                      {userProfile?.grades_doc && (
-                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.grades_doc))}>
+                      {(selectedAppForView?.id_img_back || selectedAppForView?.schoolIdBack) && (
+                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(selectedAppForView?.id_img_back || selectedAppForView?.schoolIdBack))}>
+                          <div className="doc-icon"><i className="fas fa-id-card"></i></div>
+                          <div className="doc-name">School ID (Back)</div>
+                          <div className="doc-status available">View File</div>
+                        </div>
+                      )}
+                      {(selectedAppForView?.grades_doc || selectedAppForView?.mayorGrades_photo || selectedAppForView?.grades) && (
+                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(selectedAppForView?.grades_doc || selectedAppForView?.mayorGrades_photo || selectedAppForView?.grades))}>
                           <div className="doc-icon"><i className="fas fa-file-invoice"></i></div>
                           <div className="doc-name">Scholastic Record</div>
                           <div className="doc-status available">View File</div>
                         </div>
                       )}
-                      {userProfile?.enrollment_certificate_doc && (
-                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.enrollment_certificate_doc))}>
+                      {(selectedAppForView?.enrollment_certificate_doc || selectedAppForView?.mayorCOE_photo || selectedAppForView?.enrollment) && (
+                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(selectedAppForView?.enrollment_certificate_doc || selectedAppForView?.mayorCOE_photo || selectedAppForView?.enrollment))}>
                           <div className="doc-icon"><i className="fas fa-certificate"></i></div>
                           <div className="doc-name">Enrollment Certificate</div>
                           <div className="doc-status available">View File</div>
                         </div>
                       )}
-                      {userProfile?.indigency_doc && (
-                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(userProfile.indigency_doc))}>
+                      {(selectedAppForView?.indigency_doc || selectedAppForView?.mayorIndigency_photo || selectedAppForView?.indigency) && (
+                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(selectedAppForView?.indigency_doc || selectedAppForView?.mayorIndigency_photo || selectedAppForView?.indigency))}>
                           <div className="doc-icon"><i className="fas fa-house-user"></i></div>
                           <div className="doc-name">Certificate of Indigency</div>
                           <div className="doc-status available">View File</div>
                         </div>
                       )}
+                      {(selectedAppForView?.signature_image_data || selectedAppForView?.signature) && (
+                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(selectedAppForView?.signature_image_data || selectedAppForView?.signature))}>
+                          <div className="doc-icon"><i className="fas fa-signature"></i></div>
+                          <div className="doc-name">Digital Signature</div>
+                          <div className="doc-status available">View File</div>
+                        </div>
+                      )}
+                      {(selectedAppForView?.id_pic || selectedAppForView?.face_photo) && (
+                        <div className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(selectedAppForView?.id_pic || selectedAppForView?.face_photo))}>
+                          <div className="doc-icon"><i className="fas fa-camera"></i></div>
+                          <div className="doc-name">Live Face Verification</div>
+                          <div className="doc-status available">View File</div>
+                        </div>
+                      )}
+                      {Array.isArray(selectedAppForView?.merit_proofs) && selectedAppForView.merit_proofs.map((mp, mIdx) => (
+                        <div key={mIdx} className="doc-card" onClick={() => window.open(ensureAbsoluteUrl(mp.merit_document))}>
+                          <div className="doc-icon"><i className="fas fa-award"></i></div>
+                          <div className="doc-name">{mp.merit_title || `Merit Certificate #${mIdx + 1}`}</div>
+                          <div className="doc-status available">View File</div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </>
