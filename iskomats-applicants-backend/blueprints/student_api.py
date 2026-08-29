@@ -1576,13 +1576,17 @@ def get_notifications():
             """, (request.user_no,))
             rows = cur.fetchall()
             
-            # Format dates for frontend
+            # Format dates and deduplicate identical notifications
+            unique_rows = []
+            seen_notif_keys = set()
             for row in rows:
-                if row['created_at']:
-                    row['time'] = row['created_at'].strftime('%Y-%m-%d %H:%M:%S')
-                    # Add a relative time if possible, or just keep it simple
+                row_dict = dict(row)
+                if row_dict.get('created_at'):
+                    row_dict['time'] = row_dict['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+                    time_bucket = row_dict['created_at'].strftime('%Y-%m-%d %H:%M')
                 else:
-                    row['time'] = 'Just now'
+                    row_dict['time'] = 'Just now'
+                    time_bucket = 'now'
                 
                 # Map type to icon
                 type_icons = {
@@ -1591,9 +1595,15 @@ def get_notifications():
                     'scholarship': 'fa-graduation-cap',
                     'result': 'fa-file-signature'
                 }
-                row['icon'] = type_icons.get(row['type'], 'fa-bell')
+                row_dict['icon'] = type_icons.get(row_dict.get('type'), 'fa-bell')
                 
-            return jsonify(rows), 200
+                # Deduplicate by title, message, and minute bucket
+                dedup_key = (str(row_dict.get('title', '')).strip(), str(row_dict.get('message', '')).strip(), time_bucket)
+                if dedup_key not in seen_notif_keys:
+                    seen_notif_keys.add(dedup_key)
+                    unique_rows.append(row_dict)
+                
+            return jsonify(unique_rows), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
 

@@ -220,8 +220,31 @@ const Portal = () => {
         if (Array.isArray(data)) {
           setNotifications(prev => {
             const serverIds = new Set(data.map(d => String(d.id || d.notif_id)));
-            const pendingLive = prev.filter(p => !p.read && !serverIds.has(String(p.id)));
-            return [...pendingLive, ...data];
+            // Keep pending optimistic live items ONLY if not returned yet by server (checked by id AND title+message)
+            const pendingLive = prev.filter(p => {
+              if (p.read) return false;
+              if (serverIds.has(String(p.id))) return false;
+              const hasMatchingServerNotif = data.some(d =>
+                String(d.title || '').trim() === String(p.title || '').trim() &&
+                String(d.message || '').trim() === String(p.message || '').trim()
+              );
+              return !hasMatchingServerNotif;
+            });
+
+            // Combine and strictly deduplicate by id and content
+            const combined = [...pendingLive, ...data];
+            const unique = [];
+            const seen = new Set();
+            for (const notif of combined) {
+              const uniqueKey = notif.id ? `id_${notif.id}` : `${String(notif.title).trim()}::${String(notif.message).trim()}`;
+              const contentKey = `${String(notif.title).trim()}::${String(notif.message).trim()}`;
+              if (!seen.has(uniqueKey) && !seen.has(contentKey)) {
+                seen.add(uniqueKey);
+                seen.add(contentKey);
+                unique.push(notif);
+              }
+            }
+            return unique;
           });
         }
       } catch (err) {
@@ -557,12 +580,16 @@ const Portal = () => {
             icon: typeIcons[data.type] || 'fa-bell'
           };
           setNotifications(prev => {
-            const exists = prev.some(n => (n.id && n.id === formattedNotif.id) || (n.notif_id && n.notif_id === formattedNotif.id) || (n.title === formattedNotif.title && n.message === formattedNotif.message));
+            const exists = prev.some(n => 
+              (n.id && n.id === formattedNotif.id) || 
+              (n.notif_id && n.notif_id === formattedNotif.id) || 
+              (String(n.title).trim() === String(formattedNotif.title).trim() && String(n.message).trim() === String(formattedNotif.message).trim())
+            );
             if (exists) return prev;
             return [formattedNotif, ...prev];
           });
         }
-        fetchNotifications();
+        debouncedFetchNotifications();
         debouncedFetchApplications();
       });
 

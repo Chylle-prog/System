@@ -1369,15 +1369,20 @@ def notify_all_applicants(title, message, notif_type='scholarship'):
             cur.execute(
                 f"""
                 INSERT INTO notifications (user_no, title, message, type, expires_at, created_at)
-                SELECT DISTINCT applicant_no, %s, %s, %s, NOW() + INTERVAL '10 days', NOW()
-                FROM {applicant_email_table}
-                WHERE is_verified = TRUE AND applicant_no IS NOT NULL
+                SELECT DISTINCT e.applicant_no, %s, %s, %s, NOW() + INTERVAL '10 days', NOW()
+                FROM {applicant_email_table} e
+                WHERE e.is_verified = TRUE AND e.applicant_no IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM notifications n
+                      WHERE n.user_no = e.applicant_no
+                        AND n.title = %s
+                        AND n.created_at > NOW() - INTERVAL '1 minute'
+                  )
                 """,
-                (title, message, notif_type)
+                (title, message, notif_type, title)
             )
             conn.commit()
             print(f"[NOTIF BATCH] Fast batch notification sent to all applicants (title='{title}')", flush=True)
-            safe_emit('notification_update', {'type': notif_type, 'title': title}, broadcast=True)
             safe_emit('new_notification', {'title': title, 'message': message, 'type': notif_type}, broadcast=True)
     except Exception as exc:
         print(f"[NOTIF ERROR] Failed to batch notify applicants: {exc}", flush=True)
@@ -4298,12 +4303,9 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
                     db_conn=conn
                 )
                 conn.commit()
-                # Notify the student portal instantly via room-targeted and broadcast socket
-                safe_emit('notification_update', {'user_no': applicant_no, 'type': 'result'}, room=f"applicant_{applicant_no}")
+                # Notify the student portal instantly via room-targeted status update
                 safe_emit('applicant_status_update', {'applicant_no': applicant_no, 'status': 'Accepted', 'scholarship_no': scholarship_no}, room=f"applicant_{applicant_no}")
-                safe_emit('notification_update', {'user_no': applicant_no, 'type': 'result'}, broadcast=True)
                 safe_emit('applicant_status_update', {'applicant_no': applicant_no, 'status': 'Accepted', 'scholarship_no': scholarship_no}, broadcast=True)
-                safe_emit('new_notification', {'title': 'Application Accepted', 'message': f"Congratulations! We are pleased to inform you that your application for {status_row['scholarship_name']} has been accepted.", 'type': 'result', 'user_no': applicant_no}, broadcast=True)
             except Exception as notif_err:
                 print(f"[NOTIF ERROR] Failed to notify accepted applicant {applicant_no}: {notif_err}", flush=True)
 
@@ -4357,12 +4359,9 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
                     db_conn=conn
                 )
                 conn.commit()
-                # Notify the student portal instantly via room-targeted and broadcast socket
-                safe_emit('notification_update', {'user_no': applicant_no, 'type': 'result'}, room=f"applicant_{applicant_no}")
+                # Notify the student portal instantly via room-targeted status update
                 safe_emit('applicant_status_update', {'applicant_no': applicant_no, 'status': 'Rejected', 'scholarship_no': scholarship_no}, room=f"applicant_{applicant_no}")
-                safe_emit('notification_update', {'user_no': applicant_no, 'type': 'result'}, broadcast=True)
                 safe_emit('applicant_status_update', {'applicant_no': applicant_no, 'status': 'Rejected', 'scholarship_no': scholarship_no}, broadcast=True)
-                safe_emit('new_notification', {'title': 'Application Declined', 'message': f"Thank you for your interest in {status_row['scholarship_name']}. We regret to inform you that your application has been declined.", 'type': 'result', 'user_no': applicant_no}, broadcast=True)
             except Exception as notif_err:
                 print(f"[NOTIF ERROR] Failed to notify declined applicant {applicant_no}: {notif_err}", flush=True)
 

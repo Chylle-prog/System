@@ -429,6 +429,18 @@ def _create_notification_internal(conn, user_no, title, message, notif_type='mes
             print(f"[NOTIF ERROR] Applicant {user_no} not found in applicants table - cannot create notification (FK constraint)")
             return {'created': False, 'email_sent': False, 'reason': 'applicant-not-found'}
         
+        # 0. Deduplication check: Avoid inserting identical notification within 15 seconds
+        cur.execute("""
+            SELECT notif_id FROM notifications 
+            WHERE user_no = %s AND title = %s AND message = %s AND created_at > NOW() - INTERVAL '15 seconds'
+            ORDER BY notif_id DESC LIMIT 1
+        """, (user_no, title, message))
+        dup_row = cur.fetchone()
+        if dup_row:
+            notif_id = dup_row['notif_id'] if isinstance(dup_row, dict) else dup_row[0]
+            print(f"[NOTIF DEDUP] Skipped duplicate notification for user {user_no} (id={notif_id})", flush=True)
+            return {'created': True, 'email_sent': False, 'reason': 'deduplicated', 'id': notif_id}
+
         # 1. Insert into database
         cur.execute("""
             INSERT INTO notifications (user_no, title, message, type, expires_at)
@@ -443,7 +455,7 @@ def _create_notification_internal(conn, user_no, title, message, notif_type='mes
             if commit: conn.rollback()
             return {'created': False, 'email_sent': False, 'reason': 'notification-insert-empty'}
         
-        # 2. Emit SocketIO event if initialized
+        # 2. Emit SocketIO event if initialized (target room only to prevent doubling)
         if _socketio:
             try:
                 room = f"applicant_{user_no}"
@@ -458,9 +470,6 @@ def _create_notification_internal(conn, user_no, title, message, notif_type='mes
                 }
                 _socketio.emit('new_notification', payload, room=room)
                 _socketio.emit('notification_update', payload, room=room)
-                # Also broadcast so students whose room join was delayed still receive real-time alerts
-                _socketio.emit('new_notification', payload)
-                _socketio.emit('notification_update', payload)
                 print(f"[NOTIF SOCKET] Emit successful for user {user_no}")
             except Exception as socket_err:
                 print(f"[NOTIF SOCKET ERROR] Failed to emit: {socket_err}")
@@ -540,15 +549,15 @@ The ISKOMATS Team
 
             if sync_email:
                 _send_email_logic(google_access_token)
-                return {'created': True, 'email_sent': True, 'sms_sent': sms_sent, 'email': receiver_email}
+                return {'created': True, 'id': notif_id, 'email_sent': True, 'sms_sent': sms_sent, 'email': receiver_email}
             else:
                 import threading
                 thread = threading.Thread(target=lambda: _send_email_logic(google_access_token))
                 thread.daemon = True
                 thread.start()
-                return {'created': True, 'email_sent': True, 'sms_sent': sms_sent, 'email': receiver_email, 'info': 'Sending in background'}
+                return {'created': True, 'id': notif_id, 'email_sent': True, 'sms_sent': sms_sent, 'email': receiver_email, 'info': 'Sending in background'}
         else:
-            return {'created': True, 'email_sent': False, 'sms_sent': sms_sent, 'email': receiver_email, 'reason': 'sender-email-not-configured'}
+            return {'created': True, 'id': notif_id, 'email_sent': False, 'sms_sent': sms_sent, 'email': receiver_email, 'reason': 'sender-email-not-configured'}
             
     except Exception as e:
         if commit: 
