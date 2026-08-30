@@ -468,7 +468,8 @@ const EMPTY_ADVANCED_SEARCH = {
   dateApplied: '',
   appliedDate: '',
   appliedToDate: '',
-  accompliteToDate: ''
+  accompliteToDate: '',
+  meritAward: ''
 };
 
 const getScholarshipField = (post, fieldNames) => {
@@ -603,6 +604,62 @@ const applicantMatchesAdvancedScholarshipFilters = (applicant, advanced, scholar
 
   if (advanced.status && applicant.status !== advanced.status) {
     return false;
+  }
+
+  // Filter by applicant's academic merit / honor
+  if (advanced.meritAward) {
+    const selectedMerit = String(advanced.meritAward).trim().toLowerCase();
+
+    // Gather all merit text associated with this applicant
+    const meritPieces = [
+      applicant.meritsAwardsReceived,
+      applicant.merits_awards_received,
+      applicant.merits,
+      applicant.meritReason
+    ];
+
+    if (Array.isArray(applicant.merit_proofs)) {
+      applicant.merit_proofs.forEach(mp => {
+        if (mp?.merit_title) meritPieces.push(mp.merit_title);
+      });
+    }
+
+    if (Array.isArray(applicant.meritFiles)) {
+      applicant.meritFiles.forEach(mf => {
+        if (mf?.title) meritPieces.push(mf.title);
+        if (mf?.name) meritPieces.push(mf.name);
+      });
+    }
+
+    const applicantMeritText = normalizeSearchText(meritPieces.filter(Boolean).join(' '));
+    if (!applicantMeritText) {
+      return false;
+    }
+
+    if (selectedMerit === '1st honor / first honor') {
+      const match = /\b(1st|first)\s+honor\b|\bwith\s+highest\s+honors?\b/i.test(applicantMeritText);
+      if (!match) return false;
+    } else if (selectedMerit === '2nd honor / second honor') {
+      const match = /\b(2nd|second)\s+honor\b|\bwith\s+high\s+honors?\b/i.test(applicantMeritText);
+      if (!match) return false;
+    } else if (selectedMerit === '3rd honor / third honor') {
+      const match = /\b(3rd|third)\s+honor\b/i.test(applicantMeritText);
+      if (!match) return false;
+    } else if (selectedMerit === 'cum laude') {
+      // Matches Cum Laude (excluding Magna / Summa)
+      const match = /\bcum\s+laude\b/i.test(applicantMeritText) && !/\b(magna|summa)\b/i.test(applicantMeritText);
+      if (!match) return false;
+    } else if (selectedMerit === 'magna cum laude') {
+      const match = /\bmagna\s+cum\s+laude\b|\bmagna\b/i.test(applicantMeritText);
+      if (!match) return false;
+    } else if (selectedMerit === 'summa cum laude') {
+      const match = /\bsumma\s+cum\s+laude\b|\bsumma\b/i.test(applicantMeritText);
+      if (!match) return false;
+    } else {
+      if (!applicantMeritText.includes(normalizeSearchText(selectedMerit))) {
+        return false;
+      }
+    }
   }
 
   // Filter by scholarship attributes (scholarship they applied to)
@@ -1084,7 +1141,7 @@ export default function ScholarshipDashboard({
             />
           </div>
 
-          {/* Row 4: Status */}
+          {/* Row 4: Status | Academic Merit / Honor */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Status</label>
             <select
@@ -1098,6 +1155,23 @@ export default function ScholarshipDashboard({
               <option value="Accepted">Accepted</option>
               <option value="Rejected">Rejected</option>
               <option value="Cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Academic Merit / Honor</label>
+            <select
+              name="meritAward"
+              value={filters.meritAward || ''}
+              onChange={(e) => setFilters((prev) => ({ ...prev, meritAward: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-[#800020] outline-none"
+            >
+              <option value="">All Merits / Honors</option>
+              <option value="1st Honor / First Honor">1st Honor / First Honor</option>
+              <option value="2nd Honor / Second Honor">2nd Honor / Second Honor</option>
+              <option value="3rd Honor / Third Honor">3rd Honor / Third Honor</option>
+              <option value="Cum Laude">Cum Laude</option>
+              <option value="Magna Cum Laude">Magna Cum Laude</option>
+              <option value="Summa Cum Laude">Summa Cum Laude</option>
             </select>
           </div>
         </div>
