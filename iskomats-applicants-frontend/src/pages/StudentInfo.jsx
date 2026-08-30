@@ -2710,10 +2710,17 @@ export function merit_matches_text(detectedText, meritTitle) {
   const normDoc = normalizeForOcr(detectedText);
   const normTitle = normalizeForOcr(meritTitle);
 
-  // 1. Direct Substring Match
-  if (normDoc.includes(normTitle)) {
-    return { isMatch: true, matchedKeywords: [normTitle], score: 100 };
+  const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // 1. Direct Whole-Phrase Match with word boundaries
+  const titleRegex = new RegExp(`(^|\\s)${escapeRegex(normTitle)}($|\\s)`, 'i');
+  if (titleRegex.test(normDoc)) {
+    return { isMatch: true, matchedKeywords: [normTitle], score: 100, reason: "Merit keywords matched certificate" };
   }
+
+  // Set of individual whole words from the OCR document
+  const docWords = normDoc.split(/\s+/);
+  const docWordSet = new Set(docWords);
 
   // 2. Tokenize and filter out generic noise words
   const stopWords = new Set([
@@ -2725,15 +2732,16 @@ export function merit_matches_text(detectedText, meritTitle) {
   const rawTokens = normTitle
     .replace(/[^a-z0-9\s]/gi, ' ')
     .split(/\s+/)
-    .filter(t => t.length > 2 && !stopWords.has(t));
+    .filter(t => t.length >= 2 && !stopWords.has(t));
 
-  const tokens = rawTokens.length > 0 ? rawTokens : normTitle.split(/\s+/).filter(t => t.length > 2);
+  const tokens = rawTokens.length > 0 ? rawTokens : normTitle.split(/\s+/).filter(t => t.length >= 2);
 
   // 3. Philippine Honors & Awards Taxonomy & Synonyms
   const taxonomyMap = {
     'valedictorian': ['valedictorian', 'valedictory', 'highest honor', 'class valedictorian'],
     'salutatorian': ['salutatorian', 'salutatory', 'high honor'],
     'honor': ['honor', 'honors', 'honorable', 'karangalan'],
+    'honors': ['honor', 'honors', 'honorable', 'karangalan'],
     'highest': ['highest', 'pinakamataas', 'highest honor', 'summa'],
     'deans': ['dean', 'deans', 'dean s', 'lister', 'honor roll', 'academic excellence', 'presidents list'],
     'dean': ['dean', 'deans', 'dean s', 'lister', 'honor roll', 'academic excellence'],
@@ -2743,9 +2751,12 @@ export function merit_matches_text(detectedText, meritTitle) {
     'magna': ['magna', 'magna cum laude'],
     'summa': ['summa', 'summa cum laude'],
     'champion': ['champion', '1st place', 'first place', 'gold', 'winner', 'kampeon'],
-    'first': ['1st', 'first', 'champion', 'gold', 'winner'],
-    'second': ['2nd', 'second', 'silver', 'runner up'],
-    'third': ['3rd', 'third', 'bronze'],
+    '1st': ['1st', 'first', 'champion', 'gold', 'winner', '1st place'],
+    'first': ['1st', 'first', 'champion', 'gold', 'winner', 'first place'],
+    '2nd': ['2nd', 'second', 'silver', 'runner up', '2nd place'],
+    'second': ['2nd', 'second', 'silver', 'runner up', 'second place'],
+    '3rd': ['3rd', 'third', 'bronze', '3rd place'],
+    'third': ['3rd', 'third', 'bronze', 'third place'],
     'leadership': ['leadership', 'service', 'leader', 'pamumuno', 'officer'],
     'excellence': ['excellence', 'academic excellence', 'katangi tangi', 'outstanding'],
     'outstanding': ['outstanding', 'excellence', 'exemplary', 'natatangi'],
@@ -2756,18 +2767,27 @@ export function merit_matches_text(detectedText, meritTitle) {
   };
 
   const matchedTokens = [];
+  const missingTokens = [];
   let tokenMatches = 0;
 
   for (const token of tokens) {
     let tokenFound = false;
 
-    if (normDoc.includes(token)) {
+    // Check complete whole-word match in document
+    if (docWordSet.has(token)) {
       tokenFound = true;
       matchedTokens.push(token);
     } else {
       const synonyms = taxonomyMap[token] || [];
       for (const syn of synonyms) {
-        if (normDoc.includes(syn)) {
+        if (syn.includes(' ')) {
+          const synRegex = new RegExp(`(^|\\s)${escapeRegex(syn)}($|\\s)`, 'i');
+          if (synRegex.test(normDoc)) {
+            tokenFound = true;
+            matchedTokens.push(`${token} (${syn})`);
+            break;
+          }
+        } else if (docWordSet.has(syn)) {
           tokenFound = true;
           matchedTokens.push(`${token} (${syn})`);
           break;
@@ -2775,34 +2795,31 @@ export function merit_matches_text(detectedText, meritTitle) {
       }
     }
 
-    if (!tokenFound && token.length >= 5) {
-      const docWords = normDoc.split(/\s+/);
-      for (const dw of docWords) {
-        if (dw.length >= 4 && (dw.startsWith(token.slice(0, 4)) || token.startsWith(dw.slice(0, 4)))) {
-          tokenFound = true;
-          matchedTokens.push(`${token} (~${dw})`);
-          break;
-        }
-      }
-    }
-
     if (tokenFound) {
       tokenMatches++;
+    } else {
+      missingTokens.push(token);
     }
   }
 
-  const hasCertificateAnchors = /certificate|pagkilala|katibayan|recognition|award|achievement|commendation|merit|honors|diploma/i.test(normDoc);
   const matchRatio = tokens.length > 0 ? (tokenMatches / tokens.length) : 0;
+  
+  // Stricter verification:
+  // - 1 token: must match 100% (e.g. 'Valedictorian')
+  // - 2 tokens: both must match 100% (e.g. '3rd Honor' -> 3rd and Honor must both match; '3rd Hon' fails because 'Hon' is incomplete)
+  // - 3+ tokens: must match at least 70% of tokens
   const isMatch = (tokens.length === 1 && tokenMatches === 1) ||
-                  (tokens.length > 1 && matchRatio >= 0.5) ||
-                  (hasCertificateAnchors && tokenMatches >= 1) ||
-                  (hasCertificateAnchors && tokens.length === 0);
+                  (tokens.length === 2 && tokenMatches === 2) ||
+                  (tokens.length >= 3 && matchRatio >= 0.7);
 
   return {
     isMatch,
     matchedKeywords: matchedTokens,
+    missingKeywords: missingTokens,
     score: Math.round(matchRatio * 100),
-    reason: isMatch ? "Merit keywords matched certificate" : `Could not find merit keywords (${tokens.join(', ')}) in certificate.`
+    reason: isMatch 
+      ? "Merit keywords matched certificate" 
+      : `Could not find complete merit keyword(s) (${missingTokens.join(', ')}) in certificate.`
   };
 }
 
