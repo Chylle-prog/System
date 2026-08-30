@@ -4,45 +4,143 @@ const TermsModal = ({ isOpen, onAccept, onReject }) => {
   if (!isOpen) return null;
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      width: '100%',
-      height: '100%',
-      background: 'rgba(15, 23, 42, 0.85)',
-      backdropFilter: 'blur(10px)',
-      WebkitBackdropFilter: 'blur(10px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 999999,
-      padding: '1.25rem'
-    }}>
-      <div style={{
-        background: '#1e293b',
-        color: '#f8fafc',
-        borderRadius: '24px',
-        maxWidth: '560px',
+    <div 
+      className="terms-modal-overlay"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
         width: '100%',
-        padding: '2rem',
-        boxShadow: '0 25px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1)',
-        position: 'relative',
-        animation: 'fadeInUp 0.3s ease-out'
-      }}>
+        height: '100%',
+        background: 'rgba(15, 23, 42, 0.85)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 999999,
+        padding: '1rem',
+        boxSizing: 'border-box'
+      }}
+    >
+      <style>{`
+        .terms-modal-footer {
+          margin-top: 1.25rem;
+          padding-top: 1rem;
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          display: flex;
+          flex-direction: row;
+          justify-content: flex-end;
+          align-items: center;
+          gap: 0.85rem;
+          width: 100%;
+          box-sizing: border-box;
+        }
+
+        .terms-btn-secondary {
+          background: transparent;
+          color: #cbd5e1;
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          border-radius: 30px;
+          padding: 0.65rem 1.4rem;
+          font-size: 0.9rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          white-space: nowrap;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+        }
+
+        .terms-btn-secondary:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: #ffffff;
+          border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .terms-btn-primary {
+          background: linear-gradient(135deg, #16a34a, #15803d);
+          color: #ffffff;
+          border: none;
+          border-radius: 30px;
+          padding: 0.65rem 1.8rem;
+          font-size: 0.9rem;
+          font-weight: 700;
+          cursor: pointer;
+          box-shadow: 0 4px 16px rgba(22, 163, 74, 0.4);
+          transition: all 0.2s ease;
+          white-space: nowrap;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+        }
+
+        .terms-btn-primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(22, 163, 74, 0.55);
+        }
+
+        .terms-list {
+          margin: 0.5rem 0 0.75rem 1.25rem;
+          padding: 0;
+          list-style-type: disc;
+        }
+
+        .terms-list li {
+          margin-bottom: 0.25rem;
+          color: #cbd5e1;
+        }
+
+        @media (max-width: 480px) {
+          .terms-modal-footer {
+            flex-direction: column-reverse;
+            gap: 0.65rem;
+          }
+
+          .terms-btn-secondary,
+          .terms-btn-primary {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            white-space: normal;
+          }
+        }
+      `}</style>
+
+      <div 
+        className="terms-modal-card"
+        style={{
+          background: '#1e293b',
+          color: '#f8fafc',
+          borderRadius: '24px',
+          maxWidth: '580px',
+          width: '100%',
+          maxHeight: 'calc(100vh - 2rem)',
+          display: 'flex',
+          flexDirection: 'column',
+          padding: 'clamp(1.25rem, 4vw, 2rem)',
+          boxShadow: '0 25px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+          position: 'relative',
+          animation: 'fadeInUp 0.3s ease-out',
+          boxSizing: 'border-box'
+        }}
+      >
         {/* Header */}
         <div style={{
           display: 'flex',
-          justify: 'space-between',
+          justifyContent: 'space-between',
           alignItems: 'center',
           marginBottom: '1.25rem',
           paddingBottom: '1rem',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          width: '100%'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <div style={{
-              width: '40px',
-              height: '40px',
+              width: '42px',
+              height: '42px',
               borderRadius: '12px',
               background: 'linear-gradient(135deg, #991b1b, #dc2626)',
               display: 'flex',
@@ -50,15 +148,16 @@ const TermsModal = ({ isOpen, onAccept, onReject }) => {
               justifyContent: 'center',
               fontSize: '1.2rem',
               color: 'white',
-              boxShadow: '0 4px 12px rgba(153, 27, 27, 0.3)'
+              boxShadow: '0 4px 14px rgba(153, 27, 27, 0.4)',
+              flexShrink: 0
             }}>
               <i className="fas fa-file-contract"></i>
             </div>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#ffffff' }}>
+              <h3 style={{ margin: 0, fontSize: 'clamp(1.05rem, 3.5vw, 1.25rem)', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>
                 Terms & Conditions
               </h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#94a3b8', fontWeight: 500 }}>
+              <p style={{ margin: '0.2rem 0 0 0', fontSize: 'clamp(0.72rem, 2.5vw, 0.82rem)', color: '#94a3b8', fontWeight: 500 }}>
                 Data Privacy & User Agreement
               </p>
             </div>
@@ -78,9 +177,19 @@ const TermsModal = ({ isOpen, onAccept, onReject }) => {
               justifyContent: 'center',
               fontSize: '1.1rem',
               cursor: 'pointer',
-              transition: 'all 0.2s ease'
+              transition: 'all 0.2s ease',
+              flexShrink: 0,
+              marginLeft: '0.5rem'
             }}
             title="Reject & Close"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.18)';
+              e.currentTarget.style.color = '#ffffff';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+              e.currentTarget.style.color = '#94a3b8';
+            }}
           >
             <i className="fas fa-times"></i>
           </button>
@@ -88,86 +197,126 @@ const TermsModal = ({ isOpen, onAccept, onReject }) => {
 
         {/* Scrollable Body */}
         <div style={{
-          maxHeight: '380px',
+          flex: '1 1 auto',
           overflowY: 'auto',
-          paddingRight: '0.75rem',
-          fontSize: '0.88rem',
+          paddingRight: '0.5rem',
+          fontSize: 'clamp(0.85rem, 2.5vw, 0.9rem)',
           lineHeight: '1.65',
           color: '#cbd5e1'
         }}>
           <p style={{ marginTop: 0, marginBottom: '1rem', fontWeight: 500 }}>
-            Welcome to <strong>iskoMats</strong>. Before proceeding to log in or apply for scholarships, please review and agree to our Terms and Conditions and consent to personal data processing under the <strong>Data Privacy Act of 2012 (Republic Act No. 10173)</strong>.
+            Welcome to <strong style={{ color: '#ffffff' }}>iskoMats</strong>. Before proceeding to log in or apply for scholarships, please review and agree to our Terms and Conditions.
           </p>
 
-          <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>1. Purpose of the System</h4>
+          {/* Section 1 */}
+          <h4 style={{ color: '#f8fafc', margin: '1.1rem 0 0.3rem 0', fontSize: '0.95rem', fontWeight: 700 }}>1. Purpose of the System</h4>
           <p style={{ margin: 0 }}>
-            iskoMats is an official scholarship management system designed to help students discover scholarship opportunities, submit applications, and allow authorized scholarship providers to manage and review applications efficiently.
+            iskoMats is a scholarship management system designed to help students discover scholarship opportunities, submit applications, and allow scholarship providers to manage and review applications efficiently.
           </p>
 
-          <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>2. User Eligibility & Authenticity</h4>
+          {/* Section 2 */}
+          <h4 style={{ color: '#f8fafc', margin: '1.1rem 0 0.3rem 0', fontSize: '0.95rem', fontWeight: 700 }}>2. Eligibility</h4>
           <p style={{ margin: 0 }}>
-            You agree that all information and documents you submit are authentic, accurate, complete, and up to date. Submitting false, forged, or digitally altered documents will result in immediate disqualification and account suspension.
+            You agree that you are eligible to use the system and that all information you provide is accurate, complete, and up to date.
           </p>
 
-          <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>3. Data Privacy & Consent</h4>
-          <p style={{ margin: '0 0 0.5rem 0' }}>
-            By continuing, you voluntarily consent to the collection, processing, verification, and storage of your personal data, including your name, contact details, academic records, and uploaded documents solely for scholarship evaluation purposes.
-          </p>
-
-          <h4 style={{ color: '#f8fafc', margin: '1rem 0 0.25rem 0', fontSize: '0.95rem' }}>4. Account Security</h4>
+          {/* Section 3 */}
+          <h4 style={{ color: '#f8fafc', margin: '1.1rem 0 0.3rem 0', fontSize: '0.95rem', fontWeight: 700 }}>3. User Account</h4>
           <p style={{ margin: 0 }}>
-            You are responsible for maintaining the confidentiality of your credentials. You agree not to share your account or use another student's identity.
+            You are responsible for maintaining the confidentiality of your account credentials. Any activity conducted using your account is your responsibility.
           </p>
 
-          <div style={{ marginTop: '1.25rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
-            <h4 style={{ color: '#f8fafc', margin: '0 0 0.35rem 0', fontSize: '0.92rem' }}>Consent Statement</h4>
+          {/* Section 4 */}
+          <h4 style={{ color: '#f8fafc', margin: '1.1rem 0 0.3rem 0', fontSize: '0.95rem', fontWeight: 700 }}>4. Submission of Information and Documents</h4>
+          <p style={{ margin: 0 }}>
+            You agree to submit only authentic, complete, and unaltered information and documents. Providing false, misleading, or fraudulent information may result in the rejection of your application or suspension of your account.
+          </p>
+
+          {/* Section 5 */}
+          <h4 style={{ color: '#f8fafc', margin: '1.1rem 0 0.3rem 0', fontSize: '0.95rem', fontWeight: 700 }}>5. Data Privacy</h4>
+          <p style={{ margin: '0 0 0.4rem 0' }}>
+            By using iskoMats, you voluntarily consent to the collection, use, storage, and processing of your personal information, including but not limited to:
+          </p>
+          <ul className="terms-list">
+            <li>Full name</li>
+            <li>Email address</li>
+            <li>Student information</li>
+            <li>Scholarship application details</li>
+            <li>Uploaded documents</li>
+            <li>Information required for scholarship verification</li>
+          </ul>
+          <p style={{ margin: '0.6rem 0 0.4rem 0' }}>
+            Your personal information will be used only for:
+          </p>
+          <ul className="terms-list">
+            <li>Account registration and authentication</li>
+            <li>Scholarship application processing</li>
+            <li>Eligibility verification</li>
+            <li>Communication regarding your application</li>
+            <li>System administration and maintenance</li>
+          </ul>
+          <p style={{ margin: '0.6rem 0 0 0' }}>
+            Your personal information will only be accessed by authorized scholarship administrators and system administrators when necessary for scholarship-related purposes and as permitted by law.
+          </p>
+
+          {/* Section 6 */}
+          <h4 style={{ color: '#f8fafc', margin: '1.1rem 0 0.3rem 0', fontSize: '0.95rem', fontWeight: 700 }}>6. User Responsibilities</h4>
+          <p style={{ margin: '0 0 0.4rem 0' }}>
+            You agree not to:
+          </p>
+          <ul className="terms-list">
+            <li>Use another person's identity or documents.</li>
+            <li>Share your account credentials with others.</li>
+            <li>Attempt to gain unauthorized access to the system.</li>
+            <li>Upload malicious files or harmful content.</li>
+            <li>Use the system for unlawful purposes.</li>
+          </ul>
+
+          {/* Section 7 */}
+          <h4 style={{ color: '#f8fafc', margin: '1.1rem 0 0.3rem 0', fontSize: '0.95rem', fontWeight: 700 }}>7. Scholarship Decisions</h4>
+          <p style={{ margin: 0 }}>
+            iskoMats serves only as a platform for scholarship application and management. The final approval, rejection, or selection of scholarship applicants remains solely with the scholarship provider.
+          </p>
+
+          {/* Section 8 */}
+          <h4 style={{ color: '#f8fafc', margin: '1.1rem 0 0.3rem 0', fontSize: '0.95rem', fontWeight: 700 }}>8. Changes to the Terms</h4>
+          <p style={{ margin: 0 }}>
+            iskoMats reserves the right to update or modify these Terms and Conditions at any time. Continued use of the system after any changes constitutes your acceptance of the revised terms.
+          </p>
+
+          {/* Section 9 */}
+          <h4 style={{ color: '#f8fafc', margin: '1.1rem 0 0.3rem 0', fontSize: '0.95rem', fontWeight: 700 }}>9. Contact</h4>
+          <p style={{ margin: 0 }}>
+            If you have questions regarding these Terms and Conditions or your personal data, please contact the iskoMats administrator.
+          </p>
+
+          <div style={{ 
+            marginTop: '1.25rem', 
+            padding: '1rem', 
+            background: 'rgba(255, 255, 255, 0.05)', 
+            borderRadius: '14px', 
+            border: '1px solid rgba(255, 255, 255, 0.1)' 
+          }}>
+            <h4 style={{ color: '#f8fafc', margin: '0 0 0.35rem 0', fontSize: '0.92rem', fontWeight: 700 }}>Consent Statement</h4>
             <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8', lineHeight: '1.5' }}>
-              By clicking <strong>Accept & Continue</strong>, I confirm that I have read, understood, and agree to the Terms & Conditions and Data Privacy Agreement of iskoMats.
+              By clicking <strong style={{ color: '#ffffff' }}>Accept & Continue</strong>, I confirm that I have read, understood, and agree to the Terms & Conditions and Data Privacy Agreement of iskoMats.
             </p>
           </div>
         </div>
 
-        {/* Footer Actions: REJECT & ACCEPT */}
-        <div style={{
-          marginTop: '1.5rem',
-          paddingTop: '1rem',
-          borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-          display: 'flex',
-          justify: 'flex-end',
-          gap: '0.85rem'
-        }}>
+        {/* Footer Actions */}
+        <div className="terms-modal-footer">
           <button
             type="button"
+            className="terms-btn-secondary"
             onClick={onReject}
-            style={{
-              background: 'transparent',
-              color: '#94a3b8',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: '30px',
-              padding: '0.65rem 1.4rem',
-              fontSize: '0.9rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
           >
             Reject & Return
           </button>
           <button
             type="button"
+            className="terms-btn-primary"
             onClick={onAccept}
-            style={{
-              background: 'linear-gradient(135deg, #16a34a, #15803d)',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '30px',
-              padding: '0.65rem 1.8rem',
-              fontSize: '0.9rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              boxShadow: '0 4px 14px rgba(22, 163, 74, 0.35)',
-              transition: 'all 0.2s ease'
-            }}
           >
             Accept & Continue →
           </button>

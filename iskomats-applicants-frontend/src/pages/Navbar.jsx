@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import iskoLogo from '../assets/iskologo.png';
 import './Navbar.css';
 
-const Navbar = ({ showMenu = false, userEmail = '' }) => {
+const Navbar = ({ showMenu = false, userEmail = '', onApplyClick }) => {
   const { logout, currentUser, userProfile } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -53,15 +53,15 @@ const Navbar = ({ showMenu = false, userEmail = '' }) => {
           <img src={iskoLogo} alt="iskoMats Logo" className="navbar-brand-logo" />
           <span className="navbar-brand-text">iskoMats</span>
         </Link>
-        <button 
-          className="navbar-toggle-btn" 
+        <button
+          className="navbar-toggle-btn"
           aria-label="Toggle navigation menu"
           onClick={toggleMobileMenu}
         >
           <i className={mobileMenuOpen ? "fas fa-times" : "fas fa-bars"}></i>
         </button>
       </div>
-      
+
       {!currentUser ? (
         <div className={`navbar-nav ${mobileMenuOpen ? 'active' : ''}`}>
           <a href="/" onClick={(e) => handleNavClick(e, 'hero')}>
@@ -77,7 +77,21 @@ const Navbar = ({ showMenu = false, userEmail = '' }) => {
             <i className="fas fa-envelope nav-icon"></i>Contact Info
           </a>
           {!['/login', '/forgot-password', '/applicant-forgot-password', '/verify-email'].includes(location.pathname) && (
-            <Link to="/login" className="nav-btn" onClick={closeMobileMenu}>Apply Now</Link>
+            <a
+              href="/login"
+              className="nav-btn"
+              onClick={(e) => {
+                closeMobileMenu();
+                if (onApplyClick) {
+                  onApplyClick(e, '/login');
+                } else {
+                  e.preventDefault();
+                  navigate('/login');
+                }
+              }}
+            >
+              LOGIN
+            </a>
           )}
         </div>
       ) : (
