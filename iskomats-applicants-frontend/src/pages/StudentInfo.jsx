@@ -2818,7 +2818,87 @@ function checkSingleMeritMatch(detectedText, meritTitle) {
 
 export function merit_matches_text(detectedText, meritTitle) {
   if (!meritTitle || !meritTitle.trim()) return { isMatch: true, matchedKeywords: [], score: 100 };
-  // If the title contains alternatives (e.g. '1st Honor / First Honor'), match against any alternative
+  if (!detectedText || !detectedText.trim()) return { isMatch: false, matchedKeywords: [], score: 0, reason: "No text extracted from certificate" };
+
+  const normDoc = ' ' + normalizeForOcr(detectedText) + ' ';
+  const title = meritTitle.trim().toLowerCase();
+
+  // --- Strict whole-phrase & rank-conflict verification for the 6 primary honors ---
+
+  // 1. 1st Honor / First Honor
+  if (title.includes('1st honor') || title.includes('first honor')) {
+    const hasPhrase = /\b(1st|first)\s+(honor|honours?|honorable)\b/i.test(normDoc) ||
+                      /\bwith\s+highest\s+honors?\b/i.test(normDoc) ||
+                      /\b(1st|first)\s+place\b/i.test(normDoc);
+    const conflicting = normDoc.match(/\b(2nd|second|3rd|third)\s+(honor|honours?|honorable)\b/i);
+    if (conflicting && !hasPhrase) {
+      return { isMatch: false, matchedKeywords: [], score: 0, reason: `Certificate indicates ${conflicting[0]} instead of 1st Honor.` };
+    }
+    if (hasPhrase) {
+      return { isMatch: true, matchedKeywords: ['1st Honor'], score: 100, reason: "1st Honor verified on certificate." };
+    }
+    return { isMatch: false, matchedKeywords: [], score: 0, reason: "1st Honor / First Honor was not found on the certificate." };
+  }
+
+  // 2. 2nd Honor / Second Honor
+  if (title.includes('2nd honor') || title.includes('second honor')) {
+    const hasPhrase = /\b(2nd|second)\s+(honor|honours?|honorable)\b/i.test(normDoc) ||
+                      /\bwith\s+high\s+honors?\b/i.test(normDoc) ||
+                      /\b(2nd|second)\s+place\b/i.test(normDoc);
+    const conflicting = normDoc.match(/\b(1st|first|3rd|third)\s+(honor|honours?|honorable)\b/i);
+    if (conflicting && !hasPhrase) {
+      return { isMatch: false, matchedKeywords: [], score: 0, reason: `Certificate indicates ${conflicting[0]} instead of 2nd Honor.` };
+    }
+    if (hasPhrase) {
+      return { isMatch: true, matchedKeywords: ['2nd Honor'], score: 100, reason: "2nd Honor verified on certificate." };
+    }
+    return { isMatch: false, matchedKeywords: [], score: 0, reason: "2nd Honor / Second Honor was not found on the certificate." };
+  }
+
+  // 3. 3rd Honor / Third Honor
+  if (title.includes('3rd honor') || title.includes('third honor')) {
+    const hasPhrase = /\b(3rd|third)\s+(honor|honours?|honorable)\b/i.test(normDoc) ||
+                      (/\bwith\s+honors?\b/i.test(normDoc) && !/\bwith\s+(high|highest)\s+honors?\b/i.test(normDoc)) ||
+                      /\b(3rd|third)\s+place\b/i.test(normDoc);
+    const conflicting = normDoc.match(/\b(1st|first|2nd|second)\s+(honor|honours?|honorable)\b/i);
+    if (conflicting && !hasPhrase) {
+      return { isMatch: false, matchedKeywords: [], score: 0, reason: `Certificate indicates ${conflicting[0]} instead of 3rd Honor.` };
+    }
+    if (hasPhrase) {
+      return { isMatch: true, matchedKeywords: ['3rd Honor'], score: 100, reason: "3rd Honor verified on certificate." };
+    }
+    return { isMatch: false, matchedKeywords: [], score: 0, reason: "3rd Honor / Third Honor was not found on the certificate." };
+  }
+
+  // 4. Cum Laude
+  if (title === 'cum laude') {
+    const conflicting = normDoc.match(/\b(magna|summa)\s+cum\s+laude\b/i);
+    if (conflicting) {
+      return { isMatch: false, matchedKeywords: [], score: 0, reason: `Certificate indicates ${conflicting[0]} instead of Cum Laude.` };
+    }
+    if (/\bcum\s+laude\b/i.test(normDoc)) {
+      return { isMatch: true, matchedKeywords: ['Cum Laude'], score: 100, reason: "Cum Laude verified on certificate." };
+    }
+    return { isMatch: false, matchedKeywords: [], score: 0, reason: "Cum Laude distinction not found on certificate." };
+  }
+
+  // 5. Magna Cum Laude
+  if (title === 'magna cum laude') {
+    if (/\bmagna\s+cum\s+laude\b/i.test(normDoc) || /\bmagna\b/i.test(normDoc)) {
+      return { isMatch: true, matchedKeywords: ['Magna Cum Laude'], score: 100, reason: "Magna Cum Laude verified on certificate." };
+    }
+    return { isMatch: false, matchedKeywords: [], score: 0, reason: "Magna Cum Laude distinction not found on certificate." };
+  }
+
+  // 6. Summa Cum Laude
+  if (title === 'summa cum laude') {
+    if (/\bsumma\s+cum\s+laude\b/i.test(normDoc) || /\bsumma\b/i.test(normDoc)) {
+      return { isMatch: true, matchedKeywords: ['Summa Cum Laude'], score: 100, reason: "Summa Cum Laude verified on certificate." };
+    }
+    return { isMatch: false, matchedKeywords: [], score: 0, reason: "Summa Cum Laude distinction not found on certificate." };
+  }
+
+  // Fallback for custom / legacy merit titles
   if (meritTitle.includes(' / ') || meritTitle.includes('/')) {
     const alternatives = meritTitle.split(/\s*\/\s*/).map(s => s.trim()).filter(Boolean);
     let bestMatch = null;
