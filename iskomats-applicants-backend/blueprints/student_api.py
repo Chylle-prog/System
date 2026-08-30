@@ -2859,14 +2859,23 @@ def get_applicant_document_raw(field_name):
                     app_doc_no = s_row.get('app_doc_no') if isinstance(s_row, dict) else s_row[0]
 
             if is_merit:
-                idx_match = re.search(r'\d+', field_name)
-                target_idx = int(idx_match.group(0)) - 1 if idx_match else 0
-                cur.execute("SELECT merit_document FROM merit_proofs WHERE applicant_no = %s ORDER BY merit_id ASC", (request.user_no,))
-                m_rows = cur.fetchall()
-                if m_rows and 0 <= target_idx < len(m_rows):
-                    value = m_rows[target_idx]['merit_document'] if isinstance(m_rows[target_idx], dict) else m_rows[target_idx][0]
+                merit_id = request.args.get('merit_id')
+                if merit_id:
+                    cur.execute("SELECT merit_document FROM merit_proofs WHERE merit_id = %s AND applicant_no = %s LIMIT 1", (merit_id, request.user_no))
+                    m_row = cur.fetchone()
+                    if m_row:
+                        value = m_row.get('merit_document') if isinstance(m_row, dict) else m_row[0]
+                    else:
+                        return "Not found", 404
                 else:
-                    return "Not found", 404
+                    idx_match = re.search(r'\d+', field_name)
+                    target_idx = int(idx_match.group(0)) - 1 if idx_match else 0
+                    cur.execute("SELECT merit_document FROM merit_proofs WHERE applicant_no = %s ORDER BY merit_id ASC", (request.user_no,))
+                    m_rows = cur.fetchall()
+                    if m_rows and 0 <= target_idx < len(m_rows):
+                        value = m_rows[target_idx]['merit_document'] if isinstance(m_rows[target_idx], dict) else m_rows[target_idx][0]
+                    else:
+                        return "Not found", 404
             else:
                 row = fetch_applicant_document_values(cur, request.user_no, [db_field], app_doc_no=app_doc_no)
                 if not row or not row.get(db_field):
@@ -2879,10 +2888,9 @@ def get_applicant_document_raw(field_name):
                     if not row or not row.get(db_field):
                         row = fetch_applicant_document_values(cur, request.user_no, ['id_img_front'], app_doc_no=app_doc_no)
                         db_field = 'id_img_front'
-            if not row or not row.get(db_field):
-                return "Not found", 404
-            
-            value = row[db_field]
+                if not row or not row.get(db_field):
+                    return "Not found", 404
+                value = row[db_field]
             if field_name == 'signature_image_data':
                 value = decode_signature(value)
             
@@ -3017,6 +3025,7 @@ def get_applicant_document_raw(field_name):
                 from flask import make_response
                 response = make_response(value)
                 response.headers.set('Content-Type', mime_type)
+                response.headers.set('Content-Disposition', 'inline')
                 response.headers.set('Cache-Control', 'public, max-age=86400, immutable')
                 response.headers.set('ETag', etag)
                 return response
@@ -4199,6 +4208,18 @@ def get_my_applications():
                     adn = m_dict.get('app_doc_no')
                     if adn not in merits_by_app_doc:
                         merits_by_app_doc[adn] = []
+                    
+                    # Provide an authenticated raw stream URL for inline viewing
+                    m_id = m_dict.get('merit_id')
+                    if m_id:
+                        params = {'field_name': f'merit_doc_{m_id}', 'merit_id': m_id, '_external': True}
+                        if token_str:
+                            params['token'] = token_str
+                        raw_stream_url = url_for('student_api.get_applicant_document_raw', **params)
+                        m_dict['merit_document_raw'] = raw_stream_url
+                        m_dict['raw_url'] = raw_stream_url
+                        m_dict['merit_document'] = raw_stream_url
+
                     merits_by_app_doc[adn].append(m_dict)
 
             doc_keys = [
