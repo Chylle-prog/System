@@ -2404,6 +2404,10 @@ def get_rankings():
             
             cur.execute("""
                 SELECT s.req_no, s.scholarship_name, s.gpa, s.location, s.parent_finance, s.slots, s.deadline, s.pro_no,
+                       s."desc" AS description, s."desc" AS "desc",
+                       s.semester, s.year, s.grades_sem, s.grades_year, s.units,
+                       COALESCE(s.residency_doc_type, 'Indigency Document') AS residency_doc_type,
+                       COALESCE(s.id_type, 'School ID') AS id_type,
                        p.provider_name,
                        COALESCE(ast.accepted_count, 0) AS accepted_count
                 FROM scholarships s
@@ -2503,7 +2507,8 @@ def get_rankings():
                 'req_no': sch['req_no'],
                 'name': sch['scholarship_name'],
                 'provider_name': sch.get('provider_name'),
-                'description': sch.get('desc'),
+                'description': sch.get('description') or sch.get('desc') or '',
+                'desc': sch.get('desc') or sch.get('description') or '',
                 'minGpa': min_gpa,
                 'units': req_units,
                 'residencyDocType': sch.get('residency_doc_type') or 'Indigency Document',

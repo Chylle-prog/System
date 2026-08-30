@@ -1253,7 +1253,7 @@ const FindScholarship = () => {
                     {match.provider_name ? `🏛️ ${match.provider_name}` : '🏛️ ISKOMATS Scholarship'}
                   </div>
                   <p>
-                    {match.description || 'No description provided for this scholarship yet.'}
+                    {match.description || match.desc || 'No description provided for this scholarship yet.'}
                   </p>
                   <div className="scholarship-requirements">
                     {match.location && (
@@ -1304,7 +1304,7 @@ const FindScholarship = () => {
                     {match.provider_name ? `🏛️ ${match.provider_name}` : '🏛️ ISKOMATS Scholarship'}
                   </div>
                   <p>
-                    {match.description || 'No description provided for this scholarship yet.'}
+                    {match.description || match.desc || 'No description provided for this scholarship yet.'}
                   </p>
 
                   <div style={{ marginBottom: '1rem' }}>
