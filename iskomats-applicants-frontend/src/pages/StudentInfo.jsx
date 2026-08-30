@@ -2703,7 +2703,7 @@ export function extractNameFromMeritCert(ocrText) {
   return "Not detected";
 }
 
-export function merit_matches_text(detectedText, meritTitle) {
+function checkSingleMeritMatch(detectedText, meritTitle) {
   if (!meritTitle || !meritTitle.trim()) return { isMatch: true, matchedKeywords: [], score: 100 };
   if (!detectedText || !detectedText.trim()) return { isMatch: false, matchedKeywords: [], reason: "No text extracted from certificate" };
 
@@ -2756,14 +2756,7 @@ export function merit_matches_text(detectedText, meritTitle) {
     '2nd': ['2nd', 'second', 'silver', 'runner up', '2nd place'],
     'second': ['2nd', 'second', 'silver', 'runner up', 'second place'],
     '3rd': ['3rd', 'third', 'bronze', '3rd place'],
-    'third': ['3rd', 'third', 'bronze', 'third place'],
-    'leadership': ['leadership', 'service', 'leader', 'pamumuno', 'officer'],
-    'excellence': ['excellence', 'academic excellence', 'katangi tangi', 'outstanding'],
-    'outstanding': ['outstanding', 'excellence', 'exemplary', 'natatangi'],
-    'athlete': ['athlete', 'sports', 'athletic', 'palakasan'],
-    'math': ['math', 'mathematics', 'olympiad', 'quiz bee'],
-    'science': ['science', 'olympiad', 'quiz bee'],
-    'robotics': ['robotics', 'robot', 'technology', 'stem']
+    'third': ['3rd', 'third', 'bronze', 'third place']
   };
 
   const matchedTokens = [];
@@ -2806,7 +2799,7 @@ export function merit_matches_text(detectedText, meritTitle) {
   
   // Stricter verification:
   // - 1 token: must match 100% (e.g. 'Valedictorian')
-  // - 2 tokens: both must match 100% (e.g. '3rd Honor' -> 3rd and Honor must both match; '3rd Hon' fails because 'Hon' is incomplete)
+  // - 2 tokens: both must match 100% (e.g. '3rd Honor' -> 3rd and Honor must both match)
   // - 3+ tokens: must match at least 70% of tokens
   const isMatch = (tokens.length === 1 && tokenMatches === 1) ||
                   (tokens.length === 2 && tokenMatches === 2) ||
@@ -2821,6 +2814,24 @@ export function merit_matches_text(detectedText, meritTitle) {
       ? "Merit keywords matched certificate" 
       : `Could not find complete merit keyword(s) (${missingTokens.join(', ')}) in certificate.`
   };
+}
+
+export function merit_matches_text(detectedText, meritTitle) {
+  if (!meritTitle || !meritTitle.trim()) return { isMatch: true, matchedKeywords: [], score: 100 };
+  // If the title contains alternatives (e.g. '1st Honor / First Honor'), match against any alternative
+  if (meritTitle.includes(' / ') || meritTitle.includes('/')) {
+    const alternatives = meritTitle.split(/\s*\/\s*/).map(s => s.trim()).filter(Boolean);
+    let bestMatch = null;
+    for (const alt of alternatives) {
+      const res = checkSingleMeritMatch(detectedText, alt);
+      if (res.isMatch) return res;
+      if (!bestMatch || res.score > bestMatch.score) {
+        bestMatch = res;
+      }
+    }
+    return bestMatch || { isMatch: false, matchedKeywords: [], reason: `Could not find ${meritTitle} in certificate.` };
+  }
+  return checkSingleMeritMatch(detectedText, meritTitle);
 }
 
 
@@ -9519,10 +9530,8 @@ const StudentInfo = () => {
                             )}
                           </div>
 
-                          <input
-                            type="text"
+                          <select
                             disabled={isAnyScanning || isSavingStep}
-                            placeholder={index === 0 ? "e.g. Valedictorian, Dean's Lister, 1st Place Science Quiz Bee..." : `e.g. Award / Recognition #${index + 1}...`}
                             value={merit.title}
                             onChange={(e) => {
                               if (isAnyScanning || isSavingStep) return;
@@ -9548,10 +9557,19 @@ const StudentInfo = () => {
                               fontFamily: 'inherit',
                               marginBottom: hasTitle ? '10px' : '0',
                               background: isAnyScanning ? '#f8fafc' : '#ffffff',
-                              cursor: isAnyScanning ? 'not-allowed' : 'text',
-                              opacity: isAnyScanning ? 0.7 : 1
+                              cursor: isAnyScanning ? 'not-allowed' : 'pointer',
+                              opacity: isAnyScanning ? 0.7 : 1,
+                              color: merit.title ? '#0f172a' : '#64748b'
                             }}
-                          />
+                          >
+                            <option value="">-- Select Academic Merit / Honor --</option>
+                            <option value="1st Honor / First Honor">1st Honor / First Honor</option>
+                            <option value="2nd Honor / Second Honor">2nd Honor / Second Honor</option>
+                            <option value="3rd Honor / Third Honor">3rd Honor / Third Honor</option>
+                            <option value="Cum Laude">Cum Laude</option>
+                            <option value="Magna Cum Laude">Magna Cum Laude</option>
+                            <option value="Summa Cum Laude">Summa Cum Laude</option>
+                          </select>
 
                           {/* CONDITIONAL CERTIFICATE DOCUMENT SUBMISSION: Only show if user inputted something */}
                           {hasTitle && (

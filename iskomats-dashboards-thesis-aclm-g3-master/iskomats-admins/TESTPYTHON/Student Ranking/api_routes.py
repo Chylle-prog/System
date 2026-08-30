@@ -3761,21 +3761,37 @@ def analyze_merits_onthefly(merits_text):
         'math', 'science', 'academic', 'research', 'thesis', 'scholar', 'lister', 'gwa'
     ]
 
-    # Calculate base rule-based score
+    # Calculate base rule-based score for the 6 primary academic honors
     base_score = 0
     base_reason = "No recognized academic honors or awards."
-    if any(k in text_clean for k in ['summa cum laude', 'summa', 'valedictorian', 'national math olympiad', 'national science olympiad', 'international olympiad', 'rank 1 overall']):
-        base_score, base_reason = 20, "Highest academic distinction (Summa Cum Laude / Valedictorian / National Olympiad Champion)."
-    elif any(k in text_clean for k in ['magna cum laude', 'magna', 'salutatorian', 'regional olympiad champion', 'top 3 national']):
-        base_score, base_reason = 18, "Top national / regional academic distinction (Magna Cum Laude / Salutatorian / Regional Champion)."
-    elif any(k in text_clean for k in ['cum laude', 'first honor', '1st honor', 'with highest honors', 'highest honors', '1st place division']):
-        base_score, base_reason = 15, "High academic honors (Cum Laude / 1st Honor / With Highest Honors / Division Champion)."
-    elif any(k in text_clean for k in ['second honor', '2nd honor', 'with high honors', 'high honors', "president's list", 'presidents list', 'division olympiad', 'division quiz bee']):
-        base_score, base_reason = 12, "High academic honors (2nd Honor / With High Honors / President's List / Division Placement)."
-    elif any(k in text_clean for k in ['third honor', '3rd honor', "dean's list", 'deans list', 'dean', 'academic lister', 'honor student', 'with honors', 'academic excellence', 'quiz bee', 'science fair', 'math contest', 'academic award']):
-        base_score, base_reason = 8, "School-level academic honors (3rd Honor / With Honors / Dean's List / Academic Contest)."
-    elif any(k in text_clean for k in ['academic', 'honor', 'award', 'certificate', 'contestant', 'top 10', 'best in math', 'best in science', 'best in research']):
-        base_score, base_reason = 5, "General academic recognition / subject award."
+
+    import re
+    if re.search(r'\bsumma\s+cum\s+laude\b|\bsumma\b', text_clean):
+        base_score = 20
+        base_reason = "Highest academic distinction: Summa Cum Laude."
+    elif re.search(r'\bmagna\s+cum\s+laude\b|\bmagna\b', text_clean):
+        base_score = 18
+        base_reason = "High academic distinction: Magna Cum Laude."
+    elif re.search(r'\b(1st|first)\s+honor\b|\bwith\s+highest\s+honors?\b', text_clean):
+        base_score = 16
+        base_reason = "Top class academic honor: 1st Honor / First Honor."
+    elif re.search(r'\bcum\s+laude\b', text_clean) and not re.search(r'\b(magna|summa)\b', text_clean):
+        base_score = 15
+        base_reason = "Academic distinction: Cum Laude."
+    elif re.search(r'\b(2nd|second)\s+honor\b|\bwith\s+high\s+honors?\b', text_clean):
+        base_score = 12
+        base_reason = "Second class academic honor: 2nd Honor / Second Honor."
+    elif re.search(r'\b(3rd|third)\s+honor\b|\bwith\s+honors?\b', text_clean):
+        base_score = 8
+        base_reason = "Third class academic honor: 3rd Honor / Third Honor."
+    elif any(k in text_clean for k in ['valedictorian', 'national math olympiad', 'national science olympiad', 'international olympiad', 'rank 1 overall']):
+        base_score, base_reason = 20, "Highest academic distinction: Valedictorian / National Olympiad Champion."
+    elif any(k in text_clean for k in ['salutatorian', 'regional olympiad champion', 'top 3 national']):
+        base_score, base_reason = 18, "Top regional/national academic distinction: Salutatorian / Regional Champion."
+    elif any(k in text_clean for k in ["dean's list", 'deans list', 'dean', 'academic lister', 'quiz bee', 'science fair', 'math contest']):
+        base_score, base_reason = 8, "School-level academic honor: Dean's List / Academic Contest."
+    elif any(k in text_clean for k in ['academic', 'honor', 'award', 'certificate']):
+        base_score, base_reason = 5, "General academic recognition / certificate."
 
     api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
     if api_key:
