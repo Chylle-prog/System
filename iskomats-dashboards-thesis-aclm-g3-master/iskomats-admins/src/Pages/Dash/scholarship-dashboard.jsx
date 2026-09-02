@@ -2152,11 +2152,18 @@ export default function ScholarshipDashboard({
       count,
       percentage: Math.round((count / total) * 100)
     }));
-    const meritBreakdown = Object.entries(meritHonors).map(([honor, count]) => ({
-      honor,
-      count,
-      percentage: Math.round((count / total) * 100)
-    }));
+    const totalMeritHolders = Object.entries(meritHonors)
+      .filter(([honor]) => honor !== 'No Honors Stated')
+      .reduce((acc, [, count]) => acc + count, 0);
+
+    const meritBreakdown = Object.entries(meritHonors)
+      .filter(([honor]) => honor !== 'No Honors Stated')
+      .map(([honor, count]) => ({
+        honor,
+        count,
+        percentage: totalMeritHolders > 0 ? Math.round((count / totalMeritHolders) * 100) : 0
+      }))
+      .sort((a, b) => b.count - a.count);
     const locationStats = Array.from(locationsMap.entries())
       .map(([location, count]) => ({ location, count, percentage: Math.round((count / total) * 100) }))
       .sort((a, b) => b.count - a.count);
@@ -5817,18 +5824,19 @@ export default function ScholarshipDashboard({
                 <h4 className="text-[#800020] font-black text-xl mb-3">Academic Excellence Insights</h4>
                 {(() => {
                   const breakdown = historicalData.meritBreakdown || [];
-                  const honorList = breakdown.filter(m => m.honor !== 'No Honors Stated' && m.count > 0);
-                  const totalHonorsCount = honorList.reduce((acc, curr) => acc + curr.count, 0);
-                  const totalApplicantCount = breakdown.reduce((acc, curr) => acc + curr.count, 0) || 1;
-                  const honorsRatioPct = Math.round((totalHonorsCount / totalApplicantCount) * 100);
-                  const topDistinction = [...honorList].sort((a, b) => b.count - a.count)[0]?.honor || 'None';
+                  const activeHonors = breakdown.filter(m => m.honor !== 'No Honors Stated' && m.count > 0);
+                  const totalHonorsCount = activeHonors.reduce((acc, curr) => acc + curr.count, 0);
+                  const topDistinction = activeHonors[0]?.honor || 'None';
+                  const topDistinctionCount = activeHonors[0]?.count || 0;
+                  const topDistinctionShare = activeHonors[0]?.percentage || 0;
 
                   return (
                     <>
                       <p className="text-gray-700 leading-relaxed mb-4">
                         {totalHonorsCount > 0 ? (
                           <>
-                            A total of <strong>{totalHonorsCount}</strong> {totalHonorsCount === 1 ? 'applicant holds' : 'applicants hold'} documented academic honors or distinctions, showcasing competitive merit profiles for the {scholarshipLabel}.
+                            A total of <strong>{totalHonorsCount}</strong> {totalHonorsCount === 1 ? 'applicant holds' : 'applicants hold'} documented academic honors or distinctions for the {scholarshipLabel}.
+                            Among scholars with recognized merits, <strong>{topDistinction}</strong> represents the largest group at <strong>{topDistinctionShare}%</strong> ({topDistinctionCount} of {totalHonorsCount}).
                           </>
                         ) : (
                           `No verified academic honors or distinctions recorded yet for ${scholarshipLabel} applicants.`
@@ -5842,9 +5850,15 @@ export default function ScholarshipDashboard({
                           </p>
                         </div>
                         <div className="bg-white p-4 rounded-xl border border-rose-100">
-                          <p className="text-[10px] font-black text-gray-400 uppercase">Honors Ratio</p>
-                          <p className="font-bold text-gray-800">
-                            {honorsRatioPct}% of Total
+                          <p className="text-[10px] font-black text-gray-400 uppercase">Distinction Share</p>
+                          <p className="font-bold text-gray-800 text-xs sm:text-sm">
+                            {totalHonorsCount > 0 ? (
+                              <>
+                                {topDistinctionShare}% <span className="text-gray-400 text-xs font-normal">of Merits ({topDistinctionCount}/{totalHonorsCount})</span>
+                              </>
+                            ) : (
+                              '0%'
+                            )}
                           </p>
                         </div>
                       </div>
@@ -5977,7 +5991,7 @@ export default function ScholarshipDashboard({
                         <tr className="bg-gray-50 border-b border-gray-100">
                           <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Academic Honor</th>
                           <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Count</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">%</th>
+                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">% of Merits</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
