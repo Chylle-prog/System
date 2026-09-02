@@ -6,7 +6,10 @@ export default defineConfig({
   plugins: [tailwindcss(), react()],
   server: {
     port: 3010,
-    open: true
+    open: true,
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+    },
   },
   // Disable identifier renaming (minifyIdentifiers) to prevent esbuild TDZ
   // ReferenceErrors caused by const arrow functions being renamed and reordered
