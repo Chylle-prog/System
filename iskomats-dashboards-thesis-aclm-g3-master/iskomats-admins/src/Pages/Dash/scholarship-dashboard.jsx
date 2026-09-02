@@ -1964,20 +1964,10 @@ export default function ScholarshipDashboard({
 
   // Sync recommendations when applicants or filter changes
   useEffect(() => {
-    if (recommendationModal && data.applicants.length > 0) {
-      const count = parseInt(recommendCount) || 10;
-      const allPending = data.applicants || [];
-      const filteredApplicants = allPending.filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
-      const top = [...filteredApplicants]
-        .sort((a, b) => {
-          const gradeA = convertGpaToPercentage(a.grade || a.overall_gpa || a.gpa, a.school) ?? 0;
-          const gradeB = convertGpaToPercentage(b.grade || b.overall_gpa || b.gpa, b.school) ?? 0;
-          return gradeB - gradeA;
-        })
-        .slice(0, count);
-      setRecommended(top);
+    if (recommendationModal) {
+      recommendStudents(recommendCount);
     }
-  }, [data.applicants, trackScholarshipFilter, recommendCount, recommendationModal]);
+  }, [data.applicants, trackScholarshipFilter, recommendationModal]);
 
   const calculateHistoricalData = (applicants) => {
     const list = Array.isArray(applicants) ? applicants : [];
@@ -3132,16 +3122,18 @@ export default function ScholarshipDashboard({
   }, [analyticsScholarshipFilter, data]);
 
   const filteredReportApplicants = useMemo(() => {
-    const pending = data.applicants.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
-    const accepted = data.accepted.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
-    const rejected = data.rejected.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
-    const cancelled = data.cancelled.filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const pending = (data.applicants || []).filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const accepted = (data.accepted || []).filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const rejected = (data.rejected || []).filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const declined = (data.declined || data.rejected || []).filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
+    const cancelled = (data.cancelled || []).filter((applicant) => matchesScholarshipSelection(applicant, analyticsScholarshipFilter));
     return {
       pending,
       accepted,
       rejected,
+      declined,
       cancelled,
-      all: [...pending, ...accepted, ...rejected, ...cancelled],
+      all: [...pending, ...accepted, ...declined, ...cancelled],
     };
   }, [analyticsScholarshipFilter, data]);
 
@@ -3542,18 +3534,29 @@ export default function ScholarshipDashboard({
     setSection('inbox');
   };
 
-  const recommendStudents = () => {
-    const count = parseInt(recommendCount) || 10;
+  const recommendStudents = (countOverride) => {
+    const count = Math.max(1, parseInt(countOverride !== undefined ? countOverride : recommendCount, 10) || 10);
     const allPending = data.applicants || [];
 
-    // Exact same filtering logic as the Track list
-    const filteredApplicants = allPending.filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
+    // Prioritize pending applicants for the active scholarship filter
+    const filteredPending = allPending.filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
+    const pool = filteredPending.length > 0 ? filteredPending : [
+      ...(data.applicants || []),
+      ...(data.accepted || []),
+      ...(data.rejected || []),
+      ...(data.declined || []),
+      ...(data.cancelled || [])
+    ].filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
 
-    const top = [...filteredApplicants]
+    const top = [...pool]
       .sort((a, b) => {
         const schA = getScholarshipForApplicant(a);
         const schB = getScholarshipForApplicant(b);
-        return calculateDeservednessScore(b, schB) - calculateDeservednessScore(a, schA);
+        const diff = calculateDeservednessScore(b, schB) - calculateDeservednessScore(a, schA);
+        if (diff !== 0) return diff;
+        const gradeA = convertGpaToPercentage(a.grade || a.overall_gpa || a.gpa, a.school) ?? 0;
+        const gradeB = convertGpaToPercentage(b.grade || b.overall_gpa || b.gpa, b.school) ?? 0;
+        return gradeB - gradeA;
       })
       .slice(0, count);
 
@@ -5230,15 +5233,13 @@ export default function ScholarshipDashboard({
 
             <button
               type="button"
-              onClick={() => { setSortByPoints(prev => !prev); setApplicantTrackPage(1); }}
-              className={`px-2.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm outline-none font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 border flex-shrink-0 ${sortByPoints
-                ? 'bg-[#800020] text-white border-[#800020] hover:bg-[#650018]'
-                : 'bg-gray-50 text-[#800020] border-gray-200 hover:bg-gray-100'
-                }`}
+              onClick={() => recommendStudents(recommendCount || 10)}
+              className="px-2.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm outline-none font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 border flex-shrink-0 bg-white text-[#800020] border-[#800020] hover:bg-[#800020] hover:text-white"
+              title="View Recommended Applicants"
             >
-              <FaStar className={sortByPoints ? 'text-yellow-400' : 'text-[#800020]/75'} />
-              <span className="hidden sm:inline">{sortByPoints ? 'Sorted by Points' : 'Recommended Applicants'}</span>
-              <span className="sm:hidden">Points</span>
+              <FaStar className="text-yellow-500" />
+              <span className="hidden sm:inline">Recommended Applicants</span>
+              <span className="sm:hidden">Recommended</span>
             </button>
 
             <button
@@ -5279,17 +5280,16 @@ export default function ScholarshipDashboard({
                 <th className="px-4 py-3 text-left font-semibold">Name</th>
                 <th className="px-4 py-3 text-left font-semibold">Grade / GPA</th>
                 <th className="px-4 py-3 text-left font-semibold">Points</th>
-                <th className="px-4 py-3 text-left font-semibold">AI Merit Score</th>
                 <th className="px-4 py-3 text-left font-semibold">School &amp; Course</th>
                 <th className="px-4 py-3 text-left font-semibold">Contact &amp; Address</th>
-                <th className="px-4 py-3 text-center font-semibold">Decline / Accept</th>
+                <th className="px-4 py-3 text-center font-semibold">Accept / Decline</th>
                 <th className="px-4 py-3 text-left font-semibold">Action</th>
               </tr>
             </thead>
             <tbody>
               {paginatedTrackApplicants.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="px-4 py-12 text-center text-gray-500 font-medium">
+                  <td colSpan="7" className="px-4 py-12 text-center text-gray-500 font-medium">
                     No applicants found matching your criteria.
                   </td>
                 </tr>
@@ -5337,7 +5337,6 @@ export default function ScholarshipDashboard({
                         {formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}
                       </td>
                       {renderPointsCell(a)}
-                      {renderMeritScoreCell(a)}
                       <td className="px-3 py-2 text-xs">
                         <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
                         <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
@@ -5533,8 +5532,8 @@ export default function ScholarshipDashboard({
     }
 
     // Helper to format applicant data for Excel
-    const formatApplicants = (list) => list.map(app => ({
-      'Student Name': app.name || `${app.firstName} ${app.lastName}`,
+    const formatApplicants = (list) => (Array.isArray(list) ? list : []).map(app => ({
+      'Student Name': app.name || `${app.firstName || ''} ${app.lastName || ''}`.trim() || 'N/A',
       'Scholarship Name': app.scholarshipName || 'N/A',
       'Grade': formatGpaDisplay(app.grade || app.overall_gpa || app.gpa, app.school),
       'Merit / Awards': getApplicantMeritDisplay(app),
@@ -5551,70 +5550,83 @@ export default function ScholarshipDashboard({
     const createSheetWithHeader = (list, title) => {
       const ws = XLSX.utils.aoa_to_sheet([[sidebarTitle, activeScholarshipName], [title], [`Date: ${new Date().toLocaleDateString()}`], []]);
       const formattedData = formatApplicants(list);
-      XLSX.utils.sheet_add_json(ws, formattedData, { origin: 'A5' });
-      ws['!cols'] = autoAdjustColumnWidths(formattedData);
+      if (formattedData.length > 0) {
+        XLSX.utils.sheet_add_json(ws, formattedData, { origin: 'A5' });
+        ws['!cols'] = autoAdjustColumnWidths(formattedData);
+      } else {
+        XLSX.utils.sheet_add_aoa(ws, [['No applicants recorded for this category']], { origin: 'A5' });
+      }
       return ws;
     };
 
-    // Create worksheets for Applicant Statuses
-    const acceptedWS = createSheetWithHeader(filteredReportApplicants.accepted, 'Accepted Scholars');
-    const declinedWS = createSheetWithHeader(filteredReportApplicants.declined, 'Declined Applicants');
-    const pendingWS = createSheetWithHeader(filteredReportApplicants.pending, 'Pending Applications');
+    try {
+      // Create worksheets for Applicant Statuses
+      const acceptedWS = createSheetWithHeader(filteredReportApplicants?.accepted || [], 'Accepted Scholars');
+      const declinedWS = createSheetWithHeader(filteredReportApplicants?.declined || filteredReportApplicants?.rejected || [], 'Declined Applicants');
+      const pendingWS = createSheetWithHeader(filteredReportApplicants?.pending || [], 'Pending Applications');
 
-    // Create worksheet for Location Stats
-    const locationData = filteredHistoricalData.locationStats.map(item => ({
-      Barangay: item.location,
-      Count: item.count,
-      Percentage: `${item.percentage}%`
-    }));
-    const locationWS = XLSX.utils.json_to_sheet(locationData);
+      // Create worksheet for Location Stats
+      const locationData = (filteredHistoricalData?.locationStats || []).map(item => ({
+        Barangay: item.location,
+        Count: item.count,
+        Percentage: `${item.percentage}%`
+      }));
+      const locationWS = XLSX.utils.json_to_sheet(locationData.length > 0 ? locationData : [{ Status: 'No data' }]);
 
-    // Create worksheet for Course Distribution
-    const courseWS = XLSX.utils.json_to_sheet(filteredHistoricalData.courseDistribution.map(item => ({
-      Course: item.course,
-      Count: item.count,
-      Percentage: `${item.percentage}%`
-    })));
+      // Create worksheet for Course Distribution
+      const courseData = (filteredHistoricalData?.courseDistribution || []).map(item => ({
+        Course: item.course,
+        Count: item.count,
+        Percentage: `${item.percentage}%`
+      }));
+      const courseWS = XLSX.utils.json_to_sheet(courseData.length > 0 ? courseData : [{ Status: 'No data' }]);
 
-    // Create worksheet for Performance Metrics
-    const metricsData = [
-      { Metric: 'Acceptance Rate', Value: `${filteredHistoricalData.performanceMetrics.acceptanceRate}%` },
-      { Metric: 'Avg. Processing Time', Value: `${filteredHistoricalData.performanceMetrics.averageProcessingTime} days` },
-      { Metric: 'Application Completion Rate', Value: `${filteredHistoricalData.performanceMetrics.applicationCompletionRate}%` }
-    ];
-    const metricsWS = XLSX.utils.json_to_sheet(metricsData);
+      // Create worksheet for Performance Metrics
+      const metricsData = [
+        { Metric: 'Acceptance Rate', Value: `${filteredHistoricalData?.performanceMetrics?.acceptanceRate ?? 0}%` },
+        { Metric: 'Avg. Processing Time', Value: `${filteredHistoricalData?.performanceMetrics?.averageProcessingTime ?? 0} days` },
+        { Metric: 'Application Completion Rate', Value: `${filteredHistoricalData?.performanceMetrics?.applicationCompletionRate ?? 0}%` }
+      ];
+      const metricsWS = XLSX.utils.json_to_sheet(metricsData);
 
-    // Create worksheet for Monthly Trends
-    const trendsWS = XLSX.utils.json_to_sheet(filteredHistoricalData.monthlyApplications);
+      // Create worksheet for Monthly Trends
+      const trendsData = filteredHistoricalData?.monthlyApplications || [];
+      const trendsWS = XLSX.utils.json_to_sheet(trendsData.length > 0 ? trendsData : [{ Status: 'No data' }]);
 
-    // Create worksheet for School Stats
-    const schoolWS = XLSX.utils.json_to_sheet(filteredHistoricalData.schoolStats.map(item => ({
-      School: item.school,
-      Count: item.count,
-      Percentage: `${item.percentage}%`
-    })));
+      // Create worksheet for School Stats
+      const schoolData = (filteredHistoricalData?.schoolStats || []).map(item => ({
+        School: item.school,
+        Count: item.count,
+        Percentage: `${item.percentage}%`
+      }));
+      const schoolWS = XLSX.utils.json_to_sheet(schoolData.length > 0 ? schoolData : [{ Status: 'No data' }]);
 
-    // Create worksheet for Academic Merits & Honors
-    const meritsWS = XLSX.utils.json_to_sheet((filteredHistoricalData.meritBreakdown || []).map(item => ({
-      'Academic Honor / Distinction': item.honor,
-      'Applicant Count': item.count,
-      'Percentage': `${item.percentage}%`
-    })));
+      // Create worksheet for Academic Merits & Honors
+      const meritsData = (filteredHistoricalData?.meritBreakdown || []).map(item => ({
+        'Academic Honor / Distinction': item.honor,
+        'Applicant Count': item.count,
+        'Percentage': `${item.percentage}%`
+      }));
+      const meritsWS = XLSX.utils.json_to_sheet(meritsData.length > 0 ? meritsData : [{ Status: 'No data' }]);
 
-    // Create workbook and append sheets
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, acceptedWS, 'Accepted Scholars');
-    XLSX.utils.book_append_sheet(wb, declinedWS, 'Declined Applicants');
-    XLSX.utils.book_append_sheet(wb, pendingWS, 'Pending Applicants');
-    XLSX.utils.book_append_sheet(wb, meritsWS, 'Academic Merits');
-    XLSX.utils.book_append_sheet(wb, locationWS, 'Location Statistics');
-    XLSX.utils.book_append_sheet(wb, courseWS, 'Course Distribution');
-    XLSX.utils.book_append_sheet(wb, schoolWS, 'School Distribution');
-    XLSX.utils.book_append_sheet(wb, metricsWS, 'Performance Metrics');
-    XLSX.utils.book_append_sheet(wb, trendsWS, 'Monthly Trends');
+      // Create workbook and append sheets
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, acceptedWS, 'Accepted Scholars');
+      XLSX.utils.book_append_sheet(wb, declinedWS, 'Declined Applicants');
+      XLSX.utils.book_append_sheet(wb, pendingWS, 'Pending Applicants');
+      XLSX.utils.book_append_sheet(wb, meritsWS, 'Academic Merits');
+      XLSX.utils.book_append_sheet(wb, locationWS, 'Location Statistics');
+      XLSX.utils.book_append_sheet(wb, courseWS, 'Course Distribution');
+      XLSX.utils.book_append_sheet(wb, schoolWS, 'School Distribution');
+      XLSX.utils.book_append_sheet(wb, metricsWS, 'Performance Metrics');
+      XLSX.utils.book_append_sheet(wb, trendsWS, 'Monthly Trends');
 
-    // Export the workbook
-    XLSX.writeFile(wb, `${reportFilePrefix}_Scholarship_Report.xlsx`);
+      // Export the workbook
+      XLSX.writeFile(wb, `${reportFilePrefix}_Scholarship_Report.xlsx`);
+    } catch (err) {
+      console.error('[Export Excel Error]', err);
+      alert('Unable to export Excel report: ' + (err.message || 'Unknown error'));
+    }
   };
 
   const exportDetailedExcelReport = () => exportToExcel('report');
@@ -5698,674 +5710,674 @@ export default function ScholarshipDashboard({
 
         {/* ON-SCREEN DASHBOARD VIEWS (HIDDEN DURING PRINT) */}
         <div className="no-print">
-        {reportsView === 'analytics' ? (
-          <>
-            {/* Top KPI Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              {kpiCards.map((card) => (
-                <div key={card.label} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center text-center">
-                  <span className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-2">{card.label}</span>
-                  <span className="text-2xl font-black text-gray-800 mb-1">{card.value}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${card.trend.startsWith('+') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                    }`}>
-                    {card.trend}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {/* Dashboard Overview Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
-              <div className="lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h4 className="text-lg font-bold text-gray-800 mb-6">Status Overview</h4>
-                <div className="h-[250px]">
-                  <canvas ref={pieRef} />
-                </div>
-              </div>
-              <div className="lg:col-span-8 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h4 className="text-lg font-bold text-gray-800 mb-6">Efficiency Analytics</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div className="p-4 bg-rose-50 rounded-xl border border-rose-100">
-                      <p className="text-xs font-black text-[#800020] uppercase mb-1">Processing Efficiency</p>
-                      <h3 className="text-2xl font-black text-gray-800">{historicalData.performanceMetrics.averageProcessingTime} days</h3>
-                      <p className="text-[10px] text-gray-500 font-bold">Average time from application to decision</p>
-                    </div>
-                    <div className="p-4 bg-green-50 rounded-xl border border-green-100">
-                      <p className="text-xs font-black text-green-700 uppercase mb-1">Completion Rate</p>
-                      <h3 className="text-2xl font-black text-gray-800">{historicalData.performanceMetrics.applicationCompletionRate}%</h3>
-                      <p className="text-[10px] text-gray-500 font-bold">Successfully submitted applications</p>
-                    </div>
+          {reportsView === 'analytics' ? (
+            <>
+              {/* Top KPI Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {kpiCards.map((card) => (
+                  <div key={card.label} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center text-center">
+                    <span className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-2">{card.label}</span>
+                    <span className="text-2xl font-black text-gray-800 mb-1">{card.value}</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${card.trend.startsWith('+') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                      {card.trend}
+                    </span>
                   </div>
-
-                </div>
+                ))}
               </div>
-            </div>
 
-            {/* Charts Middle Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Monthly Trends - Line Chart */}
-              <div className="lg:col-span-5 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <div className="flex justify-between items-center mb-6">
-                  <h4 className="text-lg font-bold text-gray-800">Monthly Applications</h4>
-                  <div className="flex gap-4 text-xs font-bold uppercase tracking-tighter text-gray-400">
-                    <span className="flex items-center gap-1"><div className="w-3 h-1 bg-[#800020] rounded"></div> Apps</span>
-                    <span className="flex items-center gap-1"><div className="w-3 h-1 bg-[#198754] rounded"></div> Pass</span>
+              {/* Dashboard Overview Section */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
+                <div className="lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <h4 className="text-lg font-bold text-gray-800 mb-6">Status Overview</h4>
+                  <div className="h-[250px]">
+                    <canvas ref={pieRef} />
                   </div>
                 </div>
-                <div className="h-[280px]">
-                  <canvas ref={lineChartRef} />
-                </div>
-              </div>
-
-              {/* Grade Distribution - Bar Chart */}
-              <div className="lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h4 className="text-lg font-bold text-gray-800 mb-6 font-primary">Grade Distribution</h4>
-                <div className="h-[280px]">
-                  <canvas ref={barChartRef} />
-                </div>
-              </div>
-
-              {/* Course Distribution - Doughnut */}
-              <div className="lg:col-span-3 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h4 className="text-lg font-bold text-gray-800 mb-6">Course Distribution</h4>
-                <div className="h-[220px] mb-4">
-                  <canvas ref={courseChartRef} />
-                </div>
-                <div className="space-y-1 mt-4">
-                  {historicalData.courseDistribution.slice(0, 3).map((c, i) => (
-                    <div key={c.course} className="flex items-center justify-between text-[10px] font-bold">
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ['#800020', '#650018', '#a00028', '#c44569'][i % 4] }}></div>
-                        <span className="text-gray-500 truncate max-w-[80px]">{c.course}</span>
+                <div className="lg:col-span-8 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <h4 className="text-lg font-bold text-gray-800 mb-6">Efficiency Analytics</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <div className="p-4 bg-rose-50 rounded-xl border border-rose-100">
+                        <p className="text-xs font-black text-[#800020] uppercase mb-1">Processing Efficiency</p>
+                        <h3 className="text-2xl font-black text-gray-800">{historicalData.performanceMetrics.averageProcessingTime} days</h3>
+                        <p className="text-[10px] text-gray-500 font-bold">Average time from application to decision</p>
                       </div>
-                      <span className="text-gray-800">{c.percentage}%</span>
+                      <div className="p-4 bg-green-50 rounded-xl border border-green-100">
+                        <p className="text-xs font-black text-green-700 uppercase mb-1">Completion Rate</p>
+                        <h3 className="text-2xl font-black text-gray-800">{historicalData.performanceMetrics.applicationCompletionRate}%</h3>
+                        <p className="text-[10px] text-gray-500 font-bold">Successfully submitted applications</p>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
-              {/* Location Split - Doughnut */}
-              <div className="lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h4 className="text-lg font-bold text-gray-800 mb-6">Location Split</h4>
-                <div className="h-[220px]">
-                  <canvas ref={locationChartRef} />
-                </div>
-              </div>
-
-              {/* Financial Background - Doughnut */}
-              <div className="lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h4 className="text-lg font-bold text-gray-800 mb-6">Financial Background</h4>
-                <div className="h-[220px]">
-                  <canvas ref={financialChartRef} />
-                </div>
-              </div>
-
-              {/* Quick Status Insight */}
-              <div className="lg:col-span-4 bg-[#800020] p-6 rounded-2xl shadow-lg text-white flex flex-col justify-center">
-                <h4 className="text-xl font-black mb-2 uppercase tracking-tight">Report Status</h4>
-                <p className="text-rose-100/80 text-sm mb-4">High volume of applications from urban areas this month.</p>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                    <span className="text-xs font-bold text-rose-200">Top Barangay</span>
-                    <span className="font-black">{historicalData.locationStats?.[0]?.location || 'N/A'}</span>
-                  </div>
-                  <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                    <span className="text-xs font-bold text-rose-200">Leading Source</span>
-                    <span className="font-black text-xs truncate max-w-[120px]">{historicalData.schoolStats?.[0]?.school || 'N/A'}</span>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* School Distribution Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h4 className="text-lg font-bold text-gray-800 mb-6 font-primary">School Distribution</h4>
-                <div className="flex flex-col md:flex-row gap-6 items-center">
-                  <div className="h-[250px] w-full md:w-1/2">
-                    <canvas ref={schoolChartRef} />
+              {/* Charts Middle Row */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Monthly Trends - Line Chart */}
+                <div className="lg:col-span-5 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <div className="flex justify-between items-center mb-6">
+                    <h4 className="text-lg font-bold text-gray-800">Monthly Applications</h4>
+                    <div className="flex gap-4 text-xs font-bold uppercase tracking-tighter text-gray-400">
+                      <span className="flex items-center gap-1"><div className="w-3 h-1 bg-[#800020] rounded"></div> Apps</span>
+                      <span className="flex items-center gap-1"><div className="w-3 h-1 bg-[#198754] rounded"></div> Pass</span>
+                    </div>
                   </div>
-                  <div className="w-full md:w-1/2 space-y-3">
-                    {historicalData.schoolStats.map((s, i) => (
-                      <div key={s.school} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ['#800020', '#198754', '#0d6efd', '#ffc107', '#6c757d'][i % 5] }}></div>
-                          <span className="text-sm font-bold text-gray-600 truncate max-w-[150px]">{s.school}</span>
+                  <div className="h-[280px]">
+                    <canvas ref={lineChartRef} />
+                  </div>
+                </div>
+
+                {/* Grade Distribution - Bar Chart */}
+                <div className="lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <h4 className="text-lg font-bold text-gray-800 mb-6 font-primary">Grade Distribution</h4>
+                  <div className="h-[280px]">
+                    <canvas ref={barChartRef} />
+                  </div>
+                </div>
+
+                {/* Course Distribution - Doughnut */}
+                <div className="lg:col-span-3 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <h4 className="text-lg font-bold text-gray-800 mb-6">Course Distribution</h4>
+                  <div className="h-[220px] mb-4">
+                    <canvas ref={courseChartRef} />
+                  </div>
+                  <div className="space-y-1 mt-4">
+                    {historicalData.courseDistribution.slice(0, 3).map((c, i) => (
+                      <div key={c.course} className="flex items-center justify-between text-[10px] font-bold">
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ['#800020', '#650018', '#a00028', '#c44569'][i % 4] }}></div>
+                          <span className="text-gray-500 truncate max-w-[80px]">{c.course}</span>
                         </div>
-                        <span className="text-sm font-black text-gray-800">{s.percentage}%</span>
+                        <span className="text-gray-800">{c.percentage}%</span>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
-              <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100 flex flex-col justify-center">
-                <h4 className="text-[#800020] font-black text-xl mb-3">Academic Partner Insights</h4>
-                <p className="text-gray-700 leading-relaxed mb-4">
-                  {historicalData.schoolStats?.length > 0 ? (
-                    <>
-                      Current data shows that <strong>{historicalData.schoolStats?.[0]?.school}</strong> remains the primary source of applicants for the {scholarshipLabel}, contributing to {historicalData.schoolStats?.[0]?.percentage}% of the total application volume.
-                    </>
-                  ) : (
-                    "No school distribution data available yet."
-                  )}
-                </p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white p-4 rounded-xl border border-blue-100">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">Top Institution</p>
-                    <p className="font-bold text-gray-800 truncate text-xs">{historicalData.schoolStats?.[0]?.school || 'N/A'}</p>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
+                {/* Location Split - Doughnut */}
+                <div className="lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <h4 className="text-lg font-bold text-gray-800 mb-6">Location Split</h4>
+                  <div className="h-[220px]">
+                    <canvas ref={locationChartRef} />
                   </div>
-                  <div className="bg-white p-4 rounded-xl border border-blue-100">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">Institutional Diversity</p>
-                    <p className="font-bold text-gray-800">{historicalData.schoolStats.length} Schools</p>
+                </div>
+
+                {/* Financial Background - Doughnut */}
+                <div className="lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <h4 className="text-lg font-bold text-gray-800 mb-6">Financial Background</h4>
+                  <div className="h-[220px]">
+                    <canvas ref={financialChartRef} />
+                  </div>
+                </div>
+
+                {/* Quick Status Insight */}
+                <div className="lg:col-span-4 bg-[#800020] p-6 rounded-2xl shadow-lg text-white flex flex-col justify-center">
+                  <h4 className="text-xl font-black mb-2 uppercase tracking-tight">Report Status</h4>
+                  <p className="text-rose-100/80 text-sm mb-4">High volume of applications from urban areas this month.</p>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                      <span className="text-xs font-bold text-rose-200">Top Barangay</span>
+                      <span className="font-black">{historicalData.locationStats?.[0]?.location || 'N/A'}</span>
+                    </div>
+                    <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                      <span className="text-xs font-bold text-rose-200">Leading Source</span>
+                      <span className="font-black text-xs truncate max-w-[120px]">{historicalData.schoolStats?.[0]?.school || 'N/A'}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Academic Merits & Honors Distribution Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h4 className="text-lg font-bold text-gray-800 mb-6 font-primary">Academic Merits &amp; Honors</h4>
-                <div className="flex flex-col md:flex-row gap-6 items-center">
-                  <div className="h-[250px] w-full md:w-1/2">
-                    <canvas ref={meritChartRef} />
-                  </div>
-                  <div className="w-full md:w-1/2 space-y-2.5">
-                    {(historicalData.meritBreakdown || []).filter(m => m.count > 0).slice(0, 6).map((m, i) => (
-                      <div key={m.honor} className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ['#800020', '#a00028', '#c44569', '#198754', '#0d6efd', '#ffc107', '#6f42c1', '#6c757d'][i % 8] }}></div>
-                          <span className="font-bold text-gray-600 truncate max-w-[150px]">{m.honor}</span>
+              {/* School Distribution Section */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <h4 className="text-lg font-bold text-gray-800 mb-6 font-primary">School Distribution</h4>
+                  <div className="flex flex-col md:flex-row gap-6 items-center">
+                    <div className="h-[250px] w-full md:w-1/2">
+                      <canvas ref={schoolChartRef} />
+                    </div>
+                    <div className="w-full md:w-1/2 space-y-3">
+                      {historicalData.schoolStats.map((s, i) => (
+                        <div key={s.school} className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ['#800020', '#198754', '#0d6efd', '#ffc107', '#6c757d'][i % 5] }}></div>
+                            <span className="text-sm font-bold text-gray-600 truncate max-w-[150px]">{s.school}</span>
+                          </div>
+                          <span className="text-sm font-black text-gray-800">{s.percentage}%</span>
                         </div>
-                        <span className="font-black text-gray-800">{m.count} ({m.percentage}%)</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100 flex flex-col justify-center">
+                  <h4 className="text-[#800020] font-black text-xl mb-3">Academic Partner Insights</h4>
+                  <p className="text-gray-700 leading-relaxed mb-4">
+                    {historicalData.schoolStats?.length > 0 ? (
+                      <>
+                        Current data shows that <strong>{historicalData.schoolStats?.[0]?.school}</strong> remains the primary source of applicants for the {scholarshipLabel}, contributing to {historicalData.schoolStats?.[0]?.percentage}% of the total application volume.
+                      </>
+                    ) : (
+                      "No school distribution data available yet."
+                    )}
+                  </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white p-4 rounded-xl border border-blue-100">
+                      <p className="text-[10px] font-black text-gray-400 uppercase">Top Institution</p>
+                      <p className="font-bold text-gray-800 truncate text-xs">{historicalData.schoolStats?.[0]?.school || 'N/A'}</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-blue-100">
+                      <p className="text-[10px] font-black text-gray-400 uppercase">Institutional Diversity</p>
+                      <p className="font-bold text-gray-800">{historicalData.schoolStats.length} Schools</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Academic Merits & Honors Distribution Section */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <h4 className="text-lg font-bold text-gray-800 mb-6 font-primary">Academic Merits &amp; Honors</h4>
+                  <div className="flex flex-col md:flex-row gap-6 items-center">
+                    <div className="h-[250px] w-full md:w-1/2">
+                      <canvas ref={meritChartRef} />
+                    </div>
+                    <div className="w-full md:w-1/2 space-y-2.5">
+                      {(historicalData.meritBreakdown || []).filter(m => m.count > 0).slice(0, 6).map((m, i) => (
+                        <div key={m.honor} className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ['#800020', '#a00028', '#c44569', '#198754', '#0d6efd', '#ffc107', '#6f42c1', '#6c757d'][i % 8] }}></div>
+                            <span className="font-bold text-gray-600 truncate max-w-[150px]">{m.honor}</span>
+                          </div>
+                          <span className="font-black text-gray-800">{m.count} ({m.percentage}%)</span>
+                        </div>
+                      ))}
+                      {!(historicalData.meritBreakdown || []).some(m => m.count > 0) && (
+                        <p className="text-xs text-gray-400 italic">No academic honors recorded yet.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-rose-50/50 p-6 rounded-2xl border border-rose-100 flex flex-col justify-center">
+                  <h4 className="text-[#800020] font-black text-xl mb-3">Academic Excellence Insights</h4>
+                  {(() => {
+                    const breakdown = historicalData.meritBreakdown || [];
+                    const activeHonors = breakdown.filter(m => m.honor !== 'No Honors Stated' && m.count > 0);
+                    const totalHonorsCount = activeHonors.reduce((acc, curr) => acc + curr.count, 0);
+                    const topDistinction = activeHonors[0]?.honor || 'None';
+                    const topDistinctionCount = activeHonors[0]?.count || 0;
+                    const topDistinctionShare = activeHonors[0]?.percentage || 0;
+
+                    return (
+                      <>
+                        <p className="text-gray-700 leading-relaxed mb-4">
+                          {totalHonorsCount > 0 ? (
+                            <>
+                              A total of <strong>{totalHonorsCount}</strong> {totalHonorsCount === 1 ? 'applicant holds' : 'applicants hold'} documented academic honors or distinctions for the {scholarshipLabel}.
+                              Among scholars with recognized merits, <strong>{topDistinction}</strong> represents the largest group at <strong>{topDistinctionShare}%</strong> ({topDistinctionCount} of {totalHonorsCount}).
+                            </>
+                          ) : (
+                            `No verified academic honors or distinctions recorded yet for ${scholarshipLabel} applicants.`
+                          )}
+                        </p>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-white p-4 rounded-xl border border-rose-100">
+                            <p className="text-[10px] font-black text-gray-400 uppercase">Top Distinction</p>
+                            <p className="font-bold text-[#800020] truncate text-xs" title={topDistinction}>
+                              {topDistinction}
+                            </p>
+                          </div>
+                          <div className="bg-white p-4 rounded-xl border border-rose-100">
+                            <p className="text-[10px] font-black text-gray-400 uppercase">Distinction Share</p>
+                            <p className="font-bold text-gray-800 text-xs sm:text-sm">
+                              {totalHonorsCount > 0 ? (
+                                <>
+                                  {topDistinctionShare}% <span className="text-gray-400 text-xs font-normal">of Merits ({topDistinctionCount}/{totalHonorsCount})</span>
+                                </>
+                              ) : (
+                                '0%'
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+
+            </>
+          ) : (
+            <>
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Monthly Trends Table */}
+                  <div className="lg:col-span-7 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <h4 className="text-lg font-bold text-gray-800 mb-6">Monthly Applications</h4>
+                    <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                      <table className="w-full text-left text-sm">
+                        <thead className="sticky top-0 bg-gray-50">
+                          <tr className="bg-gray-50 border-b border-gray-100">
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Month</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Applications</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Accepted</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Declined</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {monthlyStats.map((m) => (
+                            <tr key={m.month} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-4 py-3 font-semibold text-[#800020]">{m.month}</td>
+                              <td className="px-4 py-3 font-bold">{m.applications}</td>
+                              <td className="px-4 py-3 text-green-600 font-semibold">{m.accepted}</td>
+                              <td className="px-4 py-3 text-red-600 font-semibold">{m.declined ?? m.rejected ?? 0}</td>
+                            </tr>
+                          ))}
+                          {monthlyStats.length === 0 && (
+                            <tr>
+                              <td colSpan="4" className="px-4 py-8 text-center text-gray-500">
+                                No applications found for the selected period
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Performance Metrics Table */}
+                  <div className="lg:col-span-5 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h4 className="text-lg font-bold text-gray-800 mb-6">Performance Details</h4>
+                    <div className="space-y-4">
+                      {[
+                        { label: 'Acceptance Rate', value: `${historicalData.performanceMetrics.acceptanceRate}%`, color: 'bg-green-500' },
+                        { label: 'Avg. Processing Time', value: `${historicalData.performanceMetrics.averageProcessingTime} days`, color: 'bg-blue-500' },
+                        { label: 'Application Completion', value: `${historicalData.performanceMetrics.applicationCompletionRate}%`, color: 'bg-purple-500' },
+                      ].map((metric) => (
+                        <div key={metric.label} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+                          <span className="font-bold text-gray-600 text-sm">{metric.label}</span>
+                          <div className="flex items-center gap-4">
+                            <span className="text-lg font-black text-gray-800">{metric.value}</span>
+                            <div className={`w-2 h-8 rounded-full ${metric.color}`}></div>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="mt-6 p-4 bg-blue-50/50 rounded-xl border border-blue-100 italic text-[11px] text-blue-800 leading-relaxed">
+                        "Trends indicate an efficiency boost in the last quarter, reducing average processing time by 12% across all scholarship categories."
                       </div>
-                    ))}
-                    {!(historicalData.meritBreakdown || []).some(m => m.count > 0) && (
-                      <p className="text-xs text-gray-400 italic">No academic honors recorded yet.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                  {/* Course Distribution Table */}
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <h4 className="text-lg font-bold text-gray-800 mb-6">Course Distribution</h4>
+                    <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                      <table className="w-full text-left text-sm">
+                        <thead className="sticky top-0 bg-gray-50">
+                          <tr className="bg-gray-50 border-b border-gray-100">
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Course</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Count</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">%</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {historicalData.courseDistribution.map((c) => (
+                            <tr key={c.course} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-4 py-3 font-semibold text-[#800020]">{c.course}</td>
+                              <td className="px-4 py-3">{c.count}</td>
+                              <td className="px-4 py-3 font-bold">{c.percentage}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Grade Distribution Table */}
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <h4 className="text-lg font-bold text-gray-800 mb-6">Grade Distribution</h4>
+                    <div className="overflow-x-auto max-h-60">
+                      <table className="w-full text-left text-sm">
+                        <thead className="sticky top-0 bg-gray-50">
+                          <tr className="bg-gray-50 border-b border-gray-100">
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Grade Range</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Count</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">%</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {historicalData.gradeRanges.map((g) => (
+                            <tr key={g.range} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-4 py-3 font-semibold text-[#800020]">{g.range}</td>
+                              <td className="px-4 py-3">{g.count}</td>
+                              <td className="px-4 py-3 font-bold">{g.percentage}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Academic Merits & Honors Table */}
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <h4 className="text-lg font-bold text-gray-800 mb-6">Academic Merits &amp; Honors</h4>
+                    <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                      <table className="w-full text-left text-sm">
+                        <thead className="sticky top-0 bg-gray-50">
+                          <tr className="bg-gray-50 border-b border-gray-100">
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Academic Honor</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Count</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">% of Merits</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {(historicalData.meritBreakdown || []).map((m) => (
+                            <tr key={m.honor} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-4 py-3 font-semibold text-[#800020]">{m.honor}</td>
+                              <td className="px-4 py-3">{m.count}</td>
+                              <td className="px-4 py-3 font-bold">{m.percentage}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Financial Breakdown Table */}
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <h4 className="text-lg font-bold text-gray-800 mb-6">Financial Background</h4>
+                    <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                      <table className="w-full text-left text-sm">
+                        <thead className="sticky top-0 bg-gray-50">
+                          <tr className="bg-gray-50 border-b border-gray-100">
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Level</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Count</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">%</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {historicalData.financialBreakdown.map((f) => (
+                            <tr key={f.level} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-4 py-3 font-semibold text-[#800020]">{f.level}</td>
+                              <td className="px-4 py-3">{f.count}</td>
+                              <td className="px-4 py-3 font-bold">{f.percentage}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6">
+                  {/* Location Stats Table */}
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <h4 className="text-lg font-bold text-gray-800 mb-6">Location Analytics</h4>
+                    <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                      <table className="w-full text-left text-sm">
+                        <thead className="sticky top-0 bg-gray-50">
+                          <tr className="bg-gray-50 border-b border-gray-100">
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Barangay</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Applicants</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">% Distribution</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Trend</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {historicalData.locationStats.map((loc) => (
+                            <tr key={loc.location} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-4 py-3 font-semibold text-[#800020]">{loc.location}</td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-2 h-2 rounded-full ${loc.count > 15 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                                  {loc.count}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex-1 bg-gray-100 rounded-full h-1.5 max-w-[100px]">
+                                    <div className="bg-[#800020] h-1.5 rounded-full" style={{ width: `${loc.percentage}%` }}></div>
+                                  </div>
+                                  <span className="font-bold text-[10px] text-gray-700">{loc.percentage}%</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 font-bold text-green-600 text-[10px]">{loc.percentage > 5 ? 'â†‘ HIGH' : 'â†’ STABLE'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* School Analytics Table */}
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <h4 className="text-lg font-bold text-gray-800 mb-6">School Distribution Table</h4>
+                    <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                      <table className="w-full text-left text-sm">
+                        <thead className="sticky top-0 bg-gray-50">
+                          <tr className="bg-gray-50 border-b border-gray-100">
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Institution / School</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Applicants</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">% Distribution</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {historicalData.schoolStats.map((s) => (
+                            <tr key={s.school} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-4 py-3 font-semibold text-[#800020] uppercase text-[11px]">{s.school}</td>
+                              <td className="px-4 py-3 font-bold">{s.count}</td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex-1 bg-gray-100 rounded-full h-1.5 min-w-[80px]">
+                                    <div className="bg-green-600 h-1.5 rounded-full" style={{ width: `${s.percentage}%` }}></div>
+                                  </div>
+                                  <span className="font-bold">{s.percentage}%</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.percentage > 20 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                                  {s.percentage > 20 ? 'PRIMARY' : 'SECONDARY'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* DETAILED APPLICANT LISTS TABLES */}
+                <div className="space-y-6 mt-8">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-gray-100 pb-2">
+                    <h4 className="text-base sm:text-lg font-black text-[#800020] uppercase tracking-wide">Applicant Status Lists</h4>
+                    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1 -mx-2 px-2 flex-nowrap w-full sm:w-auto">
+                      <button
+                        onClick={() => setReportTab('pending')}
+                        className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${reportTab === 'pending' ? 'bg-amber-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                      >
+                        PENDING
+                      </button>
+                      <button
+                        onClick={() => setReportTab('accepted')}
+                        className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${reportTab === 'accepted' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                      >
+                        ACCEPTED
+                      </button>
+                      <button
+                        onClick={() => setReportTab('rejected')}
+                        className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${reportTab === 'rejected' ? 'bg-red-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                      >
+                        REJECTED
+                      </button>
+                      <button
+                        onClick={() => setReportTab('cancelled')}
+                        className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${reportTab === 'cancelled' ? 'bg-slate-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                      >
+                        CANCELLED
+                      </button>
+                      <button
+                        type="button"
+                        onClick={exportDetailedExcelReport}
+                        className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg bg-emerald-600 text-white text-[10px] sm:text-xs font-black transition-all whitespace-nowrap flex items-center gap-1.5 hover:bg-emerald-700 shadow-sm ml-auto"
+                        title="Export applicants list to Excel"
+                      >
+                        <FaFileExcel className="flex-shrink-0" /> Export Excel
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-8">
+                    {/* Pending Applicants */}
+                    {reportTab === 'pending' && (
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <h5 className="text-sm font-black text-amber-600 uppercase mb-4 flex items-center gap-2">
+                          <FaClock /> Pending Review ({filteredPending.length})
+                        </h5>
+                        <div className="overflow-x-auto max-h-72">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {filteredPending.map((a) => {
+                                const meritText = getApplicantMeritDisplay(a);
+                                return (
+                                  <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
+                                    <td className="p-3 font-bold text-gray-800">{a.name}</td>
+                                    <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                                    <td className="p-3">
+                                      {meritText !== 'None' ? (
+                                        <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{meritText}</span>
+                                      ) : (
+                                        <span className="text-gray-400 font-normal">None</span>
+                                      )}
+                                    </td>
+                                    <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                                    <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
+                                  </tr>
+                                );
+                              })}
+                              {filteredPending.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No pending applicants found for this scholarship</td></tr>}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Accepted Scholars */}
+                    {reportTab === 'accepted' && (
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <h5 className="text-sm font-black text-green-600 uppercase mb-4 flex items-center gap-2">
+                          <FaCheckCircle /> Accepted Scholars ({filteredAccepted.length})
+                        </h5>
+                        <div className="overflow-x-auto max-h-72">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {filteredAccepted.map((a) => {
+                                const meritText = getApplicantMeritDisplay(a);
+                                return (
+                                  <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
+                                    <td className="p-3 font-bold text-gray-800">{a.name}</td>
+                                    <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                                    <td className="p-3">
+                                      {meritText !== 'None' ? (
+                                        <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{meritText}</span>
+                                      ) : (
+                                        <span className="text-gray-400 font-normal">None</span>
+                                      )}
+                                    </td>
+                                    <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                                    <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
+                                  </tr>
+                                );
+                              })}
+                              {filteredAccepted.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No accepted scholars found for this scholarship</td></tr>}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Rejected Applicants */}
+                    {reportTab === 'rejected' && (
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <h5 className="text-sm font-black text-red-600 uppercase mb-4 flex items-center gap-2">
+                          <FaTimesCircle /> Rejected Applicants ({filteredRejected.length})
+                        </h5>
+                        <div className="overflow-x-auto max-h-72">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {filteredRejected.map((a) => {
+                                const meritText = getApplicantMeritDisplay(a);
+                                return (
+                                  <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
+                                    <td className="p-3 font-bold text-gray-800">{a.name}</td>
+                                    <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                                    <td className="p-3">
+                                      {meritText !== 'None' ? (
+                                        <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{meritText}</span>
+                                      ) : (
+                                        <span className="text-gray-400 font-normal">None</span>
+                                      )}
+                                    </td>
+                                    <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                                    <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
+                                  </tr>
+                                );
+                              })}
+                              {filteredRejected.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No rejected applicants found for this scholarship</td></tr>}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Cancelled Applicants */}
+                    {reportTab === 'cancelled' && (
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <h5 className="text-sm font-black text-slate-600 uppercase mb-4 flex items-center gap-2">
+                          <FaTimesCircle /> Cancelled Applications ({filteredCancelled.length})
+                        </h5>
+                        <div className="overflow-x-auto max-h-72">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {filteredCancelled.map((a) => {
+                                const meritText = getApplicantMeritDisplay(a);
+                                return (
+                                  <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
+                                    <td className="p-3 font-bold text-gray-800">{a.name}</td>
+                                    <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                                    <td className="p-3">
+                                      {meritText !== 'None' ? (
+                                        <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{meritText}</span>
+                                      ) : (
+                                        <span className="text-gray-400 font-normal">None</span>
+                                      )}
+                                    </td>
+                                    <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                                    <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
+                                  </tr>
+                                );
+                              })}
+                              {filteredCancelled.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No cancelled applicants found for this scholarship</td></tr>}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
               </div>
-              <div className="bg-rose-50/50 p-6 rounded-2xl border border-rose-100 flex flex-col justify-center">
-                <h4 className="text-[#800020] font-black text-xl mb-3">Academic Excellence Insights</h4>
-                {(() => {
-                  const breakdown = historicalData.meritBreakdown || [];
-                  const activeHonors = breakdown.filter(m => m.honor !== 'No Honors Stated' && m.count > 0);
-                  const totalHonorsCount = activeHonors.reduce((acc, curr) => acc + curr.count, 0);
-                  const topDistinction = activeHonors[0]?.honor || 'None';
-                  const topDistinctionCount = activeHonors[0]?.count || 0;
-                  const topDistinctionShare = activeHonors[0]?.percentage || 0;
-
-                  return (
-                    <>
-                      <p className="text-gray-700 leading-relaxed mb-4">
-                        {totalHonorsCount > 0 ? (
-                          <>
-                            A total of <strong>{totalHonorsCount}</strong> {totalHonorsCount === 1 ? 'applicant holds' : 'applicants hold'} documented academic honors or distinctions for the {scholarshipLabel}.
-                            Among scholars with recognized merits, <strong>{topDistinction}</strong> represents the largest group at <strong>{topDistinctionShare}%</strong> ({topDistinctionCount} of {totalHonorsCount}).
-                          </>
-                        ) : (
-                          `No verified academic honors or distinctions recorded yet for ${scholarshipLabel} applicants.`
-                        )}
-                      </p>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-white p-4 rounded-xl border border-rose-100">
-                          <p className="text-[10px] font-black text-gray-400 uppercase">Top Distinction</p>
-                          <p className="font-bold text-[#800020] truncate text-xs" title={topDistinction}>
-                            {topDistinction}
-                          </p>
-                        </div>
-                        <div className="bg-white p-4 rounded-xl border border-rose-100">
-                          <p className="text-[10px] font-black text-gray-400 uppercase">Distinction Share</p>
-                          <p className="font-bold text-gray-800 text-xs sm:text-sm">
-                            {totalHonorsCount > 0 ? (
-                              <>
-                                {topDistinctionShare}% <span className="text-gray-400 text-xs font-normal">of Merits ({topDistinctionCount}/{totalHonorsCount})</span>
-                              </>
-                            ) : (
-                              '0%'
-                            )}
-                          </p>
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-
-          </>
-        ) : (
-          <>
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Monthly Trends Table */}
-                <div className="lg:col-span-7 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  <h4 className="text-lg font-bold text-gray-800 mb-6">Monthly Applications</h4>
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
-                    <table className="w-full text-left text-sm">
-                      <thead className="sticky top-0 bg-gray-50">
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Month</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Applications</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Accepted</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Declined</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {monthlyStats.map((m) => (
-                          <tr key={m.month} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-3 font-semibold text-[#800020]">{m.month}</td>
-                            <td className="px-4 py-3 font-bold">{m.applications}</td>
-                            <td className="px-4 py-3 text-green-600 font-semibold">{m.accepted}</td>
-                            <td className="px-4 py-3 text-red-600 font-semibold">{m.declined ?? m.rejected ?? 0}</td>
-                          </tr>
-                        ))}
-                        {monthlyStats.length === 0 && (
-                          <tr>
-                            <td colSpan="4" className="px-4 py-8 text-center text-gray-500">
-                              No applications found for the selected period
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Performance Metrics Table */}
-                <div className="lg:col-span-5 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                  <h4 className="text-lg font-bold text-gray-800 mb-6">Performance Details</h4>
-                  <div className="space-y-4">
-                    {[
-                      { label: 'Acceptance Rate', value: `${historicalData.performanceMetrics.acceptanceRate}%`, color: 'bg-green-500' },
-                      { label: 'Avg. Processing Time', value: `${historicalData.performanceMetrics.averageProcessingTime} days`, color: 'bg-blue-500' },
-                      { label: 'Application Completion', value: `${historicalData.performanceMetrics.applicationCompletionRate}%`, color: 'bg-purple-500' },
-                    ].map((metric) => (
-                      <div key={metric.label} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
-                        <span className="font-bold text-gray-600 text-sm">{metric.label}</span>
-                        <div className="flex items-center gap-4">
-                          <span className="text-lg font-black text-gray-800">{metric.value}</span>
-                          <div className={`w-2 h-8 rounded-full ${metric.color}`}></div>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="mt-6 p-4 bg-blue-50/50 rounded-xl border border-blue-100 italic text-[11px] text-blue-800 leading-relaxed">
-                      "Trends indicate an efficiency boost in the last quarter, reducing average processing time by 12% across all scholarship categories."
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                {/* Course Distribution Table */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  <h4 className="text-lg font-bold text-gray-800 mb-6">Course Distribution</h4>
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
-                    <table className="w-full text-left text-sm">
-                      <thead className="sticky top-0 bg-gray-50">
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Course</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Count</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">%</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {historicalData.courseDistribution.map((c) => (
-                          <tr key={c.course} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-3 font-semibold text-[#800020]">{c.course}</td>
-                            <td className="px-4 py-3">{c.count}</td>
-                            <td className="px-4 py-3 font-bold">{c.percentage}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Grade Distribution Table */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  <h4 className="text-lg font-bold text-gray-800 mb-6">Grade Distribution</h4>
-                  <div className="overflow-x-auto max-h-60">
-                    <table className="w-full text-left text-sm">
-                      <thead className="sticky top-0 bg-gray-50">
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Grade Range</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Count</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">%</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {historicalData.gradeRanges.map((g) => (
-                          <tr key={g.range} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-3 font-semibold text-[#800020]">{g.range}</td>
-                            <td className="px-4 py-3">{g.count}</td>
-                            <td className="px-4 py-3 font-bold">{g.percentage}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Academic Merits & Honors Table */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  <h4 className="text-lg font-bold text-gray-800 mb-6">Academic Merits &amp; Honors</h4>
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
-                    <table className="w-full text-left text-sm">
-                      <thead className="sticky top-0 bg-gray-50">
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Academic Honor</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Count</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">% of Merits</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {(historicalData.meritBreakdown || []).map((m) => (
-                          <tr key={m.honor} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-3 font-semibold text-[#800020]">{m.honor}</td>
-                            <td className="px-4 py-3">{m.count}</td>
-                            <td className="px-4 py-3 font-bold">{m.percentage}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Financial Breakdown Table */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  <h4 className="text-lg font-bold text-gray-800 mb-6">Financial Background</h4>
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
-                    <table className="w-full text-left text-sm">
-                      <thead className="sticky top-0 bg-gray-50">
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Level</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Count</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">%</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {historicalData.financialBreakdown.map((f) => (
-                          <tr key={f.level} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-3 font-semibold text-[#800020]">{f.level}</td>
-                            <td className="px-4 py-3">{f.count}</td>
-                            <td className="px-4 py-3 font-bold">{f.percentage}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-6">
-                {/* Location Stats Table */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  <h4 className="text-lg font-bold text-gray-800 mb-6">Location Analytics</h4>
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
-                    <table className="w-full text-left text-sm">
-                      <thead className="sticky top-0 bg-gray-50">
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Barangay</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Applicants</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">% Distribution</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Trend</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {historicalData.locationStats.map((loc) => (
-                          <tr key={loc.location} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-3 font-semibold text-[#800020]">{loc.location}</td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <div className={`w-2 h-2 rounded-full ${loc.count > 15 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                                {loc.count}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-3">
-                                <div className="flex-1 bg-gray-100 rounded-full h-1.5 max-w-[100px]">
-                                  <div className="bg-[#800020] h-1.5 rounded-full" style={{ width: `${loc.percentage}%` }}></div>
-                                </div>
-                                <span className="font-bold text-[10px] text-gray-700">{loc.percentage}%</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 font-bold text-green-600 text-[10px]">{loc.percentage > 5 ? 'â†‘ HIGH' : 'â†’ STABLE'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* School Analytics Table */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  <h4 className="text-lg font-bold text-gray-800 mb-6">School Distribution Table</h4>
-                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
-                    <table className="w-full text-left text-sm">
-                      <thead className="sticky top-0 bg-gray-50">
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Institution / School</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Applicants</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">% Distribution</th>
-                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {historicalData.schoolStats.map((s) => (
-                          <tr key={s.school} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-3 font-semibold text-[#800020] uppercase text-[11px]">{s.school}</td>
-                            <td className="px-4 py-3 font-bold">{s.count}</td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-3">
-                                <div className="flex-1 bg-gray-100 rounded-full h-1.5 min-w-[80px]">
-                                  <div className="bg-green-600 h-1.5 rounded-full" style={{ width: `${s.percentage}%` }}></div>
-                                </div>
-                                <span className="font-bold">{s.percentage}%</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.percentage > 20 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
-                                {s.percentage > 20 ? 'PRIMARY' : 'SECONDARY'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-
-              {/* DETAILED APPLICANT LISTS TABLES */}
-              <div className="space-y-6 mt-8">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-gray-100 pb-2">
-                  <h4 className="text-base sm:text-lg font-black text-[#800020] uppercase tracking-wide">Applicant Status Lists</h4>
-                  <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1 -mx-2 px-2 flex-nowrap w-full sm:w-auto">
-                    <button
-                      onClick={() => setReportTab('pending')}
-                      className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${reportTab === 'pending' ? 'bg-amber-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                    >
-                      PENDING
-                    </button>
-                    <button
-                      onClick={() => setReportTab('accepted')}
-                      className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${reportTab === 'accepted' ? 'bg-green-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                    >
-                      ACCEPTED
-                    </button>
-                    <button
-                      onClick={() => setReportTab('rejected')}
-                      className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${reportTab === 'rejected' ? 'bg-red-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                    >
-                      REJECTED
-                    </button>
-                    <button
-                      onClick={() => setReportTab('cancelled')}
-                      className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${reportTab === 'cancelled' ? 'bg-slate-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                    >
-                      CANCELLED
-                    </button>
-                    <button
-                      type="button"
-                      onClick={exportDetailedExcelReport}
-                      className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg bg-emerald-600 text-white text-[10px] sm:text-xs font-black transition-all whitespace-nowrap flex items-center gap-1.5 hover:bg-emerald-700 shadow-sm ml-auto"
-                      title="Export applicants list to Excel"
-                    >
-                      <FaFileExcel className="flex-shrink-0" /> Export Excel
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-8">
-                  {/* Pending Applicants */}
-                  {reportTab === 'pending' && (
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      <h5 className="text-sm font-black text-amber-600 uppercase mb-4 flex items-center gap-2">
-                        <FaClock /> Pending Review ({filteredPending.length})
-                      </h5>
-                      <div className="overflow-x-auto max-h-72">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {filteredPending.map((a) => {
-                              const meritText = getApplicantMeritDisplay(a);
-                              return (
-                                <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
-                                  <td className="p-3 font-bold text-gray-800">{a.name}</td>
-                                  <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
-                                  <td className="p-3">
-                                    {meritText !== 'None' ? (
-                                      <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{meritText}</span>
-                                    ) : (
-                                      <span className="text-gray-400 font-normal">None</span>
-                                    )}
-                                  </td>
-                                  <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                                  <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
-                                </tr>
-                              );
-                            })}
-                            {filteredPending.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No pending applicants found for this scholarship</td></tr>}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Accepted Scholars */}
-                  {reportTab === 'accepted' && (
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      <h5 className="text-sm font-black text-green-600 uppercase mb-4 flex items-center gap-2">
-                        <FaCheckCircle /> Accepted Scholars ({filteredAccepted.length})
-                      </h5>
-                      <div className="overflow-x-auto max-h-72">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {filteredAccepted.map((a) => {
-                              const meritText = getApplicantMeritDisplay(a);
-                              return (
-                                <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
-                                  <td className="p-3 font-bold text-gray-800">{a.name}</td>
-                                  <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
-                                  <td className="p-3">
-                                    {meritText !== 'None' ? (
-                                      <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{meritText}</span>
-                                    ) : (
-                                      <span className="text-gray-400 font-normal">None</span>
-                                    )}
-                                  </td>
-                                  <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                                  <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
-                                </tr>
-                              );
-                            })}
-                            {filteredAccepted.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No accepted scholars found for this scholarship</td></tr>}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Rejected Applicants */}
-                  {reportTab === 'rejected' && (
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      <h5 className="text-sm font-black text-red-600 uppercase mb-4 flex items-center gap-2">
-                        <FaTimesCircle /> Rejected Applicants ({filteredRejected.length})
-                      </h5>
-                      <div className="overflow-x-auto max-h-72">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {filteredRejected.map((a) => {
-                              const meritText = getApplicantMeritDisplay(a);
-                              return (
-                                <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
-                                  <td className="p-3 font-bold text-gray-800">{a.name}</td>
-                                  <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
-                                  <td className="p-3">
-                                    {meritText !== 'None' ? (
-                                      <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{meritText}</span>
-                                    ) : (
-                                      <span className="text-gray-400 font-normal">None</span>
-                                    )}
-                                  </td>
-                                  <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                                  <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
-                                </tr>
-                              );
-                            })}
-                            {filteredRejected.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No rejected applicants found for this scholarship</td></tr>}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Cancelled Applicants */}
-                  {reportTab === 'cancelled' && (
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      <h5 className="text-sm font-black text-slate-600 uppercase mb-4 flex items-center gap-2">
-                        <FaTimesCircle /> Cancelled Applications ({filteredCancelled.length})
-                      </h5>
-                      <div className="overflow-x-auto max-h-72">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {filteredCancelled.map((a) => {
-                              const meritText = getApplicantMeritDisplay(a);
-                              return (
-                                <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
-                                  <td className="p-3 font-bold text-gray-800">{a.name}</td>
-                                  <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
-                                  <td className="p-3">
-                                    {meritText !== 'None' ? (
-                                      <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{meritText}</span>
-                                    ) : (
-                                      <span className="text-gray-400 font-normal">None</span>
-                                    )}
-                                  </td>
-                                  <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                                  <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
-                                </tr>
-                              );
-                            })}
-                            {filteredCancelled.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No cancelled applicants found for this scholarship</td></tr>}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </>
-        )}
+            </>
+          )}
         </div>
 
         {/* DEDICATED PRINT-ONLY OFFICIAL SCHOLARSHIP EVALUATION REPORT */}
@@ -7802,96 +7814,154 @@ export default function ScholarshipDashboard({
 
       {/* AI Recommendation Modal */}
       {recommendationModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setRecommendationModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6 border-b pb-4">
-              <h2 className="text-xl font-bold text-[#800020]">Recommended Applicants ({recommended.length})</h2>
-              <div className="flex items-center gap-3 bg-rose-50 px-4 py-2 rounded-xl border border-rose-100">
-                <span className="text-xs font-black text-[#800020] uppercase tracking-wider">Number of Recommendations:</span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200" onClick={() => setRecommendationModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col p-5 sm:p-7 border border-gray-100" onClick={(e) => e.stopPropagation()}>
+            {/* Header: Title + Recommendations Counter */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-200">
+              <h2 className="text-xl sm:text-2xl font-bold text-[#800020] tracking-tight">Recommended Applicants</h2>
+              <div className="flex items-center gap-2.5 bg-rose-50/70 border border-rose-100/80 px-3.5 py-1.5 rounded-xl shadow-xs self-start sm:self-auto">
+                <span className="text-[10px] sm:text-xs font-black text-[#800020] uppercase tracking-wider whitespace-nowrap">Number of Recommendations:</span>
                 <input
                   type="number"
-                  autoFocus
+                  min="1"
+                  max="100"
                   value={recommendCount}
                   onChange={(e) => {
                     const newCount = e.target.value;
                     setRecommendCount(newCount);
-                    const count = parseInt(newCount) || 10;
-                    const allPending = data.applicants || [];
-                    const filteredApplicants = allPending.filter(a => matchesScholarshipSelection(a, trackScholarshipFilter));
-                    const top = [...filteredApplicants]
-                      .sort((a, b) => {
-                        const gradeA = convertGpaToPercentage(a.grade || a.overall_gpa || a.gpa, a.school) ?? 0;
-                        const gradeB = convertGpaToPercentage(b.grade || b.overall_gpa || b.gpa, b.school) ?? 0;
-                        return gradeB - gradeA;
-                      })
-                      .slice(0, count);
-                    setRecommended(top);
+                    recommendStudents(newCount);
                   }}
-                  className="w-16 text-center text-lg font-black bg-transparent border-none outline-none text-[#800020]"
-                  min="1"
+                  className="w-14 text-center font-black text-sm bg-white border border-rose-200 rounded-lg py-0.5 px-1 text-gray-800 outline-none focus:ring-2 focus:ring-[#800020]"
                 />
               </div>
             </div>
-            <div className="overflow-x-auto border border-gray-200 rounded-xl">
+
+            {/* Table */}
+            <div className="overflow-x-auto overflow-y-auto border border-gray-200 rounded-xl flex-1 max-h-[calc(90vh-180px)]">
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-[#800020] text-white">
-                    <th className="px-4 py-3 text-left font-bold">Rank</th>
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-[#800020] text-white select-none">
+                    <th className="px-4 py-3 text-center font-bold w-16">Rank</th>
                     <th className="px-4 py-3 text-left font-bold">Name</th>
-                    <th className="px-4 py-3 text-left font-bold">Grade / GPA</th>
-                    <th className="px-4 py-3 text-left font-bold">Financial Status</th>
+                    <th className="px-4 py-3 text-left font-bold">Grade</th>
+                    <th className="px-4 py-3 text-left font-bold">Merit</th>
                     <th className="px-4 py-3 text-center font-bold">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {recommended.map((s, i) => (
-                    <tr key={`${s.name}-${i}`} className="hover:bg-rose-50/30 transition-colors">
-                      <td className="px-4 py-3 font-black text-[#800020] text-lg">{i + 1}</td>
-                      <td className="px-4 py-3 font-bold text-gray-800">{s.name}</td>
-                      <td className="px-4 py-3 font-mono text-blue-700 font-bold" title={s.grade ? `Original GPA: ${s.grade}` : ''}>
-                        {formatGpaDisplay(s.grade || s.overall_gpa || s.gpa, s.school)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">
-                          {getFinancialStatusLabel(s.income || s.financial_income_of_parents || s.family?.grossIncome)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-2 justify-center">
-                          <button
-                            type="button"
-                            onClick={() => acceptRecommended(s)}
-                            className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-[10px] font-black uppercase hover:bg-green-700 transition-colors shadow-sm"
-                          >
-                            Accept
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => declineRecommended(s)}
-                            className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase hover:bg-red-700 transition-colors shadow-sm"
-                          >
-                            Decline
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const idx = data.applicants.findIndex((a) => a.studentContact?.email === s.studentContact?.email || a.name === s.name);
-                              if (idx >= 0) viewApplicantFn(idx, 'all');
-                              setRecommendationModal(false);
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-[#800020] text-white text-[10px] font-black uppercase hover:bg-[#650018] transition-colors shadow-sm"
-                          >
-                            View
-                          </button>
-                        </div>
+                <tbody className="divide-y divide-gray-100">
+                  {recommended.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="p-8 text-center text-gray-400 italic">
+                        No recommended applicants found matching this criteria.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    recommended.map((s, i) => {
+                      const rawStatus = (s.status || 'pending').toLowerCase();
+                      const isPending = rawStatus === 'pending' || rawStatus === 'null' || !s.status;
+                      const score = getApplicantMeritScore(s);
+                      const meritTitle = getApplicantSpecificMeritTitle(s);
+                      const hasMerit = score > 0 || (meritTitle && meritTitle !== 'None');
+
+                      return (
+                        <tr key={`${s.name}-${s.id || i}`} className="hover:bg-rose-50/20 transition-colors">
+                          {/* Rank in bold red like image */}
+                          <td className="px-4 py-3.5 text-center font-black text-red-600 text-base sm:text-lg">
+                            {i + 1}
+                          </td>
+                          {/* Name in bold dark text */}
+                          <td className="px-4 py-3.5 font-bold text-gray-800 text-sm sm:text-base">
+                            {s.name}
+                          </td>
+                          {/* Grade in bold blue like image */}
+                          <td className="px-4 py-3.5 font-bold text-blue-600 font-mono text-sm sm:text-base" title={s.grade ? `Original GPA: ${s.grade}` : ''}>
+                            {formatGpaDisplay(s.grade || s.overall_gpa || s.gpa, s.school)}
+                          </td>
+                          {/* Merit */}
+                          <td className="px-4 py-3.5 text-xs whitespace-nowrap" title={s.meritReason ? `AI Merit Reason:\n${s.meritReason}` : ''}>
+                            {hasMerit ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-[#800020]">{score.toFixed(1)} pts</span>
+                                <span className="text-gray-500 italic font-normal text-[11px] truncate max-w-[150px]" title={meritTitle}>
+                                  ({meritTitle})
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 font-normal">0.0 pts <span className="italic text-[11px]">(None)</span></span>
+                            )}
+                          </td>
+                          {/* Actions: Pill buttons matching image */}
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center justify-center gap-2">
+                              {isPending ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAcceptTrackApplicant(s)}
+                                    className="px-3.5 py-1.5 rounded-full bg-[#00a859] hover:bg-[#00924d] text-white text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all shadow-xs"
+                                    title="Accept / Approve Applicant"
+                                  >
+                                    Accept
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeclineTrackApplicant(s)}
+                                    className="px-3.5 py-1.5 rounded-full bg-[#d90429] hover:bg-[#bc0423] text-white text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all shadow-xs"
+                                    title="Decline Applicant"
+                                  >
+                                    Decline
+                                  </button>
+                                </>
+                              ) : rawStatus === 'accepted' ? (
+                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-50 text-green-700 border border-green-200">
+                                  Accepted
+                                </span>
+                              ) : (
+                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-200">
+                                  Declined
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  let idx = (data.applicants || []).findIndex((a) => (a.id && a.id === s.id) || (a.applicant_no && a.applicant_no === s.applicant_no) || a.name === s.name);
+                                  let listType = 'pending';
+                                  if (idx < 0) {
+                                    const fullPool = [
+                                      ...(data.applicants || []),
+                                      ...(data.accepted || []),
+                                      ...(data.rejected || []),
+                                      ...(data.declined || []),
+                                      ...(data.cancelled || [])
+                                    ];
+                                    idx = fullPool.findIndex((a) => (a.id && a.id === s.id) || (a.applicant_no && a.applicant_no === s.applicant_no) || a.name === s.name);
+                                    listType = 'all';
+                                  }
+                                  if (idx >= 0) viewApplicantFn(idx, listType);
+                                  setRecommendationModal(false);
+                                }}
+                                className="px-3.5 py-1.5 rounded-full bg-[#800020] hover:bg-[#650018] text-white text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all shadow-xs"
+                                title="View Applicant Details"
+                              >
+                                View
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
-            <div className="text-right mt-4">
-              <button type="button" onClick={() => setRecommendationModal(false)} className="px-4 py-2 rounded-lg bg-gray-500 text-white font-semibold">
+
+            {/* Modal Footer with Close Button */}
+            <div className="flex justify-end pt-4 border-t border-gray-100 mt-3">
+              <button
+                type="button"
+                onClick={() => setRecommendationModal(false)}
+                className="px-6 py-2 rounded-xl bg-slate-600 hover:bg-slate-700 text-white font-bold text-xs sm:text-sm transition-colors shadow-sm"
+              >
                 Close
               </button>
             </div>
