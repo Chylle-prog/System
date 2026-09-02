@@ -1453,6 +1453,8 @@ export default function ScholarshipDashboard({
   const schoolChartInstance = useRef(null);
   const locationChartRef = useRef(null);
   const locationChartInstance = useRef(null);
+  const meritChartRef = useRef(null);
+  const meritChartInstance = useRef(null);
   const currentInboxRoomRef = useRef(null);
   const inboxMessagesEndRef = useRef(null);
   const readMessageIdsRef = useRef(new Set());
@@ -1864,6 +1866,49 @@ export default function ScholarshipDashboard({
     return 'Upper-Middle (Above ₱250k)';
   };
 
+  // Standardize applicant academic merit / honor category
+  const getApplicantMeritHonorLabel = (a) => {
+    if (!a) return 'No Honors Stated';
+    const meritPieces = [
+      a.meritsAwardsReceived,
+      a.merits_awards_received,
+      a.merits,
+      a.meritReason,
+      a.merit_title,
+    ];
+    if (Array.isArray(a.merit_proofs)) {
+      a.merit_proofs.forEach(mp => {
+        if (mp?.merit_title) meritPieces.push(mp.merit_title);
+      });
+    }
+    if (Array.isArray(a.meritFiles)) {
+      a.meritFiles.forEach(mf => {
+        if (mf?.title) meritPieces.push(mf.title);
+        if (mf?.name) meritPieces.push(mf.name);
+      });
+    }
+    const txt = normalizeSearchText(meritPieces.filter(Boolean).join(' '));
+    if (!txt) return 'No Honors Stated';
+
+    if (/\bsumma\s+cum\s+laude\b|\bsumma\b/i.test(txt)) return 'Summa Cum Laude';
+    if (/\bmagna\s+cum\s+laude\b|\bmagna\b/i.test(txt)) return 'Magna Cum Laude';
+    if (/\b(1st|first)\s+honor\b|\bwith\s+highest\s+honors?\b|\bvaledictorian\b/i.test(txt)) return '1st Honor / Highest Honors';
+    if (/\bcum\s+laude\b/i.test(txt) && !/\b(magna|summa)\b/i.test(txt)) return 'Cum Laude';
+    if (/\b(2nd|second)\s+honor\b|\bwith\s+high\s+honors?\b|\bsalutatorian\b/i.test(txt)) return '2nd Honor / High Honors';
+    if (/\b(3rd|third)\s+honor\b|\bwith\s+honors?\b|\bdean'?s\s+list\b/i.test(txt)) return '3rd Honor / With Honors';
+    if (/\b(award|contest|olympiad|quiz|champion|medalist|research|thesis|leadership|officer|president)\b/i.test(txt)) return 'Other Awards / Contests';
+    return 'General Academic Recognition';
+  };
+
+  const getApplicantMeritDisplay = (a) => {
+    if (!a) return 'None';
+    const label = getApplicantMeritHonorLabel(a);
+    if (label !== 'No Honors Stated') return label;
+    const explicit = a.meritsAwardsReceived || a.merits_awards_received || a.merits;
+    if (explicit && String(explicit).trim()) return String(explicit).trim();
+    return 'None';
+  };
+
   const parseNumericValue = (value) => {
     if (value === null || value === undefined || value === '') {
       return null;
@@ -1928,6 +1973,16 @@ export default function ScholarshipDashboard({
       'Lower-Middle (₱60k - ₱150k)': 0,
       'Middle Income (₱150k - ₱250k)': 0,
       'Upper-Middle (Above ₱250k)': 0
+    };
+    const meritHonors = {
+      'Summa Cum Laude': 0,
+      'Magna Cum Laude': 0,
+      'Cum Laude': 0,
+      '1st Honor / Highest Honors': 0,
+      '2nd Honor / High Honors': 0,
+      '3rd Honor / With Honors': 0,
+      'Other Awards / Contests': 0,
+      'No Honors Stated': 0
     };
     const locationsMap = new Map();
     const schoolsMap = new Map();
@@ -2041,6 +2096,14 @@ export default function ScholarshipDashboard({
         financial[finLabel] = (financial[finLabel] || 0) + 1;
       }
 
+      // Merit honor categorization
+      const meritLabel = getApplicantMeritHonorLabel(a);
+      if (meritHonors[meritLabel] !== undefined) {
+        meritHonors[meritLabel]++;
+      } else {
+        meritHonors['Other Awards / Contests'] = (meritHonors['Other Awards / Contests'] || 0) + 1;
+      }
+
       // Clean Barangay / Location extraction
       let loc = String(a.street_brgy || a.streetBrgy || a.barangay || '').trim();
       if (!loc && a.location) {
@@ -2071,6 +2134,11 @@ export default function ScholarshipDashboard({
       count,
       percentage: Math.round((count / total) * 100)
     }));
+    const meritBreakdown = Object.entries(meritHonors).map(([honor, count]) => ({
+      honor,
+      count,
+      percentage: Math.round((count / total) * 100)
+    }));
     const locationStats = Array.from(locationsMap.entries())
       .map(([location, count]) => ({ location, count, percentage: Math.round((count / total) * 100) }))
       .sort((a, b) => b.count - a.count);
@@ -2087,6 +2155,7 @@ export default function ScholarshipDashboard({
       courseDistribution,
       gradeRanges,
       financialBreakdown,
+      meritBreakdown,
       locationStats,
       schoolStats,
       performanceMetrics: {
@@ -3033,6 +3102,7 @@ export default function ScholarshipDashboard({
       if (financialChartInstance.current) { financialChartInstance.current.destroy(); financialChartInstance.current = null; }
       if (schoolChartInstance.current) { schoolChartInstance.current.destroy(); schoolChartInstance.current = null; }
       if (locationChartInstance.current) { locationChartInstance.current.destroy(); locationChartInstance.current = null; }
+      if (meritChartInstance.current) { meritChartInstance.current.destroy(); meritChartInstance.current = null; }
     };
 
     const CHART_PALETTE = [
@@ -3218,6 +3288,26 @@ export default function ScholarshipDashboard({
           datasets: [{
             data: topLocations.map(loc => loc.count),
             backgroundColor: topLocations.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
+          }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } },
+      });
+    }
+
+    // Doughnut Chart for Academic Merits & Honors
+    if (meritChartRef.current) {
+      const ctx = meritChartRef.current.getContext('2d');
+      if (meritChartInstance.current) meritChartInstance.current.destroy();
+      const meritColors = ['#800020', '#a00028', '#c44569', '#198754', '#0d6efd', '#ffc107', '#6f42c1', '#6c757d'];
+      const activeMerits = (filteredHistoricalData.meritBreakdown || []).filter(m => m.count > 0);
+      const displayMerits = activeMerits.length > 0 ? activeMerits : (filteredHistoricalData.meritBreakdown || []).slice(0, 6);
+      meritChartInstance.current = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: displayMerits.map(m => m.honor),
+          datasets: [{
+            data: displayMerits.map(m => m.count),
+            backgroundColor: displayMerits.map((_, i) => meritColors[i % meritColors.length]),
           }]
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } },
@@ -3502,6 +3592,54 @@ export default function ScholarshipDashboard({
             setViewApplicant(null);
             setSection('track');
             setTrackTab('pending');
+          },
+        });
+      }
+    });
+  };
+
+  const handleAcceptTrackApplicant = async (applicant) => {
+    if (!applicant) return;
+    const recipient = applicant.studentContact?.email || applicant.emailAddress || applicant.email || 'Student Email';
+
+    setPendingAction({
+      type: 'acceptance',
+      title: 'Approve Applicant',
+      recipient: recipient,
+      messageSummary: `Congratulations! Your application for ${scholarshipLabel} has been accepted.`,
+      onConfirm: async () => {
+        beginApplicantStatusRequest({
+          applicant,
+          requestedStatus: 'Accepted',
+          request: (applicantId, scholarshipNo) => scholarshipAPI.acceptApplicant(applicantId, scholarshipNo),
+          successEvent: 'applicant_accept',
+          failureMessage: 'Failed to accept applicant',
+          onStart: () => {
+            setSection('track');
+          },
+        });
+      }
+    });
+  };
+
+  const handleDeclineTrackApplicant = async (applicant) => {
+    if (!applicant) return;
+    const recipient = applicant.studentContact?.email || applicant.emailAddress || applicant.email || 'Student Email';
+
+    setPendingAction({
+      type: 'rejection',
+      title: 'Decline Applicant',
+      recipient: recipient,
+      messageSummary: `Thank you for your interest. We regret to inform you that your application for ${scholarshipLabel} has been declined.`,
+      onConfirm: async () => {
+        beginApplicantStatusRequest({
+          applicant,
+          requestedStatus: 'Declined',
+          request: (applicantId, scholarshipNo) => scholarshipAPI.declineApplicant(applicantId, scholarshipNo),
+          successEvent: 'applicant_decline',
+          failureMessage: 'Failed to decline applicant',
+          onStart: () => {
+            setSection('track');
           },
         });
       }
@@ -5056,10 +5194,10 @@ export default function ScholarshipDashboard({
               <tr className="bg-[#800020] text-white select-none">
                 <th className="px-4 py-3 text-left font-semibold">Name</th>
                 <th className="px-4 py-3 text-left font-semibold">Grade / GPA</th>
-                <th className="px-4 py-3 text-left font-semibold">Financial</th>
                 <th className="px-4 py-3 text-left font-semibold">Points</th>
                 <th className="px-4 py-3 text-left font-semibold">School &amp; Course</th>
                 <th className="px-4 py-3 text-left font-semibold">Contact &amp; Address</th>
+                <th className="px-4 py-3 text-center font-semibold">Decline / Accept</th>
                 <th className="px-4 py-3 text-left font-semibold">Action</th>
               </tr>
             </thead>
@@ -5075,6 +5213,8 @@ export default function ScholarshipDashboard({
                   const i = (safeTrackPage - 1) * APPLICANT_PAGE_SIZE + localIdx;
                   const idx = a._listIdx !== undefined ? a._listIdx : data.applicants.indexOf(a);
                   const listType = a._listType || (a.status ? a.status.toLowerCase() : 'pending');
+                  const rawStatus = (a.status || listType || 'pending').toLowerCase();
+                  const isApplicantPending = rawStatus === 'pending' || rawStatus === 'null' || !a.status;
                   const processingState = getApplicantProcessingState(a);
                   const statusColors = {
                     pending: 'bg-yellow-100 text-yellow-700',
@@ -5111,7 +5251,6 @@ export default function ScholarshipDashboard({
                       <td className="px-3 py-2 text-sm font-semibold text-gray-800" title={a.grade ? `Original GPA: ${a.grade}` : ''}>
                         {formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}
                       </td>
-                      <td className="px-3 py-2 text-sm">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       {renderPointsCell(a)}
                       <td className="px-3 py-2 text-xs">
                         <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
@@ -5119,6 +5258,42 @@ export default function ScholarshipDashboard({
                       </td>
                       <td className="px-3 py-2 text-[10px] leading-tight text-gray-600">
                         {a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'}<br />{getApplicantAddressDisplay(a)}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {isApplicantPending ? (
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleAcceptTrackApplicant(a)}
+                              disabled={Boolean(processingState)}
+                              className="px-2.5 py-1 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 transition-all flex items-center gap-1 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Accept / Approve Applicant"
+                            >
+                              <FaCheckCircle className="text-[10px]" /> Accept
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeclineTrackApplicant(a)}
+                              disabled={Boolean(processingState)}
+                              className="px-2.5 py-1 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-all flex items-center gap-1 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Decline Applicant"
+                            >
+                              <FaTimesCircle className="text-[10px]" /> Decline
+                            </button>
+                          </div>
+                        ) : listType === 'accepted' ? (
+                          <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-green-50 text-green-700 border border-green-200 inline-flex items-center gap-1">
+                            <FaCheckCircle className="text-[10px] text-green-600" /> Accepted
+                          </span>
+                        ) : listType === 'rejected' || listType === 'declined' ? (
+                          <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-red-50 text-red-700 border border-red-200 inline-flex items-center gap-1">
+                            <FaTimesCircle className="text-[10px] text-red-600" /> Declined
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-gray-50 text-gray-600 border border-gray-200">
+                            {statusLabels[listType] || listType}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
@@ -5331,11 +5506,19 @@ export default function ScholarshipDashboard({
       Percentage: `${item.percentage}%`
     })));
 
+    // Create worksheet for Academic Merits & Honors
+    const meritsWS = XLSX.utils.json_to_sheet((filteredHistoricalData.meritBreakdown || []).map(item => ({
+      'Academic Honor / Distinction': item.honor,
+      'Applicant Count': item.count,
+      'Percentage': `${item.percentage}%`
+    })));
+
     // Create workbook and append sheets
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, acceptedWS, 'Accepted Scholars');
     XLSX.utils.book_append_sheet(wb, declinedWS, 'Declined Applicants');
     XLSX.utils.book_append_sheet(wb, pendingWS, 'Pending Applicants');
+    XLSX.utils.book_append_sheet(wb, meritsWS, 'Academic Merits');
     XLSX.utils.book_append_sheet(wb, locationWS, 'Location Statistics');
     XLSX.utils.book_append_sheet(wb, courseWS, 'Course Distribution');
     XLSX.utils.book_append_sheet(wb, schoolWS, 'School Distribution');
@@ -5588,6 +5771,58 @@ export default function ScholarshipDashboard({
               </div>
             </div>
 
+            {/* Academic Merits & Honors Distribution Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <h4 className="text-lg font-bold text-gray-800 mb-6 font-primary">Academic Merits &amp; Honors</h4>
+                <div className="flex flex-col md:flex-row gap-6 items-center">
+                  <div className="h-[250px] w-full md:w-1/2">
+                    <canvas ref={meritChartRef} />
+                  </div>
+                  <div className="w-full md:w-1/2 space-y-2.5">
+                    {(historicalData.meritBreakdown || []).filter(m => m.count > 0).slice(0, 6).map((m, i) => (
+                      <div key={m.honor} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ['#800020', '#a00028', '#c44569', '#198754', '#0d6efd', '#ffc107', '#6f42c1', '#6c757d'][i % 8] }}></div>
+                          <span className="font-bold text-gray-600 truncate max-w-[150px]">{m.honor}</span>
+                        </div>
+                        <span className="font-black text-gray-800">{m.count} ({m.percentage}%)</span>
+                      </div>
+                    ))}
+                    {!(historicalData.meritBreakdown || []).some(m => m.count > 0) && (
+                      <p className="text-xs text-gray-400 italic">No academic honors recorded yet.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="bg-rose-50/50 p-6 rounded-2xl border border-rose-100 flex flex-col justify-center">
+                <h4 className="text-[#800020] font-black text-xl mb-3">Academic Excellence Insights</h4>
+                <p className="text-gray-700 leading-relaxed mb-4">
+                  {(historicalData.meritBreakdown || []).some(m => m.honor !== 'No Honors Stated' && m.count > 0) ? (
+                    <>
+                      A total of <strong>{(historicalData.meritBreakdown || []).filter(m => m.honor !== 'No Honors Stated').reduce((acc, curr) => acc + curr.count, 0)}</strong> applicants hold documented academic honors or distinctions, showcasing strong competitive merit profiles for the {scholarshipLabel}.
+                    </>
+                  ) : (
+                    "No verified academic honors or distinctions recorded yet."
+                  )}
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white p-4 rounded-xl border border-rose-100">
+                    <p className="text-[10px] font-black text-gray-400 uppercase">Top Distinction</p>
+                    <p className="font-bold text-[#800020] truncate text-xs">
+                      {(historicalData.meritBreakdown || []).find(m => m.honor !== 'No Honors Stated' && m.count > 0)?.honor || 'N/A'}
+                    </p>
+                  </div>
+                  <div className="bg-white p-4 rounded-xl border border-rose-100">
+                    <p className="text-[10px] font-black text-gray-400 uppercase">Honors Ratio</p>
+                    <p className="font-bold text-gray-800">
+                      {(historicalData.meritBreakdown || []).filter(m => m.honor !== 'No Honors Stated').reduce((acc, curr) => acc + curr.percentage, 0)}% of Total
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </>
         ) : (
           <>
@@ -5651,7 +5886,7 @@ export default function ScholarshipDashboard({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 {/* Course Distribution Table */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <h4 className="text-lg font-bold text-gray-800 mb-6">Course Distribution</h4>
@@ -5695,6 +5930,31 @@ export default function ScholarshipDashboard({
                             <td className="px-4 py-3 font-semibold text-[#800020]">{g.range}</td>
                             <td className="px-4 py-3">{g.count}</td>
                             <td className="px-4 py-3 font-bold">{g.percentage}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Academic Merits & Honors Table */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  <h4 className="text-lg font-bold text-gray-800 mb-6">Academic Merits &amp; Honors</h4>
+                  <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 500px)' }}>
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-gray-50">
+                        <tr className="bg-gray-50 border-b border-gray-100">
+                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Academic Honor</th>
+                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">Count</th>
+                          <th className="px-4 py-3 font-bold text-gray-500 uppercase tracking-widest text-[10px]">%</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {(historicalData.meritBreakdown || []).map((m) => (
+                          <tr key={m.honor} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-4 py-3 font-semibold text-[#800020]">{m.honor}</td>
+                            <td className="px-4 py-3">{m.count}</td>
+                            <td className="px-4 py-3 font-bold">{m.percentage}%</td>
                           </tr>
                         ))}
                       </tbody>
@@ -5848,12 +6108,18 @@ export default function ScholarshipDashboard({
                       </h5>
                       <div className="overflow-x-auto max-h-72">
                         <table className="w-full text-left text-xs border-collapse">
-                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
+                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
                             {filteredPending.map((a) => (
-                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td></tr>
+                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
+                                <td className="p-3 font-bold text-gray-800">{a.name}</td>
+                                <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                                <td className="p-3"><span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{getApplicantMeritDisplay(a)}</span></td>
+                                <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                                <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
+                              </tr>
                             ))}
-                            {filteredPending.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No pending applicants found for this scholarship</td></tr>}
+                            {filteredPending.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No pending applicants found for this scholarship</td></tr>}
                           </tbody>
                         </table>
                       </div>
@@ -5868,12 +6134,18 @@ export default function ScholarshipDashboard({
                       </h5>
                       <div className="overflow-x-auto max-h-72">
                         <table className="w-full text-left text-xs border-collapse">
-                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
+                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
                             {filteredAccepted.map((a) => (
-                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td></tr>
+                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
+                                <td className="p-3 font-bold text-gray-800">{a.name}</td>
+                                <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                                <td className="p-3"><span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{getApplicantMeritDisplay(a)}</span></td>
+                                <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                                <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
+                              </tr>
                             ))}
-                            {filteredAccepted.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No accepted scholars found for this scholarship</td></tr>}
+                            {filteredAccepted.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No accepted scholars found for this scholarship</td></tr>}
                           </tbody>
                         </table>
                       </div>
@@ -5888,12 +6160,44 @@ export default function ScholarshipDashboard({
                       </h5>
                       <div className="overflow-x-auto max-h-72">
                         <table className="w-full text-left text-xs border-collapse">
-                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact & Address</th></tr></thead>
+                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
                             {filteredRejected.map((a) => (
-                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50"><td className="p-3 font-bold text-gray-800">{a.name}</td><td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td><td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td><td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td></tr>
+                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
+                                <td className="p-3 font-bold text-gray-800">{a.name}</td>
+                                <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                                <td className="p-3"><span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{getApplicantMeritDisplay(a)}</span></td>
+                                <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                                <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
+                              </tr>
                             ))}
-                            {filteredRejected.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-400 italic">No rejected applicants found for this scholarship</td></tr>}
+                            {filteredRejected.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No rejected applicants found for this scholarship</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cancelled Applicants */}
+                  {reportTab === 'cancelled' && (
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <h5 className="text-sm font-black text-slate-600 uppercase mb-4 flex items-center gap-2">
+                        <FaTimesCircle /> Cancelled Applications ({filteredCancelled.length})
+                      </h5>
+                      <div className="overflow-x-auto max-h-72">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {filteredCancelled.map((a) => (
+                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
+                                <td className="p-3 font-bold text-gray-800">{a.name}</td>
+                                <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                                <td className="p-3"><span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{getApplicantMeritDisplay(a)}</span></td>
+                                <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                                <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
+                              </tr>
+                            ))}
+                            {filteredCancelled.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No cancelled applicants found for this scholarship</td></tr>}
                           </tbody>
                         </table>
                       </div>
@@ -5944,7 +6248,7 @@ export default function ScholarshipDashboard({
           </div>
 
           <div className="mb-6">
-            <h4 className="text-sm font-black text-gray-900 uppercase tracking-[0.2em] border-b-2 border-gray-100 pb-2 inline-block">Detailed Analytics & Distribution</h4>
+            <h4 className="text-sm font-black text-gray-900 uppercase tracking-[0.2em] border-b-2 border-gray-100 pb-2 inline-block">Detailed Analytics &amp; Distribution</h4>
           </div>
 
           <div className="space-y-8">
@@ -6018,6 +6322,28 @@ export default function ScholarshipDashboard({
             </section>
 
             <section className="report-section">
+              <h5 className="text-sm font-black text-[#800020] uppercase mb-4 border-l-4 border-[#800020] pl-3">Academic Merits &amp; Honors</h5>
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="border p-3 text-left">Academic Honor / Distinction</th>
+                    <th className="border p-3 text-left">Applicant Count</th>
+                    <th className="border p-3 text-left">Percentage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(historicalData.meritBreakdown || []).map((m) => (
+                    <tr key={m.honor}>
+                      <td className="border p-3 font-semibold">{m.honor}</td>
+                      <td className="border p-3">{m.count}</td>
+                      <td className="border p-3 font-bold">{m.percentage}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+
+            <section className="report-section">
               <h5 className="text-sm font-black text-[#800020] uppercase mb-4 border-l-4 border-[#800020] pl-3">School Distribution</h5>
               <table className="w-full text-sm border-collapse">
                 <thead>
@@ -6068,8 +6394,9 @@ export default function ScholarshipDashboard({
                   <tr className="bg-gray-50">
                     <th className="border p-2 text-left">Student Name</th>
                     <th className="border p-2 text-left">Grade</th>
+                    <th className="border p-2 text-left">Merit / Awards</th>
                     <th className="border p-2 text-left">Financial Status</th>
-                    <th className="border p-2 text-left">Contact & Address</th>
+                    <th className="border p-2 text-left">Contact &amp; Address</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -6077,6 +6404,7 @@ export default function ScholarshipDashboard({
                     <tr key={a.id || a.applicant_no || a.name}>
                       <td className="border p-2 font-bold">{a.name}</td>
                       <td className="border p-2">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                      <td className="border p-2 font-semibold text-[#800020]">{getApplicantMeritDisplay(a)}</td>
                       <td className="border p-2">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       <td className="border p-2">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
                     </tr>
@@ -6092,8 +6420,9 @@ export default function ScholarshipDashboard({
                   <tr className="bg-gray-50">
                     <th className="border p-2 text-left">Student Name</th>
                     <th className="border p-2 text-left">Grade / GPA</th>
+                    <th className="border p-2 text-left">Merit / Awards</th>
                     <th className="border p-2 text-left">Financial Status</th>
-                    <th className="border p-2 text-left">Contact & Address</th>
+                    <th className="border p-2 text-left">Contact &amp; Address</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -6101,6 +6430,7 @@ export default function ScholarshipDashboard({
                     <tr key={a.id || a.applicant_no || a.name}>
                       <td className="border p-2 font-bold">{a.name}</td>
                       <td className="border p-2">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                      <td className="border p-2 font-semibold text-[#800020]">{getApplicantMeritDisplay(a)}</td>
                       <td className="border p-2">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       <td className="border p-2">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
                     </tr>
@@ -6116,8 +6446,9 @@ export default function ScholarshipDashboard({
                   <tr className="bg-gray-50">
                     <th className="border p-2 text-left">Student Name</th>
                     <th className="border p-2 text-left">Grade / GPA</th>
+                    <th className="border p-2 text-left">Merit / Awards</th>
                     <th className="border p-2 text-left">Financial Status</th>
-                    <th className="border p-2 text-left">Contact & Address</th>
+                    <th className="border p-2 text-left">Contact &amp; Address</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -6125,6 +6456,7 @@ export default function ScholarshipDashboard({
                     <tr key={a.id || a.applicant_no || a.name}>
                       <td className="border p-2 font-bold">{a.name}</td>
                       <td className="border p-2">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                      <td className="border p-2 font-semibold text-[#800020]">{getApplicantMeritDisplay(a)}</td>
                       <td className="border p-2">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
                       <td className="border p-2">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
                     </tr>
