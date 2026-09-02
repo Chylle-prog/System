@@ -5617,6 +5617,8 @@ export default function ScholarshipDashboard({
     XLSX.writeFile(wb, `${reportFilePrefix}_Scholarship_Report.xlsx`);
   };
 
+  const exportDetailedExcelReport = () => exportToExcel('report');
+
   const renderReports = () => {
     const historicalData = filteredHistoricalData;
     const { pending: filteredPending, accepted: filteredAccepted, rejected: filteredRejected, cancelled: filteredCancelled, all: filteredApplicants } = filteredReportApplicants;
