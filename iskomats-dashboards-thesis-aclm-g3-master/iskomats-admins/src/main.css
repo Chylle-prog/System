@@ -92,57 +92,67 @@
   }
 }
 
-/* Print Styles - Improved Table/Report Format */
+/* Print Styles - Professional Executive Document Format */
 @media print {
   @page {
-    size: A4;
-    margin: 15mm;
+    size: A4 portrait;
+    margin: 12mm 14mm 14mm 14mm;
   }
 
-  /* Hide navigation, sidebars, and UI buttons */
+  /* Hide navigation, sidebars, interactive controls, and UI buttons */
   nav,
   aside,
   header,
   footer,
   button,
+  select,
+  input,
   .no-print,
   .fixed,
   .z-50,
   [role="button"],
   .sidebar,
   .navbar,
-  .modal-backdrop {
+  .modal-backdrop,
+  canvas {
     display: none !important;
   }
 
-  /* Ensure the main content expands */
+  /* Ensure the main page is purely clean white */
   body,
   html,
   #root,
-  .min-h-screen {
-    background: white !important;
-    color: black !important;
+  .min-h-screen,
+  main {
+    background: #ffffff !important;
+    color: #0f172a !important;
     margin: 0 !important;
     padding: 0 !important;
     height: auto !important;
     min-height: auto !important;
     width: 100% !important;
     overflow: visible !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
   }
 
-  main {
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 100% !important;
+  /* Only display dedicated print document */
+  .print-only {
     display: block !important;
-    overflow: visible !important;
+    width: 100% !important;
   }
 
-  /* Table formatting for professional reports */
+  /* Professional Document Typography */
+  h1, h2, h3, h4, h5, h6 {
+    color: #800020 !important;
+    font-family: inherit !important;
+    page-break-after: avoid !important;
+  }
+
+  /* Table formatting for clean, dense, official records */
   table {
     width: 100% !important;
     border-collapse: collapse !important;
-    margin-bottom: 20px !important;
+    margin-bottom: 12px !important;
     page-break-inside: auto !important;
   }
 
@@ -151,49 +161,73 @@
     page-break-after: auto !important;
   }
 
-  section, .report-section {
-    page-break-inside: avoid !important;
-    margin-bottom: 30px !important;
-  }
-
   thead {
     display: table-header-group !important;
-    background-color: #f8f9fa !important;
   }
 
   th,
   td {
-    border: 1px solid #e5e7eb !important;
-    padding: 10px 8px !important;
+    border: 1px solid #cbd5e1 !important;
+    padding: 5px 8px !important;
     text-align: left !important;
-    color: #1a1a1a !important;
-    font-size: 10pt !important;
+    color: #1e293b !important;
+    font-size: 8pt !important;
+    line-height: 1.25 !important;
   }
 
   th {
-    font-weight: 800 !important;
+    font-weight: 700 !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-    background-color: #f9fafb !important;
+    letter-spacing: 0.04em !important;
+    background-color: #f1f5f9 !important;
+    color: #334155 !important;
+    font-size: 7.5pt !important;
   }
 
-  /* Zebra striping for readability */
   tr:nth-child(even) {
-    background-color: #f9fafb !important;
+    background-color: #f8fafc !important;
   }
 
-  /* Keep charts visible but ensure they don't break layout */
-  canvas {
-    max-width: 100% !important;
-    height: auto !important;
+  .report-section {
     page-break-inside: avoid !important;
+    margin-bottom: 22px !important;
   }
 
-  .grid {
-    display: block !important;
+  .print-break-before {
+    page-break-before: always !important;
+    break-before: page !important;
   }
 
-  /* Remove excessive styling for print */
+  .print-break-avoid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Print Multi-column Layout Helpers */
+  .print-grid-2 {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 16px !important;
+    width: 100% !important;
+  }
+  .print-grid-2 > * {
+    flex: 1 1 50% !important;
+    min-width: 0 !important;
+  }
+
+  .print-grid-4 {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+  .print-grid-4 > * {
+    flex: 1 1 25% !important;
+    min-width: 0 !important;
+  }
+
+  /* Crisp borders & remove screen shadows */
+  *,
   .shadow-sm,
   .shadow-md,
   .shadow-lg,
@@ -201,29 +235,7 @@
   .shadow-2xl,
   .shadow-enhanced {
     box-shadow: none !important;
-  }
-
-  /* Report header */
-  .report-header {
-    display: block !important;
-    text-align: center !important;
-    margin-bottom: 40px !important;
-    padding: 20px !important;
-    border-bottom: 3px solid #800020 !important;
-  }
-
-  .report-title {
-    font-size: 24pt !important;
-    font-weight: 900 !important;
-    color: #800020 !important;
-    margin-bottom: 5px !important;
-    text-transform: uppercase !important;
-  }
-
-  .report-subtitle {
-    font-size: 12pt !important;
-    color: #666 !important;
-    margin-bottom: 20px !important;
+    text-shadow: none !important;
   }
 }
 
