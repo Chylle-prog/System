@@ -610,28 +610,30 @@ const applicantMatchesAdvancedScholarshipFilters = (applicant, advanced, scholar
   if (advanced.meritAward) {
     const selectedMerit = String(advanced.meritAward).trim().toLowerCase();
 
-    // Gather all merit text associated with this applicant
-    const meritPieces = [
-      applicant.meritsAwardsReceived,
-      applicant.merits_awards_received,
-      applicant.merits,
-      applicant.meritReason
-    ];
+    // Gather verified merit text associated with this applicant
+    const meritPieces = [];
 
     if (Array.isArray(applicant.merit_proofs)) {
       applicant.merit_proofs.forEach(mp => {
-        if (mp?.merit_title) meritPieces.push(mp.merit_title);
+        if (mp?.merit_title && String(mp.merit_title).trim()) meritPieces.push(String(mp.merit_title).trim());
       });
     }
 
     if (Array.isArray(applicant.meritFiles)) {
       applicant.meritFiles.forEach(mf => {
-        if (mf?.title) meritPieces.push(mf.title);
-        if (mf?.name) meritPieces.push(mf.name);
+        if (mf?.title && String(mf.title).trim()) meritPieces.push(String(mf.title).trim());
+        else if (mf?.name && String(mf.name).trim() && !mf.name.toLowerCase().startsWith('merit #')) {
+          meritPieces.push(String(mf.name).trim());
+        }
       });
     }
 
-    const applicantMeritText = normalizeSearchText(meritPieces.filter(Boolean).join(' '));
+    const explicitMerit = String(applicant.meritsAwardsReceived || applicant.merits_awards_received || applicant.merits || applicant.merit_title || '').trim();
+    if (explicitMerit && !/^(n\/?a|none|no|wala|nil|-+|no merits or awards provided)$/i.test(explicitMerit)) {
+      meritPieces.push(explicitMerit);
+    }
+
+    const applicantMeritText = normalizeSearchText(meritPieces.join(' '));
     if (!applicantMeritText) {
       return false;
     }
@@ -1869,26 +1871,44 @@ export default function ScholarshipDashboard({
   // Standardize applicant academic merit / honor category
   const getApplicantMeritHonorLabel = (a) => {
     if (!a) return 'No Honors Stated';
-    const meritPieces = [
-      a.meritsAwardsReceived,
-      a.merits_awards_received,
-      a.merits,
-      a.meritReason,
-      a.merit_title,
-    ];
-    if (Array.isArray(a.merit_proofs)) {
+
+    const meritPieces = [];
+
+    // 1. Check verified 1NF merit_proofs table entries (primary proof of merits)
+    if (Array.isArray(a.merit_proofs) && a.merit_proofs.length > 0) {
       a.merit_proofs.forEach(mp => {
-        if (mp?.merit_title) meritPieces.push(mp.merit_title);
+        if (mp?.merit_title && String(mp.merit_title).trim()) {
+          meritPieces.push(String(mp.merit_title).trim());
+        }
       });
     }
-    if (Array.isArray(a.meritFiles)) {
+
+    // 2. Check uploaded merit document files
+    if (Array.isArray(a.meritFiles) && a.meritFiles.length > 0) {
       a.meritFiles.forEach(mf => {
-        if (mf?.title) meritPieces.push(mf.title);
-        if (mf?.name) meritPieces.push(mf.name);
+        if (mf?.title && String(mf.title).trim()) {
+          meritPieces.push(String(mf.title).trim());
+        } else if (mf?.name && String(mf.name).trim() && !mf.name.toLowerCase().startsWith('merit #')) {
+          meritPieces.push(String(mf.name).trim());
+        }
       });
     }
-    const txt = normalizeSearchText(meritPieces.filter(Boolean).join(' '));
-    if (!txt) return 'No Honors Stated';
+
+    // 3. Check explicit applicant merits string from submission form
+    const explicitMerit = String(a.meritsAwardsReceived || a.merits_awards_received || a.merits || a.merit_title || '').trim();
+    if (explicitMerit && !/^(n\/?a|none|no|wala|nil|-+|no merits or awards provided)$/i.test(explicitMerit)) {
+      meritPieces.push(explicitMerit);
+    }
+
+    // If no merit proofs or explicit awards were submitted, applicant has no honors
+    if (meritPieces.length === 0) {
+      return 'No Honors Stated';
+    }
+
+    const txt = normalizeSearchText(meritPieces.join(' '));
+    if (!txt || /^(n\/?a|none|no|wala|nil|-+|no merits or awards provided)$/i.test(txt)) {
+      return 'No Honors Stated';
+    }
 
     if (/\bsumma\s+cum\s+laude\b|\bsumma\b/i.test(txt)) return 'Summa Cum Laude';
     if (/\bmagna\s+cum\s+laude\b|\bmagna\b/i.test(txt)) return 'Magna Cum Laude';
@@ -1897,15 +1917,13 @@ export default function ScholarshipDashboard({
     if (/\b(2nd|second)\s+honor\b|\bwith\s+high\s+honors?\b|\bsalutatorian\b/i.test(txt)) return '2nd Honor / High Honors';
     if (/\b(3rd|third)\s+honor\b|\bwith\s+honors?\b|\bdean'?s\s+list\b/i.test(txt)) return '3rd Honor / With Honors';
     if (/\b(award|contest|olympiad|quiz|champion|medalist|research|thesis|leadership|officer|president)\b/i.test(txt)) return 'Other Awards / Contests';
-    return 'General Academic Recognition';
+    return 'Other Awards / Contests';
   };
 
   const getApplicantMeritDisplay = (a) => {
     if (!a) return 'None';
     const label = getApplicantMeritHonorLabel(a);
     if (label !== 'No Honors Stated') return label;
-    const explicit = a.meritsAwardsReceived || a.merits_awards_received || a.merits;
-    if (explicit && String(explicit).trim()) return String(explicit).trim();
     return 'None';
   };
 
@@ -5797,29 +5815,42 @@ export default function ScholarshipDashboard({
               </div>
               <div className="bg-rose-50/50 p-6 rounded-2xl border border-rose-100 flex flex-col justify-center">
                 <h4 className="text-[#800020] font-black text-xl mb-3">Academic Excellence Insights</h4>
-                <p className="text-gray-700 leading-relaxed mb-4">
-                  {(historicalData.meritBreakdown || []).some(m => m.honor !== 'No Honors Stated' && m.count > 0) ? (
+                {(() => {
+                  const breakdown = historicalData.meritBreakdown || [];
+                  const honorList = breakdown.filter(m => m.honor !== 'No Honors Stated' && m.count > 0);
+                  const totalHonorsCount = honorList.reduce((acc, curr) => acc + curr.count, 0);
+                  const totalApplicantCount = breakdown.reduce((acc, curr) => acc + curr.count, 0) || 1;
+                  const honorsRatioPct = Math.round((totalHonorsCount / totalApplicantCount) * 100);
+                  const topDistinction = [...honorList].sort((a, b) => b.count - a.count)[0]?.honor || 'None';
+
+                  return (
                     <>
-                      A total of <strong>{(historicalData.meritBreakdown || []).filter(m => m.honor !== 'No Honors Stated').reduce((acc, curr) => acc + curr.count, 0)}</strong> applicants hold documented academic honors or distinctions, showcasing strong competitive merit profiles for the {scholarshipLabel}.
+                      <p className="text-gray-700 leading-relaxed mb-4">
+                        {totalHonorsCount > 0 ? (
+                          <>
+                            A total of <strong>{totalHonorsCount}</strong> {totalHonorsCount === 1 ? 'applicant holds' : 'applicants hold'} documented academic honors or distinctions, showcasing competitive merit profiles for the {scholarshipLabel}.
+                          </>
+                        ) : (
+                          `No verified academic honors or distinctions recorded yet for ${scholarshipLabel} applicants.`
+                        )}
+                      </p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-white p-4 rounded-xl border border-rose-100">
+                          <p className="text-[10px] font-black text-gray-400 uppercase">Top Distinction</p>
+                          <p className="font-bold text-[#800020] truncate text-xs" title={topDistinction}>
+                            {topDistinction}
+                          </p>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl border border-rose-100">
+                          <p className="text-[10px] font-black text-gray-400 uppercase">Honors Ratio</p>
+                          <p className="font-bold text-gray-800">
+                            {honorsRatioPct}% of Total
+                          </p>
+                        </div>
+                      </div>
                     </>
-                  ) : (
-                    "No verified academic honors or distinctions recorded yet."
-                  )}
-                </p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white p-4 rounded-xl border border-rose-100">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">Top Distinction</p>
-                    <p className="font-bold text-[#800020] truncate text-xs">
-                      {(historicalData.meritBreakdown || []).find(m => m.honor !== 'No Honors Stated' && m.count > 0)?.honor || 'N/A'}
-                    </p>
-                  </div>
-                  <div className="bg-white p-4 rounded-xl border border-rose-100">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">Honors Ratio</p>
-                    <p className="font-bold text-gray-800">
-                      {(historicalData.meritBreakdown || []).filter(m => m.honor !== 'No Honors Stated').reduce((acc, curr) => acc + curr.percentage, 0)}% of Total
-                    </p>
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -6110,15 +6141,24 @@ export default function ScholarshipDashboard({
                         <table className="w-full text-left text-xs border-collapse">
                           <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
-                            {filteredPending.map((a) => (
-                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
-                                <td className="p-3 font-bold text-gray-800">{a.name}</td>
-                                <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
-                                <td className="p-3"><span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{getApplicantMeritDisplay(a)}</span></td>
-                                <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                                <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
-                              </tr>
-                            ))}
+                            {filteredPending.map((a) => {
+                              const meritText = getApplicantMeritDisplay(a);
+                              return (
+                                <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
+                                  <td className="p-3 font-bold text-gray-800">{a.name}</td>
+                                  <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                                  <td className="p-3">
+                                    {meritText !== 'None' ? (
+                                      <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{meritText}</span>
+                                    ) : (
+                                      <span className="text-gray-400 font-normal">None</span>
+                                    )}
+                                  </td>
+                                  <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                                  <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
+                                </tr>
+                              );
+                            })}
                             {filteredPending.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No pending applicants found for this scholarship</td></tr>}
                           </tbody>
                         </table>
@@ -6136,15 +6176,24 @@ export default function ScholarshipDashboard({
                         <table className="w-full text-left text-xs border-collapse">
                           <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
-                            {filteredAccepted.map((a) => (
-                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
-                                <td className="p-3 font-bold text-gray-800">{a.name}</td>
-                                <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
-                                <td className="p-3"><span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{getApplicantMeritDisplay(a)}</span></td>
-                                <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                                <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
-                              </tr>
-                            ))}
+                            {filteredAccepted.map((a) => {
+                              const meritText = getApplicantMeritDisplay(a);
+                              return (
+                                <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
+                                  <td className="p-3 font-bold text-gray-800">{a.name}</td>
+                                  <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                                  <td className="p-3">
+                                    {meritText !== 'None' ? (
+                                      <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{meritText}</span>
+                                    ) : (
+                                      <span className="text-gray-400 font-normal">None</span>
+                                    )}
+                                  </td>
+                                  <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                                  <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
+                                </tr>
+                              );
+                            })}
                             {filteredAccepted.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No accepted scholars found for this scholarship</td></tr>}
                           </tbody>
                         </table>
@@ -6162,15 +6211,24 @@ export default function ScholarshipDashboard({
                         <table className="w-full text-left text-xs border-collapse">
                           <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
-                            {filteredRejected.map((a) => (
-                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
-                                <td className="p-3 font-bold text-gray-800">{a.name}</td>
-                                <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
-                                <td className="p-3"><span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{getApplicantMeritDisplay(a)}</span></td>
-                                <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                                <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
-                              </tr>
-                            ))}
+                            {filteredRejected.map((a) => {
+                              const meritText = getApplicantMeritDisplay(a);
+                              return (
+                                <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
+                                  <td className="p-3 font-bold text-gray-800">{a.name}</td>
+                                  <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                                  <td className="p-3">
+                                    {meritText !== 'None' ? (
+                                      <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{meritText}</span>
+                                    ) : (
+                                      <span className="text-gray-400 font-normal">None</span>
+                                    )}
+                                  </td>
+                                  <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                                  <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
+                                </tr>
+                              );
+                            })}
                             {filteredRejected.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No rejected applicants found for this scholarship</td></tr>}
                           </tbody>
                         </table>
@@ -6188,15 +6246,24 @@ export default function ScholarshipDashboard({
                         <table className="w-full text-left text-xs border-collapse">
                           <thead><tr className="bg-gray-50 border-y border-gray-100"><th className="p-3 font-bold text-gray-500 uppercase">Student Name</th><th className="p-3 font-bold text-gray-500 uppercase">Grade / GPA</th><th className="p-3 font-bold text-gray-500 uppercase">Merit / Awards</th><th className="p-3 font-bold text-gray-500 uppercase">Financial</th><th className="p-3 font-bold text-gray-500 uppercase">Contact &amp; Address</th></tr></thead>
                           <tbody className="divide-y divide-gray-100">
-                            {filteredCancelled.map((a) => (
-                              <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
-                                <td className="p-3 font-bold text-gray-800">{a.name}</td>
-                                <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
-                                <td className="p-3"><span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{getApplicantMeritDisplay(a)}</span></td>
-                                <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
-                                <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
-                              </tr>
-                            ))}
+                            {filteredCancelled.map((a) => {
+                              const meritText = getApplicantMeritDisplay(a);
+                              return (
+                                <tr key={a.id || a.applicant_no || a.name} className="hover:bg-gray-50">
+                                  <td className="p-3 font-bold text-gray-800">{a.name}</td>
+                                  <td className="p-3 font-semibold">{formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}</td>
+                                  <td className="p-3">
+                                    {meritText !== 'None' ? (
+                                      <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[#800020] font-semibold text-[11px]">{meritText}</span>
+                                    ) : (
+                                      <span className="text-gray-400 font-normal">None</span>
+                                    )}
+                                  </td>
+                                  <td className="p-3">{getFinancialStatusLabel(a.income || a.financial_income_of_parents || a.family?.grossIncome)}</td>
+                                  <td className="p-3">{a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || 'N/A'} - {getApplicantAddressDisplay(a)}</td>
+                                </tr>
+                              );
+                            })}
                             {filteredCancelled.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-gray-400 italic">No cancelled applicants found for this scholarship</td></tr>}
                           </tbody>
                         </table>
