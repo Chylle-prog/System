@@ -1268,7 +1268,7 @@ const Login = () => {
                       onError={handleGoogleError}
                       theme="outline"
                       size="large"
-                      width="350"
+                      width="100%"
                       shape="pill"
                       text="continue_with"
                     />
@@ -1347,7 +1347,7 @@ const Login = () => {
                       onError={handleGoogleError}
                       theme="outline"
                       size="large"
-                      width="350"
+                      width="100%"
                       shape="pill"
                       text="signup_with"
                     />

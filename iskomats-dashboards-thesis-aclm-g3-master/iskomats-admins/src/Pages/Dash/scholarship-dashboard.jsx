@@ -7845,13 +7845,14 @@ export default function ScholarshipDashboard({
                     <th className="px-4 py-3 text-left font-bold">Name</th>
                     <th className="px-4 py-3 text-left font-bold">Grade</th>
                     <th className="px-4 py-3 text-left font-bold">Merit</th>
+                    <th className="px-4 py-3 text-left font-bold">Total Score</th>
                     <th className="px-4 py-3 text-center font-bold">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {recommended.length === 0 ? (
                     <tr>
-                      <td colSpan="5" className="p-8 text-center text-gray-400 italic">
+                      <td colSpan="6" className="p-8 text-center text-gray-400 italic">
                         No recommended applicants found matching this criteria.
                       </td>
                     </tr>
@@ -7859,9 +7860,12 @@ export default function ScholarshipDashboard({
                     recommended.map((s, i) => {
                       const rawStatus = (s.status || 'pending').toLowerCase();
                       const isPending = rawStatus === 'pending' || rawStatus === 'null' || !s.status;
+                      const sch = getScholarshipForApplicant(s);
+                      const details = calculateDeservednessScoreDetails(s, sch);
                       const score = getApplicantMeritScore(s);
                       const meritTitle = getApplicantSpecificMeritTitle(s);
                       const hasMerit = score > 0 || (meritTitle && meritTitle !== 'None');
+                      const gpaDisplay = formatGpaDisplay(s.grade || s.overall_gpa || s.gpa, s.school);
 
                       return (
                         <tr key={`${s.name}-${s.id || i}`} className="hover:bg-rose-50/20 transition-colors">
@@ -7873,9 +7877,12 @@ export default function ScholarshipDashboard({
                           <td className="px-4 py-3.5 font-bold text-gray-800 text-sm sm:text-base">
                             {s.name}
                           </td>
-                          {/* Grade in bold blue like image */}
-                          <td className="px-4 py-3.5 font-bold text-blue-600 font-mono text-sm sm:text-base" title={s.grade ? `Original GPA: ${s.grade}` : ''}>
-                            {formatGpaDisplay(s.grade || s.overall_gpa || s.gpa, s.school)}
+                          {/* Grade with GPA points like image 2 */}
+                          <td className="px-4 py-3.5 text-xs whitespace-nowrap" title={`GPA Score: ${details.gpaScore.toFixed(1)} pts`}>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-blue-600 font-mono text-sm">{details.gpaScore.toFixed(1)} pts</span>
+                              <span className="text-gray-500 italic font-normal text-[11px]">(GPA: {gpaDisplay})</span>
+                            </div>
                           </td>
                           {/* Merit */}
                           <td className="px-4 py-3.5 text-xs whitespace-nowrap" title={s.meritReason ? `AI Merit Reason:\n${s.meritReason}` : ''}>
@@ -7889,6 +7896,10 @@ export default function ScholarshipDashboard({
                             ) : (
                               <span className="text-gray-400 font-normal">0.0 pts <span className="italic text-[11px]">(None)</span></span>
                             )}
+                          </td>
+                          {/* Total Score like image 3 */}
+                          <td className="px-4 py-3.5 font-black text-gray-800 font-mono text-sm whitespace-nowrap" title={`Score Breakdown:\n  GPA Score: ${details.gpaScore.toFixed(1)} pts\n  Financial Need: ${details.incomeScore.toFixed(1)} pts\n  Merits: ${details.meritScore.toFixed(1)} pts`}>
+                            <span className="text-gray-900 font-bold">{details.total.toFixed(1)} pts</span>
                           </td>
                           {/* Actions: Pill buttons matching image */}
                           <td className="px-4 py-3.5">
