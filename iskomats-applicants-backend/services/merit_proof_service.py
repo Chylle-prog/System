@@ -36,10 +36,7 @@ def fetch_merit_proofs_for_applicant(cur, applicant_no, scholarship_no=None, app
         WHERE applicant_no = %s
     """
     params = [applicant_no]
-    if app_doc_no is not None and scholarship_no is not None:
-        query += " AND (app_doc_no = %s OR scholarship_no = %s)"
-        params.extend([app_doc_no, scholarship_no])
-    elif app_doc_no is not None:
+    if app_doc_no is not None:
         query += " AND app_doc_no = %s"
         params.append(app_doc_no)
     elif scholarship_no is not None:

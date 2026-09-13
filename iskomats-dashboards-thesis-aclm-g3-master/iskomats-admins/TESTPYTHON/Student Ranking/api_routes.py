@@ -4190,11 +4190,12 @@ def get_applicants(current_user_id, pro_no, role, program):
                 row_scholarship_no = a.get('scholarshipNo') or a.get('scholarship_no')
                 row_doc_no = a.get('app_doc_no') or a.get('application_doc_no')
                 all_app_merits = merit_proofs_by_app.get(app_no, [])
-                a_merit_proofs = [
-                    mp for mp in all_app_merits
-                    if (row_doc_no and mp.get('app_doc_no') == row_doc_no)
-                    or (row_scholarship_no and mp.get('scholarship_no') == row_scholarship_no)
-                ]
+                if row_doc_no:
+                    a_merit_proofs = [mp for mp in all_app_merits if mp.get('app_doc_no') == row_doc_no]
+                elif row_scholarship_no:
+                    a_merit_proofs = [mp for mp in all_app_merits if mp.get('scholarship_no') == row_scholarship_no and not mp.get('app_doc_no')]
+                else:
+                    a_merit_proofs = [mp for mp in all_app_merits if not mp.get('app_doc_no') and not mp.get('scholarship_no')]
                 a['merit_proofs'] = a_merit_proofs
                 merit_files = []
                 proof_titles = []
