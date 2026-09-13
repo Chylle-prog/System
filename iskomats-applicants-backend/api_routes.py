@@ -4304,38 +4304,42 @@ def get_applicants(current_user_id, pro_no, role, program):
                 # Fill in ID# with school_id_no
                 a['idNumber'] = a.get('school_id_no') or a.get('schoolId')
 
-                # Merit proofs from merit_proofs table (1NF) scoped to this application snapshot
+                # Merit proofs from merit_proofs table (1NF) scoped strictly to this application snapshot
                 all_app_merits = merit_proofs_by_app.get(app_no, [])
                 a_merit_proofs = [
                     mp for mp in all_app_merits
                     if (row_doc_no and mp.get('app_doc_no') == row_doc_no)
                     or (row_scholarship_no and mp.get('scholarship_no') == row_scholarship_no)
-                    or (mp.get('app_doc_no') is None and mp.get('scholarship_no') is None)
                 ]
                 a['merit_proofs'] = a_merit_proofs
                 merit_files = []
+                proof_titles = []
                 for idx, mp in enumerate(a_merit_proofs):
                     doc_val = mp.get('merit_document')
-                    m_title = mp.get('merit_title') or f"Merit #{idx+1}"
+                    m_title = (mp.get('merit_title') or '').strip()
+                    if m_title and m_title.lower() not in ('none', 'n/a', 'no', 'wala', 'nil'):
+                        proof_titles.append(m_title)
                     if doc_val:
                         merit_files.append({
                             'src': doc_val,
                             'type': 'image/jpeg',
-                            'name': m_title,
-                            'title': m_title,
+                            'name': m_title or f"Merit #{idx+1}",
+                            'title': m_title or f"Merit #{idx+1}",
                             'id': mp.get('merit_id')
                         })
                 a['meritFiles'] = merit_files
 
-                # AI merits evaluation calculated purely on-the-fly (with rule-based fallback for the 6 primary honors)
-                merits_text = a.get('meritsAwardsReceived') or ""
-                if a.get('merit_proofs'):
-                    proof_titles = [mp.get('merit_title') for mp in a['merit_proofs'] if mp.get('merit_title')]
-                    if proof_titles:
-                        merits_text = f"{merits_text} {' '.join(proof_titles)}".strip()
-                m_score, m_reason = analyze_merits_onthefly(merits_text)
-                a['meritScore'] = m_score
-                a['meritReason'] = m_reason
+                # The merit_proofs table (merit_title) is the single source of truth for application merits
+                if a_merit_proofs and proof_titles:
+                    app_merit_text = ', '.join(proof_titles)
+                    a['meritsAwardsReceived'] = app_merit_text
+                    m_score, m_reason = analyze_merits_onthefly(app_merit_text)
+                    a['meritScore'] = m_score
+                    a['meritReason'] = m_reason
+                else:
+                    a['meritsAwardsReceived'] = 'None'
+                    a['meritScore'] = 0
+                    a['meritReason'] = "No merits or awards provided for this application."
 
                 result.append(a)
             except Exception as row_error:

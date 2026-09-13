@@ -628,11 +628,6 @@ const applicantMatchesAdvancedScholarshipFilters = (applicant, advanced, scholar
       });
     }
 
-    const explicitMerit = String(applicant.meritsAwardsReceived || applicant.merits_awards_received || applicant.merits || applicant.merit_title || '').trim();
-    if (explicitMerit && !/^(n\/?a|none|no|wala|nil|-+|no merits or awards provided)$/i.test(explicitMerit)) {
-      meritPieces.push(explicitMerit);
-    }
-
     const applicantMeritText = normalizeSearchText(meritPieces.join(' '));
     if (!applicantMeritText) {
       return false;
@@ -1894,13 +1889,7 @@ export default function ScholarshipDashboard({
       });
     }
 
-    // 3. Check explicit applicant merits string from submission form
-    const explicitMerit = String(a.meritsAwardsReceived || a.merits_awards_received || a.merits || a.merit_title || '').trim();
-    if (explicitMerit && !/^(n\/?a|none|no|wala|nil|-+|no merits or awards provided)$/i.test(explicitMerit)) {
-      meritPieces.push(explicitMerit);
-    }
-
-    // If no merit proofs or explicit awards were submitted, applicant has no honors
+    // If no merit proofs or merit files were submitted on this application, applicant has no honors
     if (meritPieces.length === 0) {
       return 'No Honors Stated';
     }
@@ -2972,18 +2961,13 @@ export default function ScholarshipDashboard({
     if (!a) return 'None';
     if (Array.isArray(a.merit_proofs) && a.merit_proofs.length > 0) {
       const titles = a.merit_proofs.map(mp => mp?.merit_title).filter(Boolean);
-      if (titles.length > 0) return titles[0];
+      if (titles.length > 0) return titles.join(', ');
     }
     if (Array.isArray(a.meritFiles) && a.meritFiles.length > 0) {
       const titles = a.meritFiles.map(mf => mf?.title || (!mf?.name?.toLowerCase().startsWith('merit #') ? mf?.name : '')).filter(Boolean);
-      if (titles.length > 0) return titles[0];
+      if (titles.length > 0) return titles.join(', ');
     }
-    const explicit = String(a.meritsAwardsReceived || a.merits_awards_received || a.merits || a.merit_title || '').trim();
-    if (explicit && !/^(n\/?a|none|no|wala|nil|-+|no merits or awards provided)$/i.test(explicit)) {
-      return explicit;
-    }
-    const label = getApplicantMeritDisplay(a);
-    return label;
+    return 'None';
   };
 
   const getApplicantMeritScore = (a) => {
@@ -6743,8 +6727,12 @@ export default function ScholarshipDashboard({
     const dispatchKey = getApplicantDispatchKey(a);
     const docTypes = getApplicantDocTypes(a);
     const meritDetails = calculateDeservednessScoreDetails(a, getScholarshipForApplicant(a));
-    const aiMeritReason = a.meritReason || meritDetails.reason || (a.meritsAwardsReceived ? 'Evaluated based on academic merits.' : 'No evaluated achievements.');
-    const aiMeritScore = a.meritScore ?? meritDetails.meritScore ?? 0;
+    const specificMeritTitle = getApplicantSpecificMeritTitle(a);
+    const hasMeritForApp = specificMeritTitle !== 'None' || (a.meritFiles && a.meritFiles.length > 0);
+    const aiMeritScore = hasMeritForApp ? (a.meritScore ?? meritDetails.meritScore ?? 0) : 0;
+    const aiMeritReason = hasMeritForApp
+      ? (a.meritReason || meritDetails.reason || 'Evaluated based on academic merits.')
+      : (a.meritReason && a.meritReason.toLowerCase().includes('no merit') ? a.meritReason : 'No merits or awards provided for this application.');
 
     // Ensure idFiles contains Front & Back ID videos alongside ID images
     const idFiles = [...(a.idFiles || [])];
@@ -7013,7 +7001,7 @@ export default function ScholarshipDashboard({
 
             <div className="p-2.5 sm:p-3 col-span-2 md:col-span-4 border-b border-gray-100 bg-gray-50/20">
               <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase mb-1">Merits/Awards</p>
-              <p className="font-bold text-gray-800 whitespace-pre-wrap text-xs sm:text-sm">{a.meritsAwardsReceived || 'N/A'}</p>
+              <p className="font-bold text-gray-800 whitespace-pre-wrap text-xs sm:text-sm">{specificMeritTitle || 'None'}</p>
 
               {/* MERIT PROOF CERTIFICATE IMAGES DISPLAYED RIGHT BELOW MERITS/AWARDS */}
               {meritFiles && meritFiles.length > 0 && (
