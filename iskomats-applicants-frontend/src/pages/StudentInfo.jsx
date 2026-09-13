@@ -7131,8 +7131,8 @@ const StudentInfo = () => {
   const isAnyScanning = [idVerified, coeVerified, gradesVerified, ocrVerified, meritScanVerified, faceVerified, signatureVerified].some(v => v === 'verifying') || isFaceMatching || isAnyVideoUploading;
   const isStep1DocumentsVerified = ocrVerified === 'success';
   const isStep1Complete = STEP_FIELDS[1].every(field => formData[field]);
-  const isStep2Complete = STEP_FIELDS[2].every(field => formData[field]);
-  const isStep3DocumentsVerified = idVerified === 'success' && coeVerified === 'success' && gradesVerified === 'success';
+  const hasMerit = meritList.some(m => m.title && m.title.trim());
+  const isStep3DocumentsVerified = idVerified === 'success' && coeVerified === 'success' && gradesVerified === 'success' && (!hasMerit || meritScanVerified === 'success');
   const isStep4Complete = formData.dataCertifyConsent && (drawnSignature || formData.applicantSignatureName) && signatureVerified === 'success';
 
   const [hasInteracted, setHasInteracted] = useState(false);
@@ -7475,6 +7475,11 @@ const StudentInfo = () => {
     }
 
     if (currentStep === 3) {
+      const hasMerit = meritList.some(m => m.title && m.title.trim());
+      if (hasMerit && meritScanVerified !== 'success') {
+        showPromptMessage('Please verify your Academic Merit certificate before proceeding to the next step.');
+        return;
+      }
       if (!schoolIdPhotos.front || !schoolIdPhotos.back) {
         showPromptMessage('Please upload both Front and Back of your ID.');
         return;
@@ -9839,10 +9844,10 @@ const StudentInfo = () => {
                   gap: '0.85rem'
                 }}>
                   {[
-                    '1. Upload front and back ID photos.',
-                    '2. Record a clear front and back ID video.',
-                    '3. Run the ID scan to unlock COE and Grades.',
-                    '4. Re-scan if name, ID number, year, or location changes.'
+                    '1. Verify Academic Merit (or leave selection empty if none).',
+                    '2. Upload front and back ID photos & video.',
+                    '3. Run ID scan to unlock Certificate of Enrollment.',
+                    '4. Verify COE to unlock Academic Grades submission.'
                   ].map((item) => (
                     <div key={item} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                       <i className="fas fa-circle-check" style={{ color: 'var(--primary)', marginTop: '3px' }}></i>
@@ -9853,6 +9858,36 @@ const StudentInfo = () => {
 
                 {/* Step 3 ID Verification Card */}
                 {(() => {
+                  const hasMeritInput = meritList.some(m => m.title && m.title.trim());
+                  const isMeritVerified = meritScanVerified === 'success';
+                  const isIdUnlocked = !hasMeritInput || isMeritVerified;
+
+                  if (!isIdUnlocked) {
+                    return (
+                      <div style={{
+                        marginTop: '1.5rem',
+                        padding: '2.5rem 1.5rem',
+                        background: '#f8fafc',
+                        borderRadius: '28px',
+                        border: '1.5px dashed #e2e8f0',
+                        textAlign: 'center',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '12px',
+                        animation: 'fadeIn 0.5s ease'
+                      }}>
+                        <div style={{ width: '64px', height: '64px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0,0,0,0.04)', marginBottom: '4px' }}>
+                          <i className="fas fa-id-card" style={{ color: '#94a3b8', fontSize: '1.4rem' }}></i>
+                        </div>
+                        <h4 style={{ fontSize: '1.1rem', color: '#334155', fontWeight: '800', margin: 0 }}>Identity Verification Locked</h4>
+                        <p style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '340px', margin: 0, lineHeight: '1.5' }}>
+                          Please complete the <b>Academic Merit / Honor verification</b> above first. If you have no academic honors, leave the merit selection empty to unlock ID verification.
+                        </p>
+                      </div>
+                    );
+                  }
+
                   const idType = scholarshipDetails?.idType || scholarshipDetails?.id_type || 'School ID';
                   const isNationalId = idType === 'National ID';
                   return (
@@ -10363,27 +10398,29 @@ const StudentInfo = () => {
                     )}
                   </div>
                 ) : (
-                  <div style={{
-                    marginTop: '1.5rem',
-                    padding: '2.5rem 1.5rem',
-                    background: '#f8fafc',
-                    borderRadius: '28px',
-                    border: '1.5px dashed #e2e8f0',
-                    textAlign: 'center',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '12px',
-                    animation: 'fadeIn 0.5s ease'
-                  }}>
-                    <div style={{ width: '64px', height: '64px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0,0,0,0.04)', marginBottom: '4px' }}>
-                      <i className="fas fa-file-shield" style={{ color: '#94a3b8', fontSize: '1.4rem' }}></i>
+                  (!meritList.some(m => m.title && m.title.trim()) || meritScanVerified === 'success') ? (
+                    <div style={{
+                      marginTop: '1.5rem',
+                      padding: '2.5rem 1.5rem',
+                      background: '#f8fafc',
+                      borderRadius: '28px',
+                      border: '1.5px dashed #e2e8f0',
+                      textAlign: 'center',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '12px',
+                      animation: 'fadeIn 0.5s ease'
+                    }}>
+                      <div style={{ width: '64px', height: '64px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(0,0,0,0.04)', marginBottom: '4px' }}>
+                        <i className="fas fa-file-shield" style={{ color: '#94a3b8', fontSize: '1.4rem' }}></i>
+                      </div>
+                      <h4 style={{ fontSize: '1.1rem', color: '#334155', fontWeight: '800', margin: 0 }}>Document Uploads Locked</h4>
+                      <p style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '320px', margin: 0, lineHeight: '1.5' }}>
+                        Please complete the <b>Updated School ID verification</b> above first. Once verified, the COE and Academic Grades sections will automatically appear.
+                      </p>
                     </div>
-                    <h4 style={{ fontSize: '1.1rem', color: '#334155', fontWeight: '800', margin: 0 }}>Document Uploads Locked</h4>
-                    <p style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '320px', margin: 0, lineHeight: '1.5' }}>
-                      Please complete the <b>Updated School ID verification</b> above first. Once verified, the COE and Academic Grades sections will automatically appear.
-                    </p>
-                  </div>
+                  ) : null
                 )}
 
                 <div className="step-nav-row" style={{ marginTop: '2rem', display: 'flex', justifyContent: 'space-between' }}>
