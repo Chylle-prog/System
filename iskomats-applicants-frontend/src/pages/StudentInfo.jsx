@@ -6613,7 +6613,7 @@ const StudentInfo = () => {
           if (savedDraft.verificationStates.signatureVerified) setSignatureVerified(savedDraft.verificationStates.signatureVerified);
         }
         if (savedDraft?.meritList && Array.isArray(savedDraft.meritList) && savedDraft.meritList.length > 0) {
-          setMeritList(savedDraft.meritList);
+          setMeritList(savedDraft.meritList.slice(0, 1));
         } else {
           setMeritList([{ id: 1, title: '', photo: null, verified: null, status: '', scoreDetails: null }]);
         }
@@ -6792,7 +6792,7 @@ const StudentInfo = () => {
           if (vs.gradesResults && vs.gradesResults.length > 0) setGradesResults(vs.gradesResults);
           if (vs.idResults && vs.idResults.length > 0) setIdResults(vs.idResults);
           if (savedDraft.meritList && Array.isArray(savedDraft.meritList) && savedDraft.meritList.length > 0) {
-            setMeritList(savedDraft.meritList);
+            setMeritList(savedDraft.meritList.slice(0, 1));
           }
           if (vs.meritScanVerified !== undefined && vs.meritScanVerified !== null) {
             setMeritScanVerified(vs.meritScanVerified);
@@ -9537,7 +9537,7 @@ const StudentInfo = () => {
                   </div>
                 </div>
 
-                {/* Dynamic Multi-Merit Section (Up to 3 Merits with Conditional Document Upload) */}
+                {/* Academic Merit Section (Single Merit with Conditional Document Upload) */}
                 <div className="form-group" style={{ marginBottom: '1.8rem', width: '100%' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                     <label style={{ fontSize: '0.95rem', fontWeight: '800', color: '#1e293b', margin: 0 }}>
@@ -9548,11 +9548,11 @@ const StudentInfo = () => {
                     </span>
                   </div>
                   <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 12px 0', lineHeight: '1.4' }}>
-                    Leave empty if none. If you have academic honors (e.g. Summa/Magna/Cum Laude, Valedictorian, Salutatorian, 1st/2nd/3rd Honor, Dean's List) or academic competition awards, enter them below and attach supporting certificates.
+                    Leave empty if none. If you have an academic honor (e.g. Summa/Magna/Cum Laude, Valedictorian, Salutatorian, 1st/2nd/3rd Honor, Dean's List), select it below and attach its supporting certificate.
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    {meritList.map((merit, index) => {
+                    {meritList.slice(0, 1).map((merit, index) => {
                       const hasTitle = Boolean(merit.title && merit.title.trim());
                       const hasPhoto = Boolean(merit.photo);
 
@@ -9570,44 +9570,8 @@ const StudentInfo = () => {
                         >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                             <span style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                              Merit / Award #{index + 1}
+                              Academic Merit / Honor Certificate
                             </span>
-                            {index > 0 && (
-                              <button
-                                type="button"
-                                disabled={isAnyScanning || isSavingStep}
-                                onClick={() => {
-                                  if (isAnyScanning || isSavingStep) return;
-                                  setMeritList(prev => {
-                                    const next = prev.filter((_, i) => i !== index);
-                                    const joined = next.map(m => m.title).filter(Boolean).join(', ');
-                                    setFormData(fd => ({ ...fd, meritsAwardsReceived: joined }));
-                                    return next;
-                                  });
-                                  setMeritScanVerified(null);
-                                  setMeritScanStatus('');
-                                }}
-                                style={{
-                                  background: isAnyScanning ? '#f1f5f9' : '#fee2e2',
-                                  color: isAnyScanning ? '#94a3b8' : '#dc2626',
-                                  border: 'none',
-                                  borderRadius: '50%',
-                                  width: '24px',
-                                  height: '24px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  cursor: isAnyScanning ? 'not-allowed' : 'pointer',
-                                  fontSize: '0.75rem',
-                                  fontWeight: '800',
-                                  transition: 'all 0.2s ease',
-                                  opacity: isAnyScanning ? 0.6 : 1
-                                }}
-                                title="Remove this merit"
-                              >
-                                ✕
-                              </button>
-                            )}
                           </div>
 
                           <select
@@ -9619,8 +9583,7 @@ const StudentInfo = () => {
                               setMeritList(prev => {
                                 const next = [...prev];
                                 next[index] = { ...next[index], title: val };
-                                const joined = next.map(m => m.title).filter(Boolean).join(', ');
-                                setFormData(fd => ({ ...fd, meritsAwardsReceived: joined }));
+                                setFormData(fd => ({ ...fd, meritsAwardsReceived: val }));
                                 return next;
                               });
                               if (meritScanVerified) {
@@ -9774,7 +9737,7 @@ const StudentInfo = () => {
                                 >
                                   <img 
                                     src={merit.photo} 
-                                    alt={`Merit ${index + 1} Certificate`} 
+                                    alt="Merit Certificate" 
                                     style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#1e293b' }} 
                                     onError={(e) => { e.currentTarget.style.display = 'none'; }}
                                   />
@@ -9789,40 +9752,6 @@ const StudentInfo = () => {
                         </div>
                       );
                     })}
-
-                    {/* "Add Another Merit" Button: Shown after last document input if count < 3 and current merit has text */}
-                    {meritList.length < 3 && meritList[meritList.length - 1].title && meritList[meritList.length - 1].title.trim() && (
-                      <button
-                        type="button"
-                        disabled={isAnyScanning || isSavingStep}
-                        onClick={() => {
-                          if (isAnyScanning || isSavingStep) return;
-                          setMeritList(prev => [
-                            ...prev,
-                            { id: Date.now(), title: '', photo: null, verified: null, status: '', scoreDetails: null }
-                          ]);
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '8px',
-                          padding: '0.75rem 1rem',
-                          borderRadius: '12px',
-                          border: '1px dashed var(--primary)',
-                          background: isAnyScanning ? '#f1f5f9' : 'var(--accent-soft)',
-                          color: isAnyScanning ? '#94a3b8' : 'var(--primary)',
-                          fontSize: '0.82rem',
-                          fontWeight: '800',
-                          cursor: isAnyScanning ? 'not-allowed' : 'pointer',
-                          transition: 'all 0.2s ease',
-                          marginTop: '4px',
-                          opacity: isAnyScanning ? 0.6 : 1
-                        }}
-                      >
-                        <i className="fas fa-plus-circle"></i> Add Another Merit (Up to 3)
-                      </button>
-                    )}
 
                     {/* MERIT SCAN BUTTON & STATUS: Placed after the last merit document input if any document is uploaded */}
                     {meritList.some(m => m.title && m.title.trim() && m.photo) && (

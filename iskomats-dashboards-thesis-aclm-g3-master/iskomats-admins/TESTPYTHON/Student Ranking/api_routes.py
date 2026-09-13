@@ -3767,31 +3767,31 @@ def analyze_merits_onthefly(merits_text):
 
     import re
     if re.search(r'\bsumma\s+cum\s+laude\b|\bsumma\b', text_clean):
-        base_score = 20
+        base_score = 30
         base_reason = "Highest academic distinction: Summa Cum Laude."
     elif re.search(r'\bmagna\s+cum\s+laude\b|\bmagna\b', text_clean):
-        base_score = 18
+        base_score = 27
         base_reason = "High academic distinction: Magna Cum Laude."
     elif re.search(r'\b(1st|first)\s+honor\b|\bwith\s+highest\s+honors?\b', text_clean):
-        base_score = 16
+        base_score = 24
         base_reason = "Top class academic honor: 1st Honor / First Honor."
     elif re.search(r'\bcum\s+laude\b', text_clean) and not re.search(r'\b(magna|summa)\b', text_clean):
-        base_score = 15
+        base_score = 22
         base_reason = "Academic distinction: Cum Laude."
     elif re.search(r'\b(2nd|second)\s+honor\b|\bwith\s+high\s+honors?\b', text_clean):
-        base_score = 12
+        base_score = 18
         base_reason = "Second class academic honor: 2nd Honor / Second Honor."
     elif re.search(r'\b(3rd|third)\s+honor\b|\bwith\s+honors?\b', text_clean):
-        base_score = 8
+        base_score = 12
         base_reason = "Third class academic honor: 3rd Honor / Third Honor."
     elif any(k in text_clean for k in ['valedictorian', 'national math olympiad', 'national science olympiad', 'international olympiad', 'rank 1 overall']):
-        base_score, base_reason = 20, "Highest academic distinction: Valedictorian / National Olympiad Champion."
+        base_score, base_reason = 30, "Highest academic distinction: Valedictorian / National Olympiad Champion."
     elif any(k in text_clean for k in ['salutatorian', 'regional olympiad champion', 'top 3 national']):
-        base_score, base_reason = 18, "Top regional/national academic distinction: Salutatorian / Regional Champion."
+        base_score, base_reason = 27, "Top regional/national academic distinction: Salutatorian / Regional Champion."
     elif any(k in text_clean for k in ["dean's list", 'deans list', 'dean', 'academic lister', 'quiz bee', 'science fair', 'math contest']):
-        base_score, base_reason = 8, "School-level academic honor: Dean's List / Academic Contest."
+        base_score, base_reason = 12, "School-level academic honor: Dean's List / Academic Contest."
     elif any(k in text_clean for k in ['academic', 'honor', 'award', 'certificate']):
-        base_score, base_reason = 5, "General academic recognition / certificate."
+        base_score, base_reason = 8, "General academic recognition / certificate."
 
     api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
     if api_key:
@@ -3910,11 +3910,11 @@ Input Text: \"\"\"{merits_text}\"\"\"
 
 Return ONLY a valid JSON object. No markdown, no extra text.
 {{
-  "score": <total 0-20>,
+  "score": <total 0-30>,
   "breakdown": {{
-    "core_achievement": <0-5>,
+    "core_achievement": <0-10>,
     "adversity": <0-5>,
-    "sustained_excellence": <0-5>,
+    "sustained_excellence": <0-10>,
     "initiative_rigor": <0-5>
   }},
   "reason": "<2-sentence qualitative review explaining the allocation>"
@@ -3939,7 +3939,7 @@ Return ONLY a valid JSON object. No markdown, no extra text.
                     score = sum(int(v) for v in parsed['breakdown'].values() if isinstance(v, (int, float)))
                 else:
                     score = 0
-                score = max(0, min(20, score))
+                score = max(0, min(30, score))
                 reason = str(parsed.get('reason', 'Evaluated by AI based on holistic merit profile.'))
                 # Cache the AI result so we don't re-call for the same text
                 ai_result = (score, reason)

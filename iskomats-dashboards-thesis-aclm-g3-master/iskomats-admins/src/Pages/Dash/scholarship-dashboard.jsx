@@ -2920,7 +2920,6 @@ export default function ScholarshipDashboard({
     if (!a) return { total: 0, gpaScore: 0, incomeScore: 0, meritScore: 0, reason: '' };
 
     const applicantRawGpa = a.grade ?? a.overall_gpa ?? a.gpa ?? 0;
-    const applicantIncome = Number(a.income ?? a.financial_income_of_parents ?? a.family?.grossIncome ?? 0);
 
     const normalizedGpa = convertGpaToPercentage(applicantRawGpa, a.school || a.schoolName) ?? Number(applicantRawGpa || 0);
 
@@ -2929,20 +2928,18 @@ export default function ScholarshipDashboard({
     if (minGpa > 0) {
       const normalizedMinGpa = minGpa;
       if (normalizedGpa >= normalizedMinGpa) {
-        gpaScore = Math.min(60, (normalizedGpa - normalizedMinGpa) * 12);
+        const span = Math.max(1, 100 - normalizedMinGpa);
+        gpaScore = Math.min(70, Math.max(0, ((normalizedGpa - normalizedMinGpa) / span) * 70));
       }
     } else {
-      gpaScore = Math.min(60, Math.max(0, (normalizedGpa - 75) * 2.4));
+      gpaScore = Math.min(70, Math.max(0, ((normalizedGpa - 75) / 25) * 70));
     }
 
-    let incomeScore = 0;
-    const maxInc = sch ? Number(sch.parentFinance ?? sch.parent_finance ?? sch.maxIncome ?? 400000) : 400000;
-    if (applicantIncome <= maxInc) {
-      incomeScore = Math.min(50, Math.floor((maxInc - applicantIncome) / 15000));
-    }
+    // Income points completely removed (0 pts)
+    const incomeScore = 0;
 
-    const meritScore = Number(a.meritScore ?? 0);
-    const total = Math.max(0, gpaScore + incomeScore + meritScore);
+    const meritScore = Math.min(30, Math.max(0, Number(a.meritScore ?? 0)));
+    const total = Math.min(100, Math.max(0, gpaScore + meritScore));
 
     return {
       total,
@@ -2959,7 +2956,7 @@ export default function ScholarshipDashboard({
 
   const renderPointsCell = (a) => {
     const details = calculateDeservednessScoreDetails(a, getScholarshipForApplicant(a));
-    const tooltipText = `Score Breakdown:\n GPA Score: ${details.gpaScore.toFixed(1)} pts\n  Financial Need: ${details.incomeScore.toFixed(1)} pts\n  Merits/Awards (AI): ${details.meritScore.toFixed(1)} pts\n\nAI Reason:\n${details.reason}`;
+    const tooltipText = `Score Breakdown:\n  GPA Score: ${details.gpaScore.toFixed(1)} / 70 pts\n  Merits/Awards (AI): ${details.meritScore.toFixed(1)} / 30 pts\n  Total: ${details.total.toFixed(1)} / 100 pts\n\nAI Reason:\n${details.reason}`;
 
     return (
       <td className="px-4 py-3 font-semibold text-gray-700">
@@ -2994,13 +2991,13 @@ export default function ScholarshipDashboard({
       return Number(a.meritScore);
     }
     const label = getApplicantMeritDisplay(a);
-    if (label === 'Summa Cum Laude') return 20;
-    if (label === 'Magna Cum Laude') return 18;
-    if (label.includes('1st Honor') || label.includes('Highest Honors')) return 18;
-    if (label === 'Cum Laude') return 15;
-    if (label.includes('2nd Honor') || label.includes('High Honors')) return 15;
+    if (label === 'Summa Cum Laude') return 30;
+    if (label === 'Magna Cum Laude') return 27;
+    if (label.includes('1st Honor') || label.includes('Highest Honors')) return 24;
+    if (label === 'Cum Laude') return 22;
+    if (label.includes('2nd Honor') || label.includes('High Honors')) return 18;
     if (label.includes('3rd Honor') || label.includes('With Honors')) return 12;
-    if (label !== 'None') return 5;
+    if (label !== 'None') return 8;
     return 0;
   };
 
@@ -3449,7 +3446,7 @@ export default function ScholarshipDashboard({
 
   const handleSendSchoolVerification = async (applicant) => {
     const applicantId = applicant?.applicant_no || applicant?.id;
-    const scholarshipNo = applicant?.scholarshipNo;
+    const scholarshipNo = applicant?.scholarshipNo || applicant?.scholarship_no || applicant?.reqNo || applicant?.req_no;
     const dispatchKey = getApplicantDispatchKey(applicant);
     const docTypes = getApplicantDocTypes(applicant);
 
@@ -3464,12 +3461,42 @@ export default function ScholarshipDashboard({
       ? 'dlsl.edu.ph@gmail.com'
       : 'Institutional Verification Office';
 
+    const dispatchDocuments = ['Enrollment Certificate', 'Official Grades Report', docTypes.idLabel];
+
+    // Strictly filter merit proofs and merit files to THIS specific application snapshot / scholarship
+    const targetScholarshipNo = String(scholarshipNo);
+    const targetAppDocNo = (applicant?.app_doc_no || applicant?.appDocNo) ? String(applicant.app_doc_no || applicant.appDocNo) : null;
+
+    const appMeritProofs = (applicant?.merit_proofs || []).filter(mp => {
+      if (targetAppDocNo && mp?.app_doc_no) return String(mp.app_doc_no) === targetAppDocNo;
+      if (targetScholarshipNo && mp?.scholarship_no) return String(mp.scholarship_no) === targetScholarshipNo;
+      return !mp?.app_doc_no && !mp?.scholarship_no;
+    });
+
+    const appMeritFiles = (applicant?.meritFiles || []).filter(mf => {
+      if (targetAppDocNo && mf?.app_doc_no) return String(mf.app_doc_no) === targetAppDocNo;
+      if (targetScholarshipNo && mf?.scholarship_no) return String(mf.scholarship_no) === targetScholarshipNo;
+      return true;
+    });
+
+    const hasMeritDoc = appMeritProofs.some(mp => Boolean(mp?.merit_document)) ||
+      (appMeritFiles.length > 0 && appMeritFiles.some(mf => Boolean(mf?.src))) ||
+      Boolean(applicant?.merit_document || applicant?.merit_doc);
+
+    const explicitMerits = String(applicant?.meritsAwardsReceived || applicant?.merits_awards_received || applicant?.merits || applicant?.merit_title || '').trim();
+    const hasExplicitMerit = Boolean(explicitMerits && !/^(n\/?a|none|no|wala|nil|-+|no merits or awards provided)$/i.test(explicitMerits));
+    const hasEvaluatedMerit = Number(applicant?.meritScore ?? 0) > 0;
+
+    if (hasMeritDoc && (hasExplicitMerit || hasEvaluatedMerit || appMeritProofs.length > 0)) {
+      dispatchDocuments.push('Merit Document(s)');
+    }
+
     setPendingAction({
       type: 'verification',
       title: 'Dispatch School Verification',
       recipient: recipient,
       messageSummary: `Official request to verify student records for ${applicant.name || 'this applicant'}.`,
-      documents: ['Enrollment Certificate', 'Official Grades Report', docTypes.idLabel, 'Merit Document(s)'],
+      documents: dispatchDocuments,
       onConfirm: async () => {
         showActionOverlay('Sending school verification', 'Preparing the applicant documents and emailing the school verification address.');
         try {
@@ -7040,7 +7067,7 @@ export default function ScholarshipDashboard({
                     </span>
                   </div>
                   <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-bold border border-amber-300 shadow-xs">
-                    <FaStar className="text-amber-500 text-[10px]" /> {aiMeritScore} / 20 pts
+                    <FaStar className="text-amber-500 text-[10px]" /> {aiMeritScore} / 30 pts
                   </span>
                 </div>
                 <p className="text-xs sm:text-sm text-amber-950 font-medium leading-relaxed pl-5 sm:pl-6">
@@ -7898,7 +7925,7 @@ export default function ScholarshipDashboard({
                             )}
                           </td>
                           {/* Total Score like image 3 */}
-                          <td className="px-4 py-3.5 font-black text-gray-800 font-mono text-sm whitespace-nowrap" title={`Score Breakdown:\n  GPA Score: ${details.gpaScore.toFixed(1)} pts\n  Financial Need: ${details.incomeScore.toFixed(1)} pts\n  Merits: ${details.meritScore.toFixed(1)} pts`}>
+                          <td className="px-4 py-3.5 font-black text-gray-800 font-mono text-sm whitespace-nowrap" title={`Score Breakdown:\n  GPA Score: ${details.gpaScore.toFixed(1)} / 70 pts\n  Merits: ${details.meritScore.toFixed(1)} / 30 pts\n  Total: ${details.total.toFixed(1)} / 100 pts`}>
                             <span className="text-gray-900 font-bold">{details.total.toFixed(1)} pts</span>
                           </td>
                           {/* Actions: Pill buttons matching image */}

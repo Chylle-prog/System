@@ -976,7 +976,8 @@ def load_applicant_verification_context(cursor, applicant_no, scholarship_no):
                esc.req_no AS scholarship_no,
                esc.scholarship_name,
                esc.pro_no,
-               p.provider_name
+               p.provider_name,
+               ast.app_doc_no
         FROM applicants a
         INNER JOIN applicant_status ast ON a.applicant_no = ast.applicant_no
         INNER JOIN scholarships esc ON ast.scholarship_no = esc.req_no
@@ -1056,6 +1057,7 @@ def send_school_verification_dispatch(current_user_id, pro_no, role, applicant_n
                 }), 400
 
             applicant_name = build_applicant_full_name(applicant_row) or f"Applicant #{applicant_no}"
+            app_doc_no = applicant_row.get('app_doc_no') if isinstance(applicant_row, dict) else (dict(applicant_row).get('app_doc_no') if hasattr(applicant_row, 'keys') else None)
         
             # Clean up initial connection
 
@@ -1064,11 +1066,12 @@ def send_school_verification_dispatch(current_user_id, pro_no, role, applicant_n
                     with get_db() as bg_conn:
                         bg_cursor = bg_conn.cursor()
                     
-                        print(f"[BG_DISPATCH] Fetching documents for school verification: Applicant #{applicant_no}", flush=True)
+                        print(f"[BG_DISPATCH] Fetching documents for school verification: Applicant #{applicant_no}, Scholarship #{scholarship_no}, AppDoc #{app_doc_no}", flush=True)
                         document_values = fetch_applicant_document_values(
                             bg_cursor,
                             applicant_no,
-                            ['enrollment_certificate_doc', 'grades_doc', 'id_img_front', 'id_img_back']
+                            ['enrollment_certificate_doc', 'grades_doc', 'id_img_front', 'id_img_back'],
+                            app_doc_no=app_doc_no
                         )
 
                         front_id = document_values.get('id_img_front')
@@ -1083,11 +1086,16 @@ def send_school_verification_dispatch(current_user_id, pro_no, role, applicant_n
                             ('school_id_back', back_id),
                         ]
 
-                        # Fetch and attach Merit Document(s) for the applicant
+                        # Fetch and attach Merit Document(s) specifically for this application snapshot
                         merit_proofs = []
                         try:
                             from services.merit_proof_service import fetch_merit_proofs_for_applicant
-                            merit_proofs = fetch_merit_proofs_for_applicant(bg_cursor, applicant_no)
+                            merit_proofs = fetch_merit_proofs_for_applicant(
+                                bg_cursor,
+                                applicant_no,
+                                scholarship_no=scholarship_no,
+                                app_doc_no=app_doc_no
+                            )
                         except Exception as m_err:
                             print(f"[BG_DISPATCH] Error fetching merit proofs: {m_err}", flush=True)
 
@@ -3898,13 +3906,13 @@ _MERIT_EVAL_CACHE_MAX = 500
 def analyze_merits_onthefly(merits_text):
     """
     Parses merits_text using Gemini API if GEMINI_API_KEY is present in env,
-    otherwise falls back to a calibrated rule-based scoring system for the 6 primary academic honors:
-    1. Summa Cum Laude (20 pts)
-    2. Magna Cum Laude (18 pts)
-    3. 1st Honor / First Honor (16 pts)
-    4. Cum Laude (15 pts)
-    5. 2nd Honor / Second Honor (12 pts)
-    6. 3rd Honor / Third Honor (8 pts)
+    otherwise falls back to a calibrated rule-based scoring system for the 6 primary academic honors (0 to 30 points max):
+    1. Summa Cum Laude (30 pts)
+    2. Magna Cum Laude (27 pts)
+    3. 1st Honor / First Honor / With Highest Honors (24 pts)
+    4. Cum Laude (22 pts)
+    5. 2nd Honor / Second Honor / With High Honors (18 pts)
+    6. 3rd Honor / Third Honor / With Honors (12 pts)
     """
     import os
     import json
@@ -3926,55 +3934,55 @@ def analyze_merits_onthefly(merits_text):
     base_reason = "No recognized academic honors or awards."
 
     if re.search(r'\bsumma\s+cum\s+laude\b|\bsumma\b', text_clean):
-        base_score = 20
+        base_score = 30
         base_reason = "Highest academic distinction: Summa Cum Laude."
     elif re.search(r'\bmagna\s+cum\s+laude\b|\bmagna\b', text_clean):
-        base_score = 18
+        base_score = 27
         base_reason = "High academic distinction: Magna Cum Laude."
     elif re.search(r'\b(1st|first)\s+honor\b|\bwith\s+highest\s+honors?\b', text_clean):
-        base_score = 16
+        base_score = 24
         base_reason = "Top class academic honor: 1st Honor / First Honor."
     elif re.search(r'\bcum\s+laude\b', text_clean) and not re.search(r'\b(magna|summa)\b', text_clean):
-        base_score = 15
+        base_score = 22
         base_reason = "Academic distinction: Cum Laude."
     elif re.search(r'\b(2nd|second)\s+honor\b|\bwith\s+high\s+honors?\b', text_clean):
-        base_score = 12
+        base_score = 18
         base_reason = "Second class academic honor: 2nd Honor / Second Honor."
     elif re.search(r'\b(3rd|third)\s+honor\b|\bwith\s+honors?\b', text_clean):
-        base_score = 8
+        base_score = 12
         base_reason = "Third class academic honor: 3rd Honor / Third Honor."
     elif any(k in text_clean for k in ['valedictorian', 'national math olympiad', 'national science olympiad', 'international olympiad', 'rank 1 overall']):
-        base_score, base_reason = 20, "Highest academic distinction: Valedictorian / National Olympiad Champion."
+        base_score, base_reason = 30, "Highest academic distinction: Valedictorian / National Olympiad Champion."
     elif any(k in text_clean for k in ['salutatorian', 'regional olympiad champion', 'top 3 national']):
-        base_score, base_reason = 18, "Top regional/national academic distinction: Salutatorian / Regional Champion."
+        base_score, base_reason = 27, "Top regional/national academic distinction: Salutatorian / Regional Champion."
     elif any(k in text_clean for k in ["dean's list", 'deans list', 'dean', 'academic lister', 'quiz bee', 'science fair', 'math contest']):
-        base_score, base_reason = 8, "School-level academic honor: Dean's List / Academic Contest."
+        base_score, base_reason = 12, "School-level academic honor: Dean's List / Academic Contest."
     elif any(k in text_clean for k in ['academic', 'honor', 'award', 'certificate']):
-        base_score, base_reason = 5, "General academic recognition / certificate."
+        base_score, base_reason = 8, "General academic recognition / certificate."
 
     # --- 2. AI Merit Scoring via Gemini API ---
     api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
     if api_key:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
-            prompt = f"""You are a Senior Academic Scholarship Reviewer evaluating an applicant's academic honors and merits on a 0 to 20 point scale.
+            prompt = f"""You are a Senior Academic Scholarship Reviewer evaluating an applicant's academic honors and merits on a 0 to 30 point scale.
 
 MANDATORY BENCHMARKS FOR THE 6 PRIMARY ACADEMIC HONORS:
-1. Summa Cum Laude: 20 points (Reason: Highest academic distinction: Summa Cum Laude)
-2. Magna Cum Laude: 18 points (Reason: High academic distinction: Magna Cum Laude)
-3. 1st Honor / First Honor: 16 points (Reason: Top class academic honor: 1st Honor / First Honor)
-4. Cum Laude: 15 points (Reason: Academic distinction: Cum Laude)
-5. 2nd Honor / Second Honor: 12 points (Reason: Second class academic honor: 2nd Honor / Second Honor)
-6. 3rd Honor / Third Honor: 8 points (Reason: Third class academic honor: 3rd Honor / Third Honor)
+1. Summa Cum Laude: 30 points (Reason: Highest academic distinction: Summa Cum Laude)
+2. Magna Cum Laude: 27 points (Reason: High academic distinction: Magna Cum Laude)
+3. 1st Honor / First Honor / With Highest Honors: 24 points (Reason: Top class academic honor: 1st Honor / First Honor)
+4. Cum Laude: 22 points (Reason: Academic distinction: Cum Laude)
+5. 2nd Honor / Second Honor / With High Honors: 18 points (Reason: Second class academic honor: 2nd Honor / Second Honor)
+6. 3rd Honor / Third Honor / With Honors: 12 points (Reason: Third class academic honor: 3rd Honor / Third Honor)
 
-If the applicant presents any of these 6 honors, evaluate them based on these calibrated benchmarks. If additional academic achievements, sustained performance, or adversity are present, you may adjust the total score within the 0 to 20 point range.
+If the applicant presents any of these 6 honors, evaluate them based on these calibrated benchmarks. If additional academic achievements, sustained performance, or adversity are present, you may adjust the total score within the 0 to 30 point range.
 
 APPLICANT MERIT INPUT:
 \"\"\"{merits_text}\"\"\"
 
 Return ONLY a valid JSON object in this format:
 {{
-  "score": <total points from 0 to 20>,
+  "score": <total points from 0 to 30>,
   "reason": "<clear explanation for the assigned score>"
 }}"""
 
@@ -3993,7 +4001,7 @@ Return ONLY a valid JSON object in this format:
                 parsed = json.loads(text.strip())
                 if 'score' in parsed:
                     score = int(parsed['score'])
-                    score = max(0, min(20, score))
+                    score = max(0, min(30, score))
                     reason = str(parsed.get('reason', base_reason))
                     ai_result = (score, reason)
                     if len(_MERIT_EVAL_CACHE) >= _MERIT_EVAL_CACHE_MAX:
