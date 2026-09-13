@@ -911,7 +911,9 @@ def load_applicant_verification_context(cursor, applicant_no, scholarship_no):
                esc.req_no AS scholarship_no,
                esc.scholarship_name,
                esc.pro_no,
-               p.provider_name
+               esc.residency_doc_type,
+               p.provider_name,
+               ast.app_doc_no
         FROM applicants a
         INNER JOIN applicant_status ast ON a.applicant_no = ast.applicant_no
         INNER JOIN scholarships esc ON ast.scholarship_no = esc.req_no
@@ -1175,27 +1177,35 @@ def send_indigency_verification_dispatch(current_user_id, pro_no, role, applican
         if role != 'Admin' and applicant_row['pro_no'] != pro_no:
             return jsonify({'success': False, 'message': 'Unauthorized'}), 403
 
-        document_values = fetch_applicant_document_values(cursor, applicant_no, ['indigency_doc'])
+        app_doc_no = applicant_row.get('app_doc_no') if isinstance(applicant_row, dict) else (dict(applicant_row).get('app_doc_no') if hasattr(applicant_row, 'keys') else None)
+
+        document_values = fetch_applicant_document_values(cursor, applicant_no, ['indigency_doc'], app_doc_no=app_doc_no)
         indigency_doc = document_values.get('indigency_doc')
         if not indigency_doc:
-            return jsonify({'success': False, 'message': 'Missing required document: Indigency Proof'}), 400
+            return jsonify({'success': False, 'message': 'Missing required document: Indigency/Residency Proof'}), 400
 
         applicant_name = build_applicant_full_name(applicant_row) or f"Applicant #{applicant_no}"
+        res_doc_type = (applicant_row.get('residency_doc_type') or 'Indigency Document') if isinstance(applicant_row, dict) else (dict(applicant_row).get('residency_doc_type', 'Indigency Document') if hasattr(applicant_row, 'keys') else 'Indigency Document')
+        is_residency = 'residency' in str(res_doc_type).lower()
+        doc_label = 'Residency Proof' if is_residency else 'Indigency Proof'
+        doc_title = 'Certificate of Residency' if is_residency else 'Certificate of Indigency'
+        doc_type_name = 'residency' if is_residency else 'indigency'
+
         indigency_bytes = coerce_binary_bytes(indigency_doc)
         indigency_mime = get_mime_type(indigency_bytes)
         indigency_extension = guess_extension_for_mime(indigency_mime)
         attachments = [
             create_email_attachment(
-                f"{applicant_name.replace(' ', '_').lower()}_indigency_proof.{indigency_extension}",
+                f"{applicant_name.replace(' ', '_').lower()}_{doc_type_name}_proof.{indigency_extension}",
                 indigency_bytes,
                 indigency_mime,
             )
         ]
 
-        subject = f"Indigency Verification Request - {applicant_name}"
+        subject = f"{'Residency' if is_residency else 'Indigency'} Verification Request - {applicant_name}"
         body = f"""Hello,
 
-Please help verify the attached indigency document for {applicant_name}.
+Please help verify the attached {doc_title.lower()} document for {applicant_name}.
 
 Scholarship: {applicant_row.get('scholarship_name') or 'N/A'}
 Provider: {applicant_row.get('provider_name') or 'N/A'}
@@ -1203,7 +1213,7 @@ Applicant ID: {applicant_row.get('applicant_no')}
 School: {applicant_row.get('school') or 'N/A'}
 
 Attached document:
-- Indigency proof image
+- {doc_label} image
 
 Please review the attachment and respond to this email with your verification findings.
 
@@ -1223,7 +1233,7 @@ ISKOMATS Admin
         
         return jsonify({
             'success': True,
-            'message': f'Indigency verification dispatch initiated to {INDIGENCY_VERIFICATION_EMAIL}. The email is being sent in the background.',
+            'message': f"{'Residency' if is_residency else 'Indigency'} verification dispatch initiated to {INDIGENCY_VERIFICATION_EMAIL}. The email is being sent in the background.",
             'email': INDIGENCY_VERIFICATION_EMAIL,
         }), 200
     except Exception as e:
