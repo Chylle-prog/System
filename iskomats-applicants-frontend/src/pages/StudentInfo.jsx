@@ -4376,7 +4376,7 @@ const StudentInfo = () => {
   useEffect(() => {
     const checkSiblingRestriction = async () => {
       // Only check if all identifying family fields + scholarship ID are present
-      let reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
+      let reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id') || scholarshipDetails?.req_no || scholarshipDetails?.reqNo || scholarshipDetails?.id;
       const hasFamilyData = formData.lastName && formData.fatherName && formData.motherName;
 
       if (reqNo && hasFamilyData) {
@@ -4391,9 +4391,9 @@ const StudentInfo = () => {
       }
     };
 
-    const timer = setTimeout(checkSiblingRestriction, 2500); // 2.5s debounce to let page mount settle
+    const timer = setTimeout(checkSiblingRestriction, 1500); // Debounce to let page mount settle
     return () => clearTimeout(timer);
-  }, [formData.lastName, formData.fatherName, formData.motherName, searchParams]);
+  }, [formData.lastName, formData.fatherName, formData.motherName, searchParams, scholarshipDetails]);
 
   const scholarshipSearchSnapshot = {
     scholarship: scholarshipName,
@@ -7471,6 +7471,26 @@ const StudentInfo = () => {
       if (formData.motherStatus === 'Living' && formData.motherPhoneNumber && formData.motherPhoneNumber.length !== 11) {
         showPromptMessage("Mother's phone number must be exactly 11 digits (e.g., 09XXXXXXXXX).");
         return;
+      }
+
+      const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id') || scholarshipDetails?.req_no || scholarshipDetails?.reqNo || scholarshipDetails?.id;
+      if (reqNo && formData.lastName && formData.fatherName && formData.motherName) {
+        try {
+          setLoadingMessage({
+            title: 'Verifying Eligibility',
+            message: 'Checking family application status... Please wait.'
+          });
+          setIsSavingStep(true);
+          const res = await applicationAPI.checkSibling(parseInt(reqNo), formData);
+          setIsSavingStep(false);
+          if (res && res.blocked) {
+            showPromptMessage(res.message || 'An applicant with the same last name and parent names has already applied for this scholarship.');
+            return;
+          }
+        } catch (err) {
+          setIsSavingStep(false);
+          console.warn('Sibling verification check error:', err);
+        }
       }
     }
 

@@ -895,6 +895,7 @@ def build_restriction_identity(first_name=None, middle_name=None, last_name=None
 
     return {
         'family_last_name': family_last_name,
+        'last_name': family_last_name,
         'father_name': father_name,
         'mother_name': mother_name,
         'identity_key': '|'.join([family_last_name, father_name, mother_name]),
@@ -965,7 +966,7 @@ def get_matching_applicant_ids_by_identity(cursor, applicant, source_data=None):
     if not identity:
         return [current_applicant_no], False, None
 
-    last_name = identity.get('last_name') or ''
+    last_name = identity.get('family_last_name') or identity.get('last_name') or ''
     if last_name:
         cursor.execute(
             """
@@ -980,9 +981,7 @@ def get_matching_applicant_ids_by_identity(cursor, applicant, source_data=None):
             """
             SELECT applicant_no, first_name, middle_name, last_name, father_name, mother_name
             FROM applicants
-            WHERE applicant_no = %s
-            """,
-            (current_applicant_no,)
+            """
         )
     rows = cursor.fetchall()
 

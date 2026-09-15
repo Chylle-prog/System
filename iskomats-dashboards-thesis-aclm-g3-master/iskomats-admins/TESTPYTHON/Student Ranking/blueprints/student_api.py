@@ -756,6 +756,7 @@ def build_restriction_identity(first_name=None, middle_name=None, last_name=None
 
     return {
         'family_last_name': family_last_name,
+        'last_name': family_last_name,
         'father_name': father_name,
         'mother_name': mother_name,
         'identity_key': '|'.join([family_last_name, father_name, mother_name]),
