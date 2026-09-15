@@ -53,7 +53,10 @@ const ProtectedRoute = ({ children, requiredRole }) => {
   const userRole = localStorage.getItem('userRole');
   const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
 
-  if (!isLoggedIn) {
+  if (!isLoggedIn || !hasValidAdminToken()) {
+    if (isLoggedIn && !hasValidAdminToken()) {
+      clearAdminSession({ markSessionExpired: true });
+    }
     return <Navigate to="/login" replace />;
   }
 

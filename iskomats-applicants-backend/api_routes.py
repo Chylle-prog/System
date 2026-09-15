@@ -285,7 +285,7 @@ def safe_check_password_hash(stored_hash, candidate_password):
 # ===== JWT CONFIG =====
 # Use common secret key logic
 SECRET_KEY = os.environ.get('SECRET_KEY', 'development-key-replace-in-production')
-TOKEN_EXPIRY = 720  # hours (30 days)
+TOKEN_EXPIRY = int(os.environ.get('TOKEN_EXPIRY_HOURS', '24'))  # hours (24 hours default)
 PASSWORD_RESET_EXPIRY_MINUTES = int(os.environ.get('PASSWORD_RESET_EXPIRY_MINUTES', '30'))
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://iskomats-admin.surge.sh').rstrip('/')
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
