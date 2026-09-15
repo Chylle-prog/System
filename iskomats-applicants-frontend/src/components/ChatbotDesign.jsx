@@ -138,7 +138,25 @@ function ChatbotDesign({
   const apiUrl = useMemo(() => (rawApiUrl || '').replace(/system-hxgp\.onrender\.com/, 'iskomats-backend.onrender.com'), [rawApiUrl])
   const [inputValue, setInputValue] = useState('')
   const [userName] = useState(() => localStorage.getItem('iskobots_userName') || defaultUserName)
+
+  const getChatStorageKey = (keyName) => {
+    const user = localStorage.getItem('applicantNo') || localStorage.getItem('currentUser') || 'guest'
+    return `iskobots_${keyName}_${user}`
+  }
+
   const [sessionHistory, setSessionHistory] = useState(() => {
+    try {
+      const userKey = getChatStorageKey('session_history')
+      const saved = localStorage.getItem(userKey) || localStorage.getItem('iskobots_session_history')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse saved chat history:', e)
+    }
     const name = localStorage.getItem('iskobots_userName') || defaultUserName || 'scholar'
     return [{
       id: 1, title: 'Welcome session', preview: `${botName} introduction.`,
@@ -149,7 +167,48 @@ function ChatbotDesign({
       date: 'Today',
     }]
   })
-  const [activeSession, setActiveSession] = useState(1)
+
+  const [activeSession, setActiveSession] = useState(() => {
+    try {
+      const userKey = getChatStorageKey('active_session')
+      const savedActive = localStorage.getItem(userKey) || localStorage.getItem('iskobots_active_session')
+      if (savedActive !== null) {
+        const parsed = JSON.parse(savedActive)
+        return parsed
+      }
+    } catch (e) {
+      // fallback
+    }
+    return 1
+  })
+
+  useEffect(() => {
+    try {
+      const userKey = getChatStorageKey('session_history')
+      localStorage.setItem(userKey, JSON.stringify(sessionHistory))
+    } catch (e) {
+      console.warn('Failed to save chat history to localStorage:', e)
+    }
+  }, [sessionHistory])
+
+  useEffect(() => {
+    try {
+      if (activeSession !== null && activeSession !== undefined) {
+        const userKey = getChatStorageKey('active_session')
+        localStorage.setItem(userKey, JSON.stringify(activeSession))
+      }
+    } catch (e) {
+      console.warn('Failed to save active chat session to localStorage:', e)
+    }
+  }, [activeSession])
+
+  // Ensure activeSession points to a valid session if history changes
+  useEffect(() => {
+    if (sessionHistory.length > 0 && !sessionHistory.some(s => s.id === activeSession)) {
+      setActiveSession(sessionHistory[0].id)
+    }
+  }, [sessionHistory, activeSession])
+
   const [isOpen, setIsOpen] = useState(false)
   const [animateShow, setAnimateShow] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
@@ -215,9 +274,18 @@ function ChatbotDesign({
     setDeleteConfirm(null)
   }
 
+  const cleanBotText = (text) => {
+    if (!text) return ''
+    return text
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/\*/g, '')
+  }
+
   const addMessageToSession = useCallback((text, sender, sessionId) => {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    const msg = { id: Date.now() + Math.random(), sender, text, timestamp: time }
+    const sanitizedText = sender === 'bot' ? cleanBotText(text) : text
+    const msg = { id: Date.now() + Math.random(), sender, text: sanitizedText, timestamp: time }
     setSessionHistory(cur => cur.map(s => {
       if (s.id !== sessionId) return s
       const updated = [...s.messages, msg]
@@ -270,7 +338,7 @@ function ChatbotDesign({
     } catch (err) {
       if (err.name === 'AbortError') {
         const stopped = streamingTextRef.current
-        if (stopped) addMessageToSession(stopped + '\n\n*[Stopped]*', 'bot', sessionId)
+        if (stopped) addMessageToSession(stopped + '\n\n[Stopped]', 'bot', sessionId)
         setStreamingText(''); streamingTextRef.current = ''
       } else {
         const lower = text.toLowerCase()
@@ -308,9 +376,10 @@ function ChatbotDesign({
   const renderedMessages = useMemo(() => {
     const msgs = messages.map(msg => {
       const isUser = msg.sender === 'user'
+      const displayText = isUser ? msg.text : cleanBotText(msg.text)
       return (
         <div key={msg.id} style={{ display:'flex', flexDirection:'column', alignItems: isUser ? 'flex-end' : 'flex-start', gap:'0.125rem' }}>
-          <div style={msgStyle(isUser, primaryColor)}>{msg.text}</div>
+          <div style={msgStyle(isUser, primaryColor)}>{displayText}</div>
           {msg.timestamp && <span style={{ fontSize:'10px', color:'#9ca3af', padding:'0 0.25rem' }}>{msg.timestamp}</span>}
         </div>
       )
@@ -318,7 +387,7 @@ function ChatbotDesign({
     if (streamingText) msgs.push(
       <div key="streaming" style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:'0.125rem' }}>
         <div style={msgStyle(false, primaryColor)}>
-          {streamingText}
+          {cleanBotText(streamingText)}
           <span style={{ display:'inline-block', width:'2px', height:'1rem', backgroundColor:'#9ca3af', marginLeft:'2px', animation:'ib-pulse 2s ease-in-out infinite', verticalAlign:'middle' }} />
         </div>
       </div>

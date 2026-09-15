@@ -49,6 +49,8 @@ class GeminiService:
             "Be concise, clear, and direct. Only answer using the reference material below. "
             "Reply in the same language the user writes in. Never mix languages. "
             "If the material does not cover the question, state politely that you don't have that information. "
+            "IMPORTANT FORMATTING RULE: Do NOT use asterisks (*) or double asterisks (**) anywhere in your response (no bolding, italics, or asterisks for list items). "
+            "Write in clean, readable plain text. Use plain headers and bullet points (• or -) without asterisks. "
             f"\n\nREFERENCE MATERIAL:\n{context}"
         )
 

@@ -3915,13 +3915,13 @@ _MERIT_EVAL_CACHE_MAX = 500
 def analyze_merits_onthefly(merits_text):
     """
     Parses merits_text using Gemini API if GEMINI_API_KEY is present in env,
-    otherwise falls back to a calibrated rule-based scoring system for the 6 primary academic honors (0 to 30 points max):
-    1. Summa Cum Laude (30 pts)
-    2. Magna Cum Laude (27 pts)
-    3. 1st Honor / First Honor / With Highest Honors (24 pts)
-    4. Cum Laude (22 pts)
-    5. 2nd Honor / Second Honor / With High Honors (18 pts)
-    6. 3rd Honor / Third Honor / With Honors (12 pts)
+    otherwise falls back to a calibrated rule-based scoring system for the 6 primary academic honors (0 to 25 points max):
+    1. Summa Cum Laude (25 pts)
+    2. Magna Cum Laude (23 pts)
+    3. 1st Honor / First Honor / With Highest Honors (20 pts)
+    4. Cum Laude (18 pts)
+    5. 2nd Honor / Second Honor / With High Honors (15 pts)
+    6. 3rd Honor / Third Honor / With Honors (10 pts)
     """
     import os
     import json
@@ -3938,60 +3938,60 @@ def analyze_merits_onthefly(merits_text):
     if cache_key in _MERIT_EVAL_CACHE:
         return _MERIT_EVAL_CACHE[cache_key]
 
-    # --- 1. Calibrated Rule-Based Fallback Scoring for the 6 Academic Honors ---
+    # --- 1. Calibrated Rule-Based Fallback Scoring for the 6 Academic Honors (25 pts max) ---
     base_score = 0
     base_reason = "No recognized academic honors or awards."
 
     if re.search(r'\bsumma\s+cum\s+laude\b|\bsumma\b', text_clean):
-        base_score = 30
+        base_score = 25
         base_reason = "Highest academic distinction: Summa Cum Laude."
     elif re.search(r'\bmagna\s+cum\s+laude\b|\bmagna\b', text_clean):
-        base_score = 27
+        base_score = 23
         base_reason = "High academic distinction: Magna Cum Laude."
     elif re.search(r'\b(1st|first)\s+honor\b|\bwith\s+highest\s+honors?\b', text_clean):
-        base_score = 24
+        base_score = 20
         base_reason = "Top class academic honor: 1st Honor / First Honor."
     elif re.search(r'\bcum\s+laude\b', text_clean) and not re.search(r'\b(magna|summa)\b', text_clean):
-        base_score = 22
+        base_score = 18
         base_reason = "Academic distinction: Cum Laude."
     elif re.search(r'\b(2nd|second)\s+honor\b|\bwith\s+high\s+honors?\b', text_clean):
-        base_score = 18
+        base_score = 15
         base_reason = "Second class academic honor: 2nd Honor / Second Honor."
     elif re.search(r'\b(3rd|third)\s+honor\b|\bwith\s+honors?\b', text_clean):
-        base_score = 12
+        base_score = 10
         base_reason = "Third class academic honor: 3rd Honor / Third Honor."
     elif any(k in text_clean for k in ['valedictorian', 'national math olympiad', 'national science olympiad', 'international olympiad', 'rank 1 overall']):
-        base_score, base_reason = 30, "Highest academic distinction: Valedictorian / National Olympiad Champion."
+        base_score, base_reason = 25, "Highest academic distinction: Valedictorian / National Olympiad Champion."
     elif any(k in text_clean for k in ['salutatorian', 'regional olympiad champion', 'top 3 national']):
-        base_score, base_reason = 27, "Top regional/national academic distinction: Salutatorian / Regional Champion."
+        base_score, base_reason = 23, "Top regional/national academic distinction: Salutatorian / Regional Champion."
     elif any(k in text_clean for k in ["dean's list", 'deans list', 'dean', 'academic lister', 'quiz bee', 'science fair', 'math contest']):
-        base_score, base_reason = 12, "School-level academic honor: Dean's List / Academic Contest."
+        base_score, base_reason = 10, "School-level academic honor: Dean's List / Academic Contest."
     elif any(k in text_clean for k in ['academic', 'honor', 'award', 'certificate']):
-        base_score, base_reason = 8, "General academic recognition / certificate."
+        base_score, base_reason = 7, "General academic recognition / certificate."
 
-    # --- 2. AI Merit Scoring via Gemini API ---
+    # --- 2. AI Merit Scoring via Gemini API (25 pts max) ---
     api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
     if api_key:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
-            prompt = f"""You are a Senior Academic Scholarship Reviewer evaluating an applicant's academic honors and merits on a 0 to 30 point scale.
+            prompt = f"""You are a Senior Academic Scholarship Reviewer evaluating an applicant's academic honors and merits on a 0 to 25 point scale.
 
 MANDATORY BENCHMARKS FOR THE 6 PRIMARY ACADEMIC HONORS:
-1. Summa Cum Laude: 30 points (Reason: Highest academic distinction: Summa Cum Laude)
-2. Magna Cum Laude: 27 points (Reason: High academic distinction: Magna Cum Laude)
-3. 1st Honor / First Honor / With Highest Honors: 24 points (Reason: Top class academic honor: 1st Honor / First Honor)
-4. Cum Laude: 22 points (Reason: Academic distinction: Cum Laude)
-5. 2nd Honor / Second Honor / With High Honors: 18 points (Reason: Second class academic honor: 2nd Honor / Second Honor)
-6. 3rd Honor / Third Honor / With Honors: 12 points (Reason: Third class academic honor: 3rd Honor / Third Honor)
+1. Summa Cum Laude: 25 points (Reason: Highest academic distinction: Summa Cum Laude)
+2. Magna Cum Laude: 23 points (Reason: High academic distinction: Magna Cum Laude)
+3. 1st Honor / First Honor / With Highest Honors: 20 points (Reason: Top class academic honor: 1st Honor / First Honor)
+4. Cum Laude: 18 points (Reason: Academic distinction: Cum Laude)
+5. 2nd Honor / Second Honor / With High Honors: 15 points (Reason: Second class academic honor: 2nd Honor / Second Honor)
+6. 3rd Honor / Third Honor / With Honors: 10 points (Reason: Third class academic honor: 3rd Honor / Third Honor)
 
-If the applicant presents any of these 6 honors, evaluate them based on these calibrated benchmarks. If additional academic achievements, sustained performance, or adversity are present, you may adjust the total score within the 0 to 30 point range.
+If the applicant presents any of these 6 honors, evaluate them based on these calibrated benchmarks. If additional academic achievements, sustained performance, or adversity are present, you may adjust the total score within the 0 to 25 point range.
 
 APPLICANT MERIT INPUT:
 \"\"\"{merits_text}\"\"\"
 
 Return ONLY a valid JSON object in this format:
 {{
-  "score": <total points from 0 to 30>,
+  "score": <total points from 0 to 25>,
   "reason": "<clear explanation for the assigned score>"
 }}"""
 
@@ -4010,7 +4010,7 @@ Return ONLY a valid JSON object in this format:
                 parsed = json.loads(text.strip())
                 if 'score' in parsed:
                     score = int(parsed['score'])
-                    score = max(0, min(30, score))
+                    score = max(0, min(25, score))
                     reason = str(parsed.get('reason', base_reason))
                     ai_result = (score, reason)
                     if len(_MERIT_EVAL_CACHE) >= _MERIT_EVAL_CACHE_MAX:

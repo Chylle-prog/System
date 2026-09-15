@@ -2918,16 +2918,16 @@ export default function ScholarshipDashboard({
       const normalizedMinGpa = minGpa;
       if (normalizedGpa >= normalizedMinGpa) {
         const span = Math.max(1, 100 - normalizedMinGpa);
-        gpaScore = Math.min(70, Math.max(0, ((normalizedGpa - normalizedMinGpa) / span) * 70));
+        gpaScore = Math.min(75, Math.max(0, ((normalizedGpa - normalizedMinGpa) / span) * 75));
       }
     } else {
-      gpaScore = Math.min(70, Math.max(0, ((normalizedGpa - 75) / 25) * 70));
+      gpaScore = Math.min(75, Math.max(0, ((normalizedGpa - 75) / 25) * 75));
     }
 
     // Income points completely removed (0 pts)
     const incomeScore = 0;
 
-    const meritScore = Math.min(30, Math.max(0, Number(a.meritScore ?? 0)));
+    const meritScore = Math.min(25, Math.max(0, Number(a.meritScore ?? 0)));
     const total = Math.min(100, Math.max(0, gpaScore + meritScore));
 
     return {
@@ -2945,7 +2945,7 @@ export default function ScholarshipDashboard({
 
   const renderPointsCell = (a) => {
     const details = calculateDeservednessScoreDetails(a, getScholarshipForApplicant(a));
-    const tooltipText = `Score Breakdown:\n  GPA Score: ${details.gpaScore.toFixed(1)} / 70 pts\n  Merits/Awards (AI): ${details.meritScore.toFixed(1)} / 30 pts\n  Total: ${details.total.toFixed(1)} / 100 pts\n\nAI Reason:\n${details.reason}`;
+    const tooltipText = `Score Breakdown:\n  GPA Score: ${details.gpaScore.toFixed(1)} / 75 pts\n  Merits/Awards (AI): ${details.meritScore.toFixed(1)} / 25 pts\n  Total: ${details.total.toFixed(1)} / 100 pts\n\nAI Reason:\n${details.reason}`;
 
     return (
       <td className="px-4 py-3 font-semibold text-gray-700">
@@ -2975,13 +2975,13 @@ export default function ScholarshipDashboard({
       return Number(a.meritScore);
     }
     const label = getApplicantMeritDisplay(a);
-    if (label === 'Summa Cum Laude') return 30;
-    if (label === 'Magna Cum Laude') return 27;
-    if (label.includes('1st Honor') || label.includes('Highest Honors')) return 24;
-    if (label === 'Cum Laude') return 22;
-    if (label.includes('2nd Honor') || label.includes('High Honors')) return 18;
-    if (label.includes('3rd Honor') || label.includes('With Honors')) return 12;
-    if (label !== 'None') return 8;
+    if (label === 'Summa Cum Laude') return 25;
+    if (label === 'Magna Cum Laude') return 23;
+    if (label.includes('1st Honor') || label.includes('Highest Honors')) return 20;
+    if (label === 'Cum Laude') return 18;
+    if (label.includes('2nd Honor') || label.includes('High Honors')) return 15;
+    if (label.includes('3rd Honor') || label.includes('With Honors')) return 10;
+    if (label !== 'None') return 7;
     return 0;
   };
 
@@ -7034,7 +7034,7 @@ export default function ScholarshipDashboard({
                     </span>
                   </div>
                   <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-bold border border-amber-300 shadow-xs">
-                    <FaStar className="text-amber-500 text-[10px]" /> {aiMeritScore} / 30 pts
+                    <FaStar className="text-amber-500 text-[10px]" /> {aiMeritScore} / 25 pts
                   </span>
                 </div>
                 <p className="text-xs sm:text-sm text-amber-950 font-medium leading-relaxed pl-5 sm:pl-6">
@@ -7892,7 +7892,7 @@ export default function ScholarshipDashboard({
                             )}
                           </td>
                           {/* Total Score like image 3 */}
-                          <td className="px-4 py-3.5 font-black text-gray-800 font-mono text-sm whitespace-nowrap" title={`Score Breakdown:\n  GPA Score: ${details.gpaScore.toFixed(1)} / 70 pts\n  Merits: ${details.meritScore.toFixed(1)} / 30 pts\n  Total: ${details.total.toFixed(1)} / 100 pts`}>
+                          <td className="px-4 py-3.5 font-black text-gray-800 font-mono text-sm whitespace-nowrap" title={`Score Breakdown:\n  GPA Score: ${details.gpaScore.toFixed(1)} / 75 pts\n  Merits: ${details.meritScore.toFixed(1)} / 25 pts\n  Total: ${details.total.toFixed(1)} / 100 pts`}>
                             <span className="text-gray-900 font-bold">{details.total.toFixed(1)} pts</span>
                           </td>
                           {/* Actions: Pill buttons matching image */}
