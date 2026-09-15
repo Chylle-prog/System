@@ -81,6 +81,26 @@ GENERAL SCHOLARSHIP POLICIES
 • Meeting all eligibility requirements does not automatically guarantee approval. Final approval is made by the scholarship administrator.
 
 ============================================================
+MERITS AND AWARDS SCORING SYSTEM
+============================================================
+
+• Only 1 merit or academic award may be submitted per application.
+• Merits provide up to 25 points toward your total ranking score (Total Ranking Score is 100 points max: GPA is up to 75 points, Merit is up to 25 points, and Household Income is 0 points).
+• Only official academic honors and achievements backed by an uploaded certificate, diploma, medal, or formal academic proof are accepted.
+• Non-academic achievements (sports, pageantry, social clubs, arts/culture, or other non-academic extracurriculars) are NOT accepted for merit scoring.
+
+Calibrated Scoring Scale for Academic Honors (0 to 25 points):
+1. Summa Cum Laude – 25 points (Highest Academic Distinction / Valedictorian / National Olympiad Champion)
+2. Magna Cum Laude – 23 points (High Academic Distinction / Salutatorian / Regional Olympiad Champion)
+3. 1st Honor / First Honor / With Highest Honors – 20 points (Top Class Academic Honor)
+4. Cum Laude – 18 points (Academic Distinction)
+5. 2nd Honor / Second Honor / With High Honors – 15 points (Second Class Academic Honor)
+6. 3rd Honor / Third Honor / With Honors – 10 points (Third Class Academic Honor / Dean's List / School-level Academic Contests)
+7. General Academic Recognition / Certificate – 7 points
+
+Tip: When submitting, specify the scope/level of the academic honor (School, Division/City, Regional, National, or International) and make sure to upload the clear supporting certificate.
+
+============================================================
 COMMON QUESTIONS
 ============================================================
 
@@ -124,12 +144,17 @@ A: Your application may be marked as incomplete or you may be asked to upload th
 
 Q: What type of merits can I input?
 
-A: You can input official academic honors and achievements backed by a certificate, diploma, medal, or formal academic recognition. Non-academic achievements (such as sports, pageantry, social clubs, arts/culture, or non-academic extracurriculars) are not accepted for merit scoring. Examples of valid academic merits include:
-• Latin Honors: Summa Cum Laude, Magna Cum Laude, Cum Laude.
-• Class Honors: Valedictorian, Salutatorian, First Honor, Second Honor, Third Honor, Honor Student, With Honors, With High Honors, With Highest Honors.
-• College/University Honors: Dean's List, Academic Lister, President's Lister.
-• Academic Competitions & Research: Placements or awards in Quiz Bees, Math/Science/Robotics Olympiads, Academic Decathlons, and Research / Thesis recognitions.
+A: You can input 1 official academic honor or achievement backed by a supporting certificate, diploma, medal, or formal academic recognition. Merits provide up to 25 points toward your ranking score (GPA is up to 75 points, Merits up to 25 points, Total is 100 points). Non-academic achievements (such as sports, pageantry, social clubs, arts/culture, or non-academic extracurriculars) are not accepted for merit scoring.
 
-Tip: Be sure to specify the scope/level of the academic honor (School, Division/City, Regional, National, or International) and upload the supporting certificate.
+Examples of valid academic merits and points:
+• Summa Cum Laude / Valedictorian / National Olympiad Champion: 25 points
+• Magna Cum Laude / Salutatorian / Regional Olympiad Champion: 23 points
+• 1st Honor / First Honor / With Highest Honors: 20 points
+• Cum Laude: 18 points
+• 2nd Honor / Second Honor / With High Honors: 15 points
+• 3rd Honor / Third Honor / With Honors / Dean's List: 10 points
+• General Academic Recognition / Certificate: 7 points
+
+Tip: Specify the title and scope/level of the honor (School, Division/City, Regional, National, or International) and upload your clear supporting certificate.
 
 ------------------------------------------------------------
