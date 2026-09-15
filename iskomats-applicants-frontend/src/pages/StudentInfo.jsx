@@ -4375,9 +4375,9 @@ const StudentInfo = () => {
   // Automated Sibling Early Warning Check
   useEffect(() => {
     const checkSiblingRestriction = async () => {
-      // Only check if all identifying family fields + scholarship ID are present
+      // Only check if identifying family fields (last name + either father or mother) + scholarship ID are present
       let reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id') || scholarshipDetails?.req_no || scholarshipDetails?.reqNo || scholarshipDetails?.id;
-      const hasFamilyData = formData.lastName && formData.fatherName && formData.motherName;
+      const hasFamilyData = formData.lastName && (formData.fatherName || formData.motherName);
 
       if (reqNo && hasFamilyData) {
         try {
@@ -7474,7 +7474,7 @@ const StudentInfo = () => {
       }
 
       const reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id') || scholarshipDetails?.req_no || scholarshipDetails?.reqNo || scholarshipDetails?.id;
-      if (reqNo && formData.lastName && formData.fatherName && formData.motherName) {
+      if (reqNo && formData.lastName && (formData.fatherName || formData.motherName)) {
         try {
           setLoadingMessage({
             title: 'Verifying Eligibility',
@@ -7484,7 +7484,7 @@ const StudentInfo = () => {
           const res = await applicationAPI.checkSibling(parseInt(reqNo), formData);
           setIsSavingStep(false);
           if (res && res.blocked) {
-            showPromptMessage(res.message || 'An applicant with the same last name and parent names has already applied for this scholarship.');
+            showPromptMessage(res.message || 'An applicant with the same last name and father or mother name has already applied for this scholarship.');
             return;
           }
         } catch (err) {

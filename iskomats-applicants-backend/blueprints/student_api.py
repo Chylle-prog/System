@@ -885,12 +885,32 @@ def normalize_parent_full_name(value):
     return cleaned or None
 
 
+def is_matching_family_identity(identity_a, identity_b):
+    if not identity_a or not identity_b:
+        return False
+
+    last_name_a = identity_a.get('family_last_name') or identity_a.get('last_name')
+    last_name_b = identity_b.get('family_last_name') or identity_b.get('last_name')
+    if not last_name_a or not last_name_b or last_name_a != last_name_b:
+        return False
+
+    father_a = identity_a.get('father_name')
+    father_b = identity_b.get('father_name')
+    father_match = bool(father_a and father_b and father_a == father_b)
+
+    mother_a = identity_a.get('mother_name')
+    mother_b = identity_b.get('mother_name')
+    mother_match = bool(mother_a and mother_b and mother_a == mother_b)
+
+    return father_match or mother_match
+
+
 def build_restriction_identity(first_name=None, middle_name=None, last_name=None, father_name=None, mother_name=None):
     family_last_name = normalize_identity_name(last_name)
     father_name = normalize_identity_name(father_name)
     mother_name = normalize_identity_name(mother_name)
 
-    if not family_last_name or not father_name or not mother_name:
+    if not family_last_name or (not father_name and not mother_name):
         return None
 
     return {
@@ -898,7 +918,7 @@ def build_restriction_identity(first_name=None, middle_name=None, last_name=None
         'last_name': family_last_name,
         'father_name': father_name,
         'mother_name': mother_name,
-        'identity_key': '|'.join([family_last_name, father_name, mother_name]),
+        'identity_key': '|'.join([family_last_name, father_name or '', mother_name or '']),
     }
 
 
@@ -988,7 +1008,7 @@ def get_matching_applicant_ids_by_identity(cursor, applicant, source_data=None):
     matching_ids = {current_applicant_no}
     for row in rows:
         row_identity = build_restriction_identity_from_applicant(row)
-        if row_identity and row_identity['identity_key'] == identity['identity_key']:
+        if is_matching_family_identity(identity, row_identity):
             matching_ids.add(row['applicant_no'])
 
     return sorted(matching_ids), True, identity
@@ -1074,7 +1094,7 @@ def get_identity_restriction_scope(cursor, applicant, source_data=None, today=No
 
 def describe_identity_subject(scope):
     if scope.get('identity_ready') and len(scope.get('applicant_ids') or []) > 1:
-        return 'An applicant with the same last name and parent names'
+        return 'An applicant with the same last name and father or mother name'
     return 'You'
 
 
@@ -1123,7 +1143,7 @@ def get_scholarship_restriction(scope, scholarship_no):
         return {
             'already_applied': True,
             'blocked': True,
-            'message': f"An applicant with the same last name and parent names {status_label} this scholarship.",
+            'message': f"An applicant with the same last name and father or mother name {status_label} this scholarship.",
             'reason': reason,
             'auto_reject': True,
             'blocking_application': prior_row,
