@@ -6703,6 +6703,146 @@ export default function ScholarshipDashboard({
     if (!list) return null;
     const a = list[index];
     if (!a) return null;
+    const isValBlank = (val) => {
+      if (val === null || val === undefined) return true;
+      const s = String(val).trim().toLowerCase();
+      return s === '' || s === 'n/a' || s === 'null' || s === 'undefined' || s === 'none' || s === 'no course' || s === '—' || s === '-';
+    };
+
+    const hasTownCity = !isValBlank(a.municipality || a.town_city_municipality || a.city);
+    const hasProvince = !isValBlank(a.province);
+    const hasZipCode = !isValBlank(a.zipCode || a.zip_code);
+    const hasSchool = !isValBlank(a.school || a.schoolAttended || a.school_name);
+    const hasCourse = !isValBlank(a.course || a.course_name);
+    const hasContact = !isValBlank(a.mobileNumber || a.phone || (a.studentContact && a.studentContact.phone) || a.contactNumber || a.contact_number);
+
+    const hasStudentProfileInfo = hasTownCity || hasProvince || hasZipCode || hasSchool || hasCourse || hasContact;
+
+    if (!hasStudentProfileInfo) {
+      return (
+        <section className="relative bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-8 lg:p-10 max-w-4xl mx-auto my-3 sm:my-6 overflow-y-auto max-h-[90vh] animate-in fade-in duration-300">
+          {/* Close button */}
+          <button
+            onClick={() => { setViewApplicant(null); setSection('track'); }}
+            className="absolute top-3 right-3 sm:top-4 sm:right-4 p-2 hover:bg-gray-100 rounded-full transition-colors z-10 text-gray-400 hover:text-gray-700"
+            aria-label="Close"
+          >
+            <FaTimesCircle className="text-xl sm:text-2xl" />
+          </button>
+
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 pb-6 border-b-2 border-[#800020]">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-amber-50 border-2 border-amber-200/80 flex items-center justify-center text-amber-600 shadow-sm flex-shrink-0">
+              <FaUsers className="text-2xl sm:text-3xl" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-1.5">
+                <h2 className="text-xl sm:text-2xl font-black text-[#800020] uppercase tracking-tight break-words">
+                  {a.name || `${a.firstName || ''} ${a.lastName || ''}`.trim() || 'Unknown Applicant'}
+                </h2>
+                <span className="bg-amber-100 text-amber-800 text-[10px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full border border-amber-300">
+                  Profile Incomplete
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs text-gray-500 font-semibold mb-1">
+                <span className="bg-[#800020] text-white px-2.5 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider">
+                  APPLICANT ID: {a.applicant_no || 'N/A'}
+                </span>
+                {(a.emailAddress || a.email) && <span className="text-gray-600 font-medium">{a.emailAddress || a.email}</span>}
+              </div>
+            </div>
+            <div className="flex items-center">
+              <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${listType === 'accepted' ? 'bg-green-100 text-green-700' :
+                listType === 'rejected' ? 'bg-red-100 text-red-700' :
+                  listType === 'cancelled' ? 'bg-gray-100 text-gray-700' :
+                    'bg-yellow-100 text-yellow-700'
+                }`}>
+                {listType === 'accepted' ? 'Accepted' :
+                  listType === 'rejected' ? 'Rejected' :
+                    listType === 'cancelled' ? 'Cancelled' :
+                      'Pending Review'}
+              </span>
+            </div>
+          </div>
+
+          {/* Empty Profile Information View */}
+          <div className="py-10 px-2 sm:px-6 flex flex-col items-center justify-center text-center">
+            <div className="w-16 h-16 rounded-full bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mb-4 text-2xl shadow-inner">
+              <FaInfoCircle />
+            </div>
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">Currently No Profile Information Available</h3>
+            <p className="text-xs sm:text-sm text-gray-500 max-w-lg mb-6 leading-relaxed">
+              This account does not have complete student records. Essential profile details including address (Town/City, Province, Zip Code), school attended, course, and contact numbers have not been submitted.
+            </p>
+
+            {/* Field Status Checklist */}
+            <div className="w-full max-w-xl bg-gray-50/80 rounded-2xl p-4 sm:p-5 border border-gray-200/80 text-left">
+              <p className="text-[10px] sm:text-xs font-black text-gray-400 uppercase tracking-wider mb-3">
+                Missing Required Student Information
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-gray-100">
+                  <span className="text-gray-600 font-medium">Town / City / Municipality:</span>
+                  <span className="text-gray-400 font-bold italic">N/A</span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-gray-100">
+                  <span className="text-gray-600 font-medium">Province:</span>
+                  <span className="text-gray-400 font-bold italic">N/A</span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-gray-100">
+                  <span className="text-gray-600 font-medium">Zip Code:</span>
+                  <span className="text-gray-400 font-bold italic">N/A</span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-gray-100">
+                  <span className="text-gray-600 font-medium">School Attended:</span>
+                  <span className="text-gray-400 font-bold italic">N/A</span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-gray-100">
+                  <span className="text-gray-600 font-medium">Course:</span>
+                  <span className="text-gray-400 font-bold italic">N/A</span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-gray-100">
+                  <span className="text-gray-600 font-medium">Contact / Phone:</span>
+                  <span className="text-gray-400 font-bold italic">N/A</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+              {isPending && (
+                <>
+                  <button
+                    type="button"
+                    onClick={acceptApplicant}
+                    disabled={Boolean(getApplicantProcessingState(a))}
+                    className="px-5 py-2.5 rounded-xl bg-green-600 text-white font-bold text-xs uppercase tracking-wider hover:bg-green-700 shadow-md shadow-green-100 transition-all flex items-center gap-1.5"
+                  >
+                    <FaCheckCircle /> Approve
+                  </button>
+                  <button
+                    type="button"
+                    onClick={declineApplicant}
+                    disabled={Boolean(getApplicantProcessingState(a))}
+                    className="px-5 py-2.5 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-wider hover:bg-red-700 shadow-md shadow-red-100 transition-all flex items-center gap-1.5"
+                  >
+                    <FaTimesCircle /> Decline
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() => { setViewApplicant(null); setSection('track'); }}
+                className="px-5 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs transition-all"
+              >
+                Back to Applicants List
+              </button>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
     const isPending = listType === 'all' || listType === 'pending';
     const dispatchKey = getApplicantDispatchKey(a);
     const docTypes = getApplicantDocTypes(a);

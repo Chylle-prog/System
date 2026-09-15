@@ -3129,14 +3129,23 @@ def create_account(current_user_id, pro_no, role):
         
             # 1. Find or create scholarship provider based on 'scholarship' field or 'role'
             provider_name = data.get('scholarship', data.get('role', 'All'))
-            cursor.execute("SELECT pro_no FROM scholarship_providers WHERE provider_name ILIKE %s", (provider_name,))
-            provider = cursor.fetchone()
-        
-            if not provider:
-                cursor.execute("INSERT INTO scholarship_providers (provider_name) VALUES (%s) RETURNING pro_no", (provider_name,))
-                target_provider_no = cursor.fetchone()['pro_no']
+            provider_str = str(provider_name).strip() if provider_name else ''
+            if not provider_str or provider_str.lower() in ['all', 'unassigned', 'no scholarship', '0', 'none', 'admin']:
+                try:
+                    cursor.execute(
+                        "INSERT INTO scholarship_providers (pro_no, provider_name) VALUES (0, 'No Scholarship') ON CONFLICT (pro_no) DO UPDATE SET provider_name = 'No Scholarship'"
+                    )
+                except Exception:
+                    pass
+                target_provider_no = 0
             else:
-                target_provider_no = provider['pro_no']
+                cursor.execute("SELECT pro_no FROM scholarship_providers WHERE provider_name ILIKE %s AND pro_no != 0", (provider_str,))
+                provider = cursor.fetchone()
+                if not provider:
+                    cursor.execute("INSERT INTO scholarship_providers (provider_name) VALUES (%s) RETURNING pro_no", (provider_str,))
+                    target_provider_no = cursor.fetchone()['pro_no']
+                else:
+                    target_provider_no = provider['pro_no']
             
             full_name = f"{data['firstName']} {data['lastName']}"
             account_id = None
@@ -3242,10 +3251,16 @@ def update_account(current_user_id, pro_no, role, account_id):
                 scholarship_val = data.get('scholarship')
                 if scholarship_val is not None:
                     scholarship_str = str(scholarship_val).strip()
-                    if not scholarship_str or scholarship_str.lower() in ['all', 'unassigned', 'no scholarship']:
-                        cursor.execute("UPDATE users SET pro_no = NULL WHERE user_no = %s", (account_context['user_no'],))
+                    if not scholarship_str or scholarship_str.lower() in ['all', 'unassigned', 'no scholarship', '0', 'none']:
+                        try:
+                            cursor.execute(
+                                "INSERT INTO scholarship_providers (pro_no, provider_name) VALUES (0, 'No Scholarship') ON CONFLICT (pro_no) DO UPDATE SET provider_name = 'No Scholarship'"
+                            )
+                        except Exception:
+                            pass
+                        cursor.execute("UPDATE users SET pro_no = 0 WHERE user_no = %s", (account_context['user_no'],))
                     else:
-                        cursor.execute("SELECT pro_no FROM scholarship_providers WHERE provider_name ILIKE %s LIMIT 1", (f"%{scholarship_str}%",))
+                        cursor.execute("SELECT pro_no FROM scholarship_providers WHERE provider_name ILIKE %s AND pro_no != 0 LIMIT 1", (f"%{scholarship_str}%",))
                         prov = cursor.fetchone()
                         if not prov:
                             cursor.execute("INSERT INTO scholarship_providers (provider_name) VALUES (%s) RETURNING pro_no", (scholarship_str,))

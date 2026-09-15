@@ -106,8 +106,8 @@ function normalizeLog(log) {
 }
 
 function isNoScholarshipAssignment(value) {
-  const normalizedValue = (value || '').trim().toLowerCase();
-  return !normalizedValue || normalizedValue === 'all' || normalizedValue === 'unassigned' || normalizedValue === 'no scholarship';
+  const normalizedValue = String(value || '').trim().toLowerCase();
+  return !normalizedValue || normalizedValue === '0' || normalizedValue === 'all' || normalizedValue === 'unassigned' || normalizedValue === 'no scholarship' || normalizedValue === 'none';
 }
 
 function formatScholarshipLabel(value) {
