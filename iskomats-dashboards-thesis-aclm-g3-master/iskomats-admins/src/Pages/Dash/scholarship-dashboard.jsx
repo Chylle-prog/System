@@ -3756,7 +3756,7 @@ export default function ScholarshipDashboard({
     return 'Unknown';
   };
 
-  const groupMessagesByStudent = (messages) => {
+  const groupMessagesByStudent = (messages, forceMode = null) => {
     const userRole = (localStorage.getItem('userRole') || '').toLowerCase();
     const isSuperAdminUser = (
       standaloneInbox ||
@@ -3768,9 +3768,10 @@ export default function ScholarshipDashboard({
       activeProviderNo === 0
     );
 
+    const effectiveMode = forceMode || inboxMode;
     const grouped = {};
 
-    if (inboxMode === 'admin_rooms') {
+    if (effectiveMode === 'admin_rooms') {
       const visibleRooms = isSuperAdminUser
         ? ALL_ADMIN_PROVIDER_ROOMS
         : ALL_ADMIN_PROVIDER_ROOMS.filter(r => r.pro_no === Number(activeProviderNo));
@@ -4109,88 +4110,34 @@ export default function ScholarshipDashboard({
   const conversations = useMemo(() => groupMessagesByStudent(allMessages), [allMessages, inboxMode]);
 
   const recentApplicantMessages = useMemo(() => {
-    const rawInbox = data.inbox || [];
-    // Only include applicant-related messages (exclude admin provider channels like provider_room_X, superadmin_room_X, 0+X)
-    const applicantMsgs = rawInbox.filter(m => {
-      if (!m.room) return false;
+    // Group messages by student in applicant mode so each applicant thread's latest message is correctly extracted and sorted descending by timestamp
+    const applicantConvs = groupMessagesByStudent(allMessages, 'applicants') || [];
+
+    // Only include conversations that have actual messages
+    const activeConvs = applicantConvs.filter(c => !c.isAdminRoom && c.hasActualMessages);
+
+    return activeConvs.map(conv => {
+      let displayMessage = conv.lastMessage?.message || '';
       if (
-        m.room.startsWith('provider_room_') ||
-        m.room.startsWith('superadmin_room_') ||
-        m.room.startsWith('admin_room') ||
-        m.room === '0+1' || m.room === '0+2' || m.room === '0+3' ||
-        /^0\+/.test(m.room)
-      ) return false;
-      return true;
-    });
-
-    return applicantMsgs.map(msg => {
-      let resolvedApplicantNo = msg.applicant_no ? String(msg.applicant_no) : '';
-      if (!resolvedApplicantNo && msg.room && msg.room.includes('+')) {
-        const p = msg.room.split('+')[0];
-        if (/^[1-9]\d*$/.test(p)) resolvedApplicantNo = p;
-      }
-
-      // 1. Check allKnownApplicants
-      const match = allKnownApplicants.find(a => {
-        const aNo = (a.applicant_no || a.applicantNo || a.applicant_id || a.user_no || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id) || '').toString();
-        if (resolvedApplicantNo && aNo === resolvedApplicantNo) return true;
-        const aEmail = (a.email || a.emailAddress || a.studentContact?.email || '').toLowerCase();
-        if (msg.studentEmail && aEmail && aEmail === msg.studentEmail.toLowerCase()) return true;
-        return false;
-      });
-
-      let applicantFullName = '';
-      if (match) {
-        if (match.firstName && match.lastName) applicantFullName = `${match.firstName} ${match.lastName}`;
-        else if (match.first_name && match.last_name) applicantFullName = `${match.first_name} ${match.last_name}`;
-        else if (match.name && !match.name.toLowerCase().startsWith('applicant ')) applicantFullName = match.name;
-      }
-
-      // 2. Check resolved conversations
-      if (!applicantFullName && resolvedApplicantNo && Array.isArray(conversations)) {
-        const conv = conversations.find(c => String(c.applicant_no) === String(resolvedApplicantNo));
-        if (conv && conv.studentName && !conv.studentName.toLowerCase().startsWith('applicant ')) {
-          applicantFullName = conv.studentName;
-        }
-      }
-
-      // 3. Check explicit applicant_name or name fields on the message
-      if (!applicantFullName) {
-        if (msg.applicant_name && !msg.applicant_name.toLowerCase().startsWith('applicant ')) {
-          applicantFullName = msg.applicant_name;
-        } else if (msg.first_name || msg.last_name) {
-          applicantFullName = `${msg.first_name || ''} ${msg.last_name || ''}`.trim();
-        }
-      }
-
-      // 4. If student sender sent it and username is not a provider alias
-      if (!applicantFullName && msg.is_student_sender && msg.username && !adminSenderAliases.has(normalizeProviderIdentity(msg.username)) && !msg.username.toLowerCase().startsWith('applicant ')) {
-        applicantFullName = msg.username;
-      }
-
-      // 5. Fallback
-      if (!applicantFullName) {
-        if (resolvedApplicantNo) {
-          applicantFullName = `Applicant ${resolvedApplicantNo}`;
-        } else {
-          applicantFullName = 'Applicant';
-        }
-      }
-
-      // Clean up auto-generated initial system message text if it contains "Applicant <number>"
-      let displayMessage = msg.message || '';
-      if (displayMessage && /Chat initiated for Applicant \d+/i.test(displayMessage) && applicantFullName && !applicantFullName.startsWith('Applicant ')) {
-        displayMessage = displayMessage.replace(/Chat initiated for Applicant \d+/i, `Chat initiated for ${applicantFullName}`);
+        displayMessage &&
+        /Chat initiated for Applicant \d+/i.test(displayMessage) &&
+        conv.studentName &&
+        !conv.studentName.startsWith('Applicant ')
+      ) {
+        displayMessage = displayMessage.replace(/Chat initiated for Applicant \d+/i, `Chat initiated for ${conv.studentName}`);
       }
 
       return {
-        ...msg,
-        applicant_no: resolvedApplicantNo || msg.applicant_no,
-        studentName: applicantFullName,
-        message: displayMessage
+        id: conv.lastMessage?.m_id || conv.lastMessage?.id || `conv-${conv.applicant_no}`,
+        applicant_no: conv.applicant_no,
+        room: conv.room,
+        studentName: conv.studentName,
+        timestamp: conv.lastMessage?.timestamp,
+        message: displayMessage || 'No message content',
+        unreadCount: conv.unreadCount || 0
       };
     });
-  }, [data.inbox, allKnownApplicants, conversations]);
+  }, [allMessages, allKnownApplicants]);
 
   const filteredConversations = useMemo(() => {
     let filtered = conversations;
@@ -4359,11 +4306,38 @@ export default function ScholarshipDashboard({
             <div className="divide-y divide-gray-50 max-h-96 overflow-y-auto">
               {recentApplicantMessages.slice(0, 15).map(msg => (
                 <div
-                  key={msg.id}
+                  key={msg.id || msg.room || msg.applicant_no}
                   className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4 hover:bg-gray-50 transition-colors cursor-pointer"
                   onClick={() => {
                     if (msg.applicant_no) {
-                      setViewMessage({ applicant_no: msg.applicant_no, room: msg.room, messageId: msg.id });
+                      markConversationAsRead(msg.applicant_no, msg.room);
+                      currentInboxRoomRef.current = msg.room || null;
+                      setViewMessage({
+                        applicant_no: msg.applicant_no,
+                        room: msg.room,
+                        messageId: msg.id || `new-${msg.applicant_no}`
+                      });
+                      if (msg.room) {
+                        socketService.loadHistory(msg.room);
+                        if (messagingAPI) {
+                          messagingAPI.getRoomMessages(msg.room).then(res => {
+                            if (res.data?.messages && Array.isArray(res.data.messages)) {
+                              const readRoomMsgs = res.data.messages.map(m => {
+                                if (m.m_id) readMessageIdsRef.current.add(String(m.m_id));
+                                if (m.id) readMessageIdsRef.current.add(String(m.id));
+                                return { ...m, read: true, room: msg.room };
+                              });
+                              setData(prev => ({
+                                ...prev,
+                                inbox: sortMessages([
+                                  ...(prev.inbox || []).filter(m => m.room !== msg.room),
+                                  ...readRoomMsgs
+                                ])
+                              }));
+                            }
+                          }).catch(() => { });
+                        }
+                      }
                     }
                     setSection('inbox');
                   }}
@@ -4378,6 +4352,11 @@ export default function ScholarshipDashboard({
                     </div>
                     <p className="text-[11px] sm:text-xs text-gray-500 line-clamp-1">{msg.message}</p>
                   </div>
+                  {msg.unreadCount > 0 && (
+                    <span className="px-2 py-0.5 bg-[#800020] text-white text-[10px] font-bold rounded-full flex-shrink-0">
+                      {msg.unreadCount}
+                    </span>
+                  )}
                 </div>
               ))}
               {recentApplicantMessages.length === 0 && (

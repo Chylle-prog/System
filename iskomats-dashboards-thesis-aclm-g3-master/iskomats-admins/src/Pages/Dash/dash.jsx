@@ -238,7 +238,7 @@ export default function Dash() {
 
   const availablePrograms = useMemo(() => {
     const providerNames = (providers || []).map(p => p.provider_name).filter(Boolean);
-    const mainProviders = ['Mayor Africa', 'CHED', 'Vilma'];
+    const mainProviders = ['Mayor Africa', 'Vilma'];
     const merged = Array.from(new Set([...providerNames, ...mainProviders]));
     return merged.sort();
   }, [providers]);
