@@ -41,7 +41,8 @@ import {
   FaUserCheck,
   FaIdCard,
   FaCamera,
-  FaUserSlash
+  FaUserSlash,
+  FaInfoCircle
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { adminAPI, scholarshipAPI, announcementService, messagingAPI } from '../../services/api';
