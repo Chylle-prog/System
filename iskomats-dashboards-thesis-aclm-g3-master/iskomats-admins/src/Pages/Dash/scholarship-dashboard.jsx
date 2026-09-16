@@ -1434,7 +1434,7 @@ export default function ScholarshipDashboard({
     program_type: 'All',
     title: '', // For announcements
     content: '', // For announcements
-    sendToAllApplicants: true
+    sendToAllApplicants: isActualSuperAdmin
   });
   const [courseTrackFilter, setCourseTrackFilter] = useState('all');
   const pieRef = useRef(null);
@@ -2378,7 +2378,7 @@ export default function ScholarshipDashboard({
       year: getDefaultAcademicYear(),
       title: '',
       content: '',
-      sendToAllApplicants: true
+      sendToAllApplicants: isActualSuperAdmin
     });
     setAnnouncementImages([]);
     setEditingPost(null);
@@ -2783,7 +2783,7 @@ export default function ScholarshipDashboard({
     setFormData({
       title: ann.title,
       content: ann.message || ann.content,
-      sendToAllApplicants: ann.send_to_all_applicants !== false
+      sendToAllApplicants: ann.send_to_all_applicants === true
     });
     const normalizedImages = (ann.announcementImages || []).map((img, idx) => (
       typeof img === 'string'

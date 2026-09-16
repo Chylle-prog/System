@@ -216,6 +216,23 @@ const Portal = () => {
   const notificationDropdownRef = useRef(null);
   const currentChatRoomRef = useRef(null);
   const chatMessagesEndRef = useRef(null);
+  const applicationsRef = useRef([]);
+
+  useEffect(() => {
+    applicationsRef.current = applications;
+  }, [applications]);
+
+  const isAnnouncementRelevant = (announceData) => {
+    if (!announceData) return false;
+    if (announceData.send_to_all_applicants === true || String(announceData.send_to_all_applicants).toLowerCase() === 'true') return true;
+    if (!announceData.pro_no && !announceData.program && !announceData.provider) return true;
+    const currentApps = applicationsRef.current || [];
+    return currentApps.some(app => 
+      (announceData.pro_no && Number(app.pro_no) === Number(announceData.pro_no)) ||
+      (app.provider_name && announceData.program && app.provider_name.toLowerCase().trim() === String(announceData.program).toLowerCase().trim()) ||
+      (app.provider_name && announceData.provider && app.provider_name.toLowerCase().trim() === String(announceData.provider).toLowerCase().trim())
+    );
+  };
 
   // Scholarship chat data
   const [scholarships, setScholarships] = useState([]);
@@ -540,7 +557,7 @@ const Portal = () => {
               return !notifTitle.includes(deleteTitleLower) && !notifMsg.includes(deleteTitleLower);
             }));
           }
-        } else if (data && data.action === 'create' && data.title) {
+        } else if (data && data.action === 'create' && data.title && isAnnouncementRelevant(data)) {
           const formattedNotif = {
             id: data.ann_no ? `ann_${data.ann_no}` : `live_ann_${Date.now()}`,
             title: data.title.toLowerCase().startsWith('new announcement') ? data.title : `New Announcement: ${data.title}`,
@@ -564,7 +581,7 @@ const Portal = () => {
       });
       const unsubNewAnnounce = socketService.subscribe('new_announcement', (data) => {
         console.log('[LIVE SYNC] New announcement received live:', data);
-        if (data && (data.title || data.content)) {
+        if (data && (data.title || data.content) && isAnnouncementRelevant(data)) {
           const formattedNotif = {
             id: data.ann_no ? `ann_${data.ann_no}` : `live_ann_${Date.now()}`,
             title: data.title ? (data.title.toLowerCase().startsWith('new announcement') ? data.title : `New Announcement: ${data.title}`) : 'New Announcement',
@@ -650,6 +667,9 @@ const Portal = () => {
         console.log('[LIVE SYNC] New notification received live:', data);
         const currentAppNo = localStorage.getItem('applicantNo') || applicantNo || userProfile?.applicant_no;
         if (data?.user_no && currentAppNo && String(data.user_no).trim() !== String(currentAppNo).trim()) {
+          return;
+        }
+        if (data?.type === 'announcement' && !isAnnouncementRelevant(data)) {
           return;
         }
         if (data && (data.id || data.title)) {

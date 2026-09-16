@@ -547,6 +547,24 @@ def ensure_schema_integrity(cursor):
             print(f"[MIGRATION] Adding {col} column to applicants table")
             cursor.execute(f"ALTER TABLE applicants ADD COLUMN {col} {col_type}")
 
+    # 3b. Announcement specific fields (e.g., send_to_all_applicants flag)
+    announcement_cols = {
+        'send_to_all_applicants': 'BOOLEAN DEFAULT FALSE'
+    }
+    for col, col_type in announcement_cols.items():
+        cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'announcements' AND column_name = %s
+            """,
+            (col,)
+        )
+        if not cursor.fetchone():
+            print(f"[MIGRATION] Adding {col} to announcements table")
+            cursor.execute(f"ALTER TABLE announcements ADD COLUMN {col} {col_type}")
+
+
     # 4. Critical performance indexes for high-speed queries
     indexes_to_ensure = [
         ("idx_notifications_user_no_created", "CREATE INDEX IF NOT EXISTS idx_notifications_user_no_created ON notifications(user_no, created_at DESC)"),
@@ -1460,9 +1478,8 @@ def notify_announcement_applicants(
                     (provider_no,),
                 )
                 recipients = cur.fetchall()
-
-            if not recipients:
-                log("[ANNOUNCEMENT NOTIF] Fetching verified applicants as primary recipients.")
+            else:
+                log("[ANNOUNCEMENT NOTIF] Mode: All applicants. Fetching verified applicants as primary recipients.")
                 cur.execute(
                     f"""
                     SELECT DISTINCT 
@@ -1477,24 +1494,24 @@ def notify_announcement_applicants(
                 )
                 recipients = cur.fetchall()
 
-            if not recipients:
-                log("[ANNOUNCEMENT NOTIF] Fallback: Fetching all applicants from email table.")
-                cur.execute(
-                    f"""
-                    SELECT DISTINCT 
-                        e.applicant_no, 
-                        a.first_name, 
-                        a.last_name, 
-                        e.email_address
-                    FROM {applicant_email_table} e
-                    LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
-                    WHERE e.applicant_no IS NOT NULL AND e.email_address IS NOT NULL
-                    """
-                )
-                recipients = cur.fetchall()
+                if not recipients:
+                    log("[ANNOUNCEMENT NOTIF] Fallback: Fetching all applicants from email table.")
+                    cur.execute(
+                        f"""
+                        SELECT DISTINCT 
+                            e.applicant_no, 
+                            a.first_name, 
+                            a.last_name, 
+                            e.email_address
+                        FROM {applicant_email_table} e
+                        LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
+                        WHERE e.applicant_no IS NOT NULL AND e.email_address IS NOT NULL
+                        """
+                    )
+                    recipients = cur.fetchall()
             
         if not recipients:
-            log(f"[ANNOUNCEMENT NOTIF WARNING] No recipients found for announcement.")
+            log(f"[ANNOUNCEMENT NOTIF] No matching recipients found for announcement (send_to_all={send_to_all_applicants}, pro_no={provider_no}).")
             return
 
         log(f"[ANNOUNCEMENT NOTIF] Found {len(recipients)} recipients. Bulk inserting in-app notifications...")
@@ -5494,6 +5511,7 @@ def get_admin_announcements(current_user_id, pro_no, role):
                     a.ann_title,
                     a.ann_message,
                     a.pro_no,
+                    COALESCE(a.send_to_all_applicants, FALSE) AS send_to_all_applicants,
                     {date_col} AS ann_date,
                     {date_col} AS time_added,
                     COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
@@ -5599,7 +5617,14 @@ def create_announcement(current_user_id, pro_no, role):
     title = data.get('title')
     message = data.get('content')
     time_added = data.get('time_added', datetime.now().isoformat())
-    send_to_all_applicants = data.get('send_to_all_applicants', True)
+    
+    # By default, if not explicitly passed:
+    # Super admin defaults to True (all applicants), Provider admins default to False (only provider applicants)
+    is_super_admin = (role or '').strip().lower() == 'admin'
+    if 'send_to_all_applicants' in data:
+        send_to_all_applicants = bool(data['send_to_all_applicants'])
+    else:
+        send_to_all_applicants = is_super_admin
     
     if not title or not message:
         return jsonify({'message': 'Title and content are required'}), 400
@@ -5612,11 +5637,12 @@ def create_announcement(current_user_id, pro_no, role):
             if role != 'Admin' and target_pro_no is None:
                 return jsonify({'message': 'User not associated with a scholarship provider'}), 403
         
+            # Ensure send_to_all_applicants column exists
             cur.execute("""
-                INSERT INTO announcements (ann_title, ann_message, pro_no, time_added)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO announcements (ann_title, ann_message, pro_no, time_added, send_to_all_applicants)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING ann_no
-            """, (title, message, target_pro_no, time_added))
+            """, (title, message, target_pro_no, time_added, send_to_all_applicants))
             ann_no = cur.fetchone()['ann_no']
 
             # Handle images (support both JSON base64 and Multipart files)
@@ -5718,7 +5744,8 @@ def create_announcement(current_user_id, pro_no, role):
                 'ann_no': ann_no,
                 'title': title,
                 'program': provider_name,
-                'pro_no': target_pro_no
+                'pro_no': target_pro_no,
+                'send_to_all_applicants': send_to_all_applicants
             }, broadcast=True)
             safe_emit('new_announcement', {
                 'action': 'create',
@@ -5726,14 +5753,17 @@ def create_announcement(current_user_id, pro_no, role):
                 'title': title,
                 'content': message,
                 'provider': provider_name,
-                'pro_no': target_pro_no
+                'pro_no': target_pro_no,
+                'send_to_all_applicants': send_to_all_applicants
             }, broadcast=True)
             safe_emit('notification_update', {'type': 'announcement', 'ann_no': ann_no}, broadcast=True)
             safe_emit('new_notification', {
                 'id': f"ann_{ann_no}",
                 'title': notif_title,
                 'message': notif_msg,
-                'type': 'announcement'
+                'type': 'announcement',
+                'pro_no': target_pro_no,
+                'send_to_all_applicants': send_to_all_applicants
             }, broadcast=True)
             safe_invalidate_public_caches()
         
@@ -5791,7 +5821,11 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
 
     title = data.get('title')
     message = data.get('content')
-    send_to_all_applicants = data.get('send_to_all_applicants', True)
+    is_super_admin = (role or '').strip().lower() == 'admin'
+    if 'send_to_all_applicants' in data:
+        send_to_all_applicants = bool(data['send_to_all_applicants'])
+    else:
+        send_to_all_applicants = is_super_admin
     should_notify = data.get('notify', True) # Default to true to ensure updates send notifications
     
     if not title or not message:
@@ -5821,9 +5855,9 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
         
             cur.execute("""
                 UPDATE announcements 
-                SET ann_title = %s, ann_message = %s
+                SET ann_title = %s, ann_message = %s, send_to_all_applicants = %s
                 WHERE ann_no = %s
-            """, (title, message, ann_no))
+            """, (title, message, send_to_all_applicants, ann_no))
 
             # Optimized image update: Avoid downloading and re-uploading binary blobs
             # 1. Map existing images to their primary keys
@@ -5935,7 +5969,8 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
                 'ann_no': ann_no,
                 'title': title,
                 'program': target_provider_name,
-                'pro_no': target_provider_no
+                'pro_no': target_provider_no,
+                'send_to_all_applicants': send_to_all_applicants
             }, broadcast=True)
             safe_emit('notification_update', {'type': 'announcement', 'ann_no': ann_no}, broadcast=True)
             if should_notify:
@@ -5943,7 +5978,9 @@ def update_announcement(current_user_id, pro_no, role, ann_no):
                     'id': f"ann_{ann_no}",
                     'title': f"Announcement Updated: {title}",
                     'message': message[:100] + ('...' if len(message) > 100 else ''),
-                    'type': 'announcement'
+                    'type': 'announcement',
+                    'pro_no': target_provider_no,
+                    'send_to_all_applicants': send_to_all_applicants
                 }, broadcast=True)
             safe_invalidate_public_caches()
 

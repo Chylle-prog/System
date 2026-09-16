@@ -4443,7 +4443,25 @@ def update_application_status(req_no):
 
 @student_api_bp.route('/announcements', methods=['GET'])
 def get_announcements():
-    cache_key = "announcements_all"
+    # 1. Identify applicant from JWT token if available
+    applicant_no = None
+    token = request.headers.get('Authorization')
+    if not token:
+        token = request.args.get('token')
+        if token and not token.startswith('Bearer '):
+            token = 'Bearer ' + token
+    if token:
+        try:
+            if token.startswith('Bearer '):
+                token_clean = token[7:]
+            else:
+                token_clean = token
+            decoded = jwt.decode(token_clean, SECRET_KEY, algorithms=['HS256'])
+            applicant_no = decoded.get('user_no')
+        except Exception:
+            applicant_no = None
+
+    cache_key = f"announcements_applicant_{applicant_no}" if applicant_no else "announcements_public"
     cached_data = get_cached_response(cache_key, ttl_seconds=5)
     if cached_data is not None:
         resp = jsonify(cached_data)
@@ -4466,7 +4484,7 @@ def get_announcements():
                     SELECT column_name
                     FROM information_schema.columns
                     WHERE table_name = 'announcements'
-                      AND column_name IN ('time_added', 'status_updated', 'ann_date', 'is_removed')
+                      AND column_name IN ('time_added', 'status_updated', 'ann_date', 'is_removed', 'send_to_all_applicants')
                     """
                 )
                 _ANNOUNCEMENT_COLUMNS_CACHE = {
@@ -4489,30 +4507,58 @@ def get_announcements():
                 date_col = 'NULL'
                 order_col = 'a.ann_no DESC'
 
-            where_clause = ''
+            where_conditions = []
             if 'is_removed' in announcement_columns:
-                where_clause = 'WHERE COALESCE(a.is_removed, FALSE) = FALSE'
+                where_conditions.append('COALESCE(a.is_removed, FALSE) = FALSE')
+
+            # Determine provider filtering for this applicant
+            has_send_all_col = 'send_to_all_applicants' in announcement_columns
+            send_all_expr = "COALESCE(a.send_to_all_applicants, FALSE) = TRUE" if has_send_all_col else "FALSE"
+
+            query_params = []
+            if applicant_no is not None:
+                # Find all providers where this applicant has submitted an application
+                cur.execute("""
+                    SELECT DISTINCT s.pro_no
+                    FROM applicant_status ast
+                    JOIN scholarships s ON ast.scholarship_no = s.req_no
+                    WHERE ast.applicant_no = %s AND s.pro_no IS NOT NULL
+                """, (applicant_no,))
+                applied_pro_nos = [r['pro_no'] for r in cur.fetchall() if r.get('pro_no') is not None]
+
+                if applied_pro_nos:
+                    # Visible if: system announcement (pro_no IS NULL), send_to_all is true, or matches an applied provider
+                    where_conditions.append(f"(a.pro_no IS NULL OR {send_all_expr} OR a.pro_no = ANY(%s))")
+                    query_params.append(applied_pro_nos)
+                else:
+                    # Applicant has no applications: only system-wide or send_to_all
+                    where_conditions.append(f"(a.pro_no IS NULL OR {send_all_expr})")
+            else:
+                # Public / unauthenticated: only system-wide or send_to_all
+                where_conditions.append(f"(a.pro_no IS NULL OR {send_all_expr})")
+
+            where_clause = 'WHERE ' + ' AND '.join(where_conditions) if where_conditions else ''
 
             # Join announcements with scholarship_providers to get the name of the provider
             if primary_key_column and foreign_key_column:
                 cur.execute(f"""
-                    SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
+                    SELECT a.ann_no, a.ann_title, a.ann_message, a.pro_no, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
                            ai.{primary_key_column} AS image_id, (CASE WHEN LEFT(ai.img, 4) = 'http' THEN ai.img ELSE NULL END) AS announcement_image_data
                     FROM announcements a
                     LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
                     LEFT JOIN announcement_images ai ON a.ann_no = ai.{foreign_key_column}
                     {where_clause}
                     ORDER BY {order_col}, ai.{primary_key_column}
-                """)
+                """, query_params)
             else:
                 cur.execute(f"""
-                    SELECT a.ann_no, a.ann_title, a.ann_message, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
+                    SELECT a.ann_no, a.ann_title, a.ann_message, a.pro_no, {date_col} AS ann_date, {date_col} AS time_added, COALESCE(sp.provider_name, 'Unknown Provider') AS provider_name,
                            NULL AS image_id
                     FROM announcements a
                     LEFT JOIN scholarship_providers sp ON a.pro_no = sp.pro_no
                     {where_clause}
                     ORDER BY {order_col}
-                """)
+                """, query_params)
 
             rows = cur.fetchall()
 
@@ -4531,6 +4577,7 @@ def get_announcements():
                         'ann_no': ann_no,
                         'ann_title': row['ann_title'],
                         'ann_message': row['ann_message'],
+                        'pro_no': row.get('pro_no'),
                         'created_at': date_str,
                         'time_added': row.get('time_added'),
                         'provider_name': row['provider_name'],
