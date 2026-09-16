@@ -549,7 +549,7 @@ def ensure_schema_integrity(cursor):
 
     # 3b. Announcement specific fields (e.g., send_to_all_applicants flag)
     announcement_cols = {
-        'send_to_all_applicants': 'BOOLEAN DEFAULT FALSE'
+        'send_to_all_applicants': 'BOOLEAN DEFAULT TRUE'
     }
     for col, col_type in announcement_cols.items():
         cursor.execute(
@@ -563,6 +563,9 @@ def ensure_schema_integrity(cursor):
         if not cursor.fetchone():
             print(f"[MIGRATION] Adding {col} to announcements table")
             cursor.execute(f"ALTER TABLE announcements ADD COLUMN {col} {col_type}")
+            cursor.execute(f"UPDATE announcements SET {col} = TRUE WHERE {col} IS NULL")
+        else:
+            cursor.execute(f"UPDATE announcements SET {col} = TRUE WHERE {col} IS NULL")
 
 
     # 4. Critical performance indexes for high-speed queries
