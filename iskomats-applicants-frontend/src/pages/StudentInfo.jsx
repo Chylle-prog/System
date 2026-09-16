@@ -1673,107 +1673,44 @@ function addressMatchesText(text, expectedAddr) {
 
 function sanitizeStudentIdCandidate(rawToken, targetId) {
   if (!rawToken) return "";
-  let digits = String(rawToken).replace(/[^0-9]/g, '');
-  if (!digits) return "";
-
-  if (targetId) {
-    const targetDigits = String(targetId).replace(/[^0-9]/g, '');
-    if (targetDigits.length >= 6) {
-      if (digits.length === targetDigits.length + 1 && digits.startsWith(targetDigits)) {
-        return targetDigits;
-      }
-      if (digits.length === targetDigits.length + 1 && digits.endsWith(targetDigits)) {
-        return targetDigits;
-      }
-    }
-  }
-  return digits;
+  return String(rawToken).trim().replace(/[\s\-\/\.]/g, '').toUpperCase();
 }
 
 function studentIdNoMatchesText(targetId, text, strict = false) {
   if (!targetId) return true;
   if (!text || !String(text).trim()) return false;
 
-  const digitsOnly = (s) => String(s || '').replace(/[^0-9]/g, '');
+  const normalizeId = (s) => String(s || '').trim().replace(/[\s\-\/\.]/g, '').toUpperCase();
+  const cleanTarget = normalizeId(targetId);
+  if (!cleanTarget) return true;
 
-  // OCR glyph-to-digit normalization (visual character substitutions only)
-  const mapOcrToDigits = (s) => {
+  const ocrDigitNorm = (s) => {
     return String(s || '').toLowerCase()
-      .replace(/[o]/g, '0')          // O/o looks like 0
-      .replace(/[il|!]/g, '1')       // l, i, |, ! look like 1
-      .replace(/[z]/g, '2')          // z looks like 2
-      .replace(/[e]/g, '3')          // e can look like 3
-      .replace(/[a]/g, '4')          // a can look like 4
-      .replace(/[s]/g, '5')          // s can look like 5
-      .replace(/[g]/g, '6')          // g can look like 6
-      .replace(/[t]/g, '7')          // t can look like 7
-      .replace(/[b]/g, '8')          // b can look like 8
-      .replace(/[^0-9]/g, '');
+      .replace(/[oqd]/g, '0')
+      .replace(/[il|!]/g, '1');
   };
-
-  const tDigits = digitsOnly(targetId);
-  if (!tDigits) return true;
+  const targetNorm = ocrDigitNorm(cleanTarget);
 
   // 1. Key-value extracted student ID field
   const kv = extractOcrKeyValues(text);
   if (kv.studentId) {
-    const kvDigits = digitsOnly(kv.studentId);
-    const kvMapped = mapOcrToDigits(kv.studentId);
-    // Exact match
-    if (kvDigits === tDigits || kvMapped === tDigits) return true;
-    // Allow ONLY off-by-one leading/trailing OCR artifact digit (e.g. "12021305751" -> "2021305751")
-    // Do NOT allow general substring match — "12021305751".includes("2021305751") would be a false pass
-    if (tDigits.length >= 6) {
-      if (kvDigits.length === tDigits.length + 1 && (kvDigits.endsWith(tDigits) || kvDigits.startsWith(tDigits))) return true;
-      if (kvMapped.length === tDigits.length + 1 && (kvMapped.endsWith(tDigits) || kvMapped.startsWith(tDigits))) return true;
-    }
+    const cleanKv = normalizeId(kv.studentId);
+    if (cleanKv === cleanTarget) return true;
+    if (cleanKv.length === cleanTarget.length && ocrDigitNorm(cleanKv) === targetNorm) return true;
   }
 
-  // 2. Token scan — EXACT match or off-by-one OCR artifact only (NO general substring)
-  const ocrTokens = String(text).match(/\b[0-9a-zA-Z\-]{4,25}\b/g) || [];
+  // 2. Token scan — EXACT character match (or 1-to-1 OCR digit glyph normalization of identical length)
+  const ocrTokens = String(text).match(/[0-9a-zA-Z]+(?:[\-\/\.][0-9a-zA-Z]+)*/g) || [];
   for (const seq of ocrTokens) {
-    const seqDigits = digitsOnly(seq);
-    const seqMapped = mapOcrToDigits(seq);
-    if (seqDigits === tDigits || seqMapped === tDigits) return true;
-    // Only accept off-by-one leading/trailing artifact — NOT general substring
-    if (tDigits.length >= 6) {
-      if (seqDigits.length === tDigits.length + 1 && (seqDigits.endsWith(tDigits) || seqDigits.startsWith(tDigits))) return true;
-      if (seqMapped.length === tDigits.length + 1 && (seqMapped.endsWith(tDigits) || seqMapped.startsWith(tDigits))) return true;
-    }
+    const cleanSeq = normalizeId(seq);
+    if (cleanSeq === cleanTarget) return true;
+    if (cleanSeq.length === cleanTarget.length && ocrDigitNorm(cleanSeq) === targetNorm) return true;
   }
 
-  // 3. Full-text digit scan — require word-boundary match, not raw substring
-  // Raw substring would accept "12021305751" when searching for "2021305751"
-  const fullTextBoundaryMatch = new RegExp(`(?<![0-9])${tDigits}(?![0-9])`);
-  if (fullTextBoundaryMatch.test(text)) return true;
-  const fullTextMapped = mapOcrToDigits(text);
-  if (fullTextBoundaryMatch.test(fullTextMapped)) return true;
-
-  // In strict mode (e.g. School ID verification), require exact digit sequence match.
-  // Bypass fuzzy Levenshtein digit substitution so that incorrect ID digits (e.g. 1500017171 vs 1500017172) are strictly rejected.
-  if (strict) {
-    return false;
-  }
-
-  // 4. Fuzzy digit similarity matching (for compressed COE photos with high digit misreads)
-  if (tDigits.length >= 6) {
-    const maxAllowedDist = tDigits.length >= 8 ? 3 : 2;
-    for (const seq of ocrTokens) {
-      const candidateDigits = mapOcrToDigits(seq);
-      if (candidateDigits.length >= tDigits.length - 2 && candidateDigits.length <= tDigits.length + 2) {
-        const dist = getLevenshteinDistance(tDigits, candidateDigits);
-        if (dist <= maxAllowedDist) return true;
-      }
-    }
-    // Also check kv.studentId digits
-    if (kv.studentId) {
-      const candidateDigits = mapOcrToDigits(kv.studentId);
-      if (candidateDigits.length >= tDigits.length - 2 && candidateDigits.length <= tDigits.length + 2) {
-        const dist = getLevenshteinDistance(tDigits, candidateDigits);
-        if (dist <= maxAllowedDist) return true;
-      }
-    }
-  }
+  // 3. Exact word/alphanumeric boundary match in raw text
+  const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const exactBoundaryRegex = new RegExp(`(?:^|[^0-9a-zA-Z])${escapeRegex(cleanTarget)}(?:$|[^0-9a-zA-Z])`, 'i');
+  if (exactBoundaryRegex.test(text)) return true;
 
   return false;
 }
@@ -6009,8 +5946,8 @@ const StudentInfo = () => {
       showPromptMessage('Please select your Barangay first in Step 1.');
       return;
     }
-    if (!isNationalId && String(formData.schoolIdNumber).replace(/[^0-9a-zA-Z]/g, '').length < 6) {
-      showPromptMessage('Please enter a valid School ID Number (must be at least 6-8 digits).');
+    if (!isNationalId && String(formData.schoolIdNumber).replace(/[^0-9a-zA-Z]/g, '').length < 3) {
+      showPromptMessage('Please enter a valid School ID Number.');
       return;
     }
 

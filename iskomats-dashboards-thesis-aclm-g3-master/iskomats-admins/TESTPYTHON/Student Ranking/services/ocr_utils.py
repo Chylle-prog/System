@@ -1107,17 +1107,60 @@ def normalize_text(text):
 def normalize_id_number(s):
     if not s:
         return ""
+    return re.sub(r'[\s\-\/\.]', '', str(s)).upper()
+
+
+def normalize_ocr_digit_confusions(s):
+    if not s:
+        return ""
     normalized = str(s).lower()
-    normalized = re.sub(r'[^a-z0-9]', '', normalized)
     substitutions = {
         'o': '0', 'q': '0', 'd': '0',
-        'i': '1', 'l': '1',
-        'z': '2', 's': '5',
-        'g': '6', 'b': '6'
+        'i': '1', 'l': '1', '|': '1', '!': '1'
     }
     for char, replacement in substitutions.items():
         normalized = normalized.replace(char, replacement)
     return normalized
+
+
+def verify_student_id_strict(expected_id, raw_text, extracted_id=None):
+    """
+    Strict ID Number Verification.
+    Enforces exact character match between user input and document tokens.
+    Rejects prefix, suffix, off-by-one, and mismatched characters (e.g. 1234, 123456, 12346, 1234a vs 12345).
+    """
+    if not expected_id or not str(expected_id).strip():
+        return True
+    
+    clean_expected = normalize_id_number(expected_id)
+    if not clean_expected:
+        return True
+        
+    expected_norm = normalize_ocr_digit_confusions(clean_expected)
+    
+    # 1. Check structured extracted ID if present
+    if extracted_id:
+        clean_ext = normalize_id_number(extracted_id)
+        if clean_ext == clean_expected:
+            return True
+        if len(clean_ext) == len(clean_expected) and normalize_ocr_digit_confusions(clean_ext) == expected_norm:
+            return True
+            
+    # 2. Check candidate tokens extracted from raw text
+    tokens = re.findall(r'[0-9a-zA-Z]+(?:[\-\/\.][0-9a-zA-Z]+)*', str(raw_text or ''))
+    for tok in tokens:
+        clean_tok = normalize_id_number(tok)
+        if clean_tok == clean_expected:
+            return True
+        if len(clean_tok) == len(clean_expected) and normalize_ocr_digit_confusions(clean_tok) == expected_norm:
+            return True
+            
+    # 3. Exact regex match with non-alphanumeric boundaries in raw text
+    escaped_exp = re.escape(clean_expected)
+    if re.search(r'(?<![0-9a-zA-Z])' + escaped_exp + r'(?![0-9a-zA-Z])', str(raw_text or ''), re.IGNORECASE):
+        return True
+
+    return False
 
 
 def is_similar_name_word(w1, w2, strict_spelling=False):
@@ -1826,12 +1869,7 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
     # 2. STUDENT ID MATCHING
     if expected_id_no and str(expected_id_no).strip():
-        exp_id_clean = normalize_id_number(expected_id_no)
-        found_id_clean = normalize_id_number(parsed_fields.get('student_id', ''))
-        doc_raw_clean = normalize_id_number(raw_text)
-
-        id_ok = (exp_id_clean in found_id_clean) or (exp_id_clean in doc_raw_clean) or (found_id_clean in exp_id_clean)
-
+        id_ok = verify_student_id_strict(expected_id_no, raw_text, parsed_fields.get('student_id', ''))
         if not id_ok:
             failures.append(f"Student ID mismatch (Expected: '{expected_id_no}', Found in COR: '{parsed_fields.get('student_id', 'Not found')}')")
 
@@ -2324,9 +2362,7 @@ def verify_id_fields(raw_text, first_name, middle_name, last_name, **kwargs):
     expected_id_no = kwargs.get('expected_id_no')
     id_ok = True
     if expected_id_no:
-        clean_expected_id = normalize_id_number(expected_id_no)
-        clean_raw_id_text = normalize_id_number(raw_text)
-        id_ok = clean_expected_id in clean_raw_id_text if clean_expected_id else True
+        id_ok = verify_student_id_strict(expected_id_no, raw_text, kwargs.get('student_id'))
         if not id_ok:
             failures.append(f"ID Number mismatch (Expected: '{expected_id_no}' on ID)")
 
@@ -2395,9 +2431,7 @@ def course_matches_text(expected_course, raw_text):
 def student_id_no_matches_text(expected_id_no, raw_text):
     if not expected_id_no or not str(expected_id_no).strip():
         return True, None
-    exp_clean = normalize_id_number(expected_id_no)
-    raw_clean = normalize_id_number(raw_text)
-    matched = exp_clean in raw_clean if exp_clean else True
+    matched = verify_student_id_strict(expected_id_no, raw_text)
     return matched, (expected_id_no if matched else None)
 
 def year_level_matches_text(expected_year_level, raw_text):

@@ -1184,17 +1184,60 @@ def levenshtein_distance(s1, s2):
 def normalize_id_number(s):
     if not s:
         return ""
+    return re.sub(r'[\s\-\/\.]', '', str(s)).upper()
+
+
+def normalize_ocr_digit_confusions(s):
+    if not s:
+        return ""
     normalized = str(s).lower()
-    normalized = re.sub(r'[^a-z0-9]', '', normalized)
     substitutions = {
         'o': '0', 'q': '0', 'd': '0',
-        'i': '1', 'l': '1',
-        'z': '2', 's': '5',
-        'g': '6', 'b': '6'
+        'i': '1', 'l': '1', '|': '1', '!': '1'
     }
     for char, replacement in substitutions.items():
         normalized = normalized.replace(char, replacement)
     return normalized
+
+
+def verify_student_id_strict(expected_id, raw_text, extracted_id=None):
+    """
+    Strict ID Number Verification.
+    Enforces exact character match between user input and document tokens.
+    Rejects prefix, suffix, off-by-one, and mismatched characters (e.g. 1234, 123456, 12346, 1234a vs 12345).
+    """
+    if not expected_id or not str(expected_id).strip():
+        return True
+    
+    clean_expected = normalize_id_number(expected_id)
+    if not clean_expected:
+        return True
+        
+    expected_norm = normalize_ocr_digit_confusions(clean_expected)
+    
+    # 1. Check structured extracted ID if present
+    if extracted_id:
+        clean_ext = normalize_id_number(extracted_id)
+        if clean_ext == clean_expected:
+            return True
+        if len(clean_ext) == len(clean_expected) and normalize_ocr_digit_confusions(clean_ext) == expected_norm:
+            return True
+            
+    # 2. Check candidate tokens extracted from raw text
+    tokens = re.findall(r'[0-9a-zA-Z]+(?:[\-\/\.][0-9a-zA-Z]+)*', str(raw_text or ''))
+    for tok in tokens:
+        clean_tok = normalize_id_number(tok)
+        if clean_tok == clean_expected:
+            return True
+        if len(clean_tok) == len(clean_expected) and normalize_ocr_digit_confusions(clean_tok) == expected_norm:
+            return True
+            
+    # 3. Exact regex match with non-alphanumeric boundaries in raw text
+    escaped_exp = re.escape(clean_expected)
+    if re.search(r'(?<![0-9a-zA-Z])' + escaped_exp + r'(?![0-9a-zA-Z])', str(raw_text or ''), re.IGNORECASE):
+        return True
+
+    return False
 
 
 def is_similar_name_word(w1, w2, strict_spelling=False):
@@ -2563,52 +2606,7 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
 
     # 2. STUDENT ID MATCHING
     if expected_id_no and str(expected_id_no).strip():
-        exp_id_clean = normalize_id_number(expected_id_no)
-        found_id_clean = normalize_id_number(parsed_fields.get('student_id', ''))
-        tokens = [normalize_id_number(tok) for tok in re.findall(r'\b[0-9a-zA-Z\-]{4,25}\b', str(raw_text or ''))]
-
-        # Strict exact match (with trailing glare digit sanitization)
-        def _clean_cand(t):
-            d = re.sub(r'[^0-9]', '', str(t or ''))
-            if len(exp_id_clean) >= 6 and len(d) == len(exp_id_clean) + 1 and (d.startswith(exp_id_clean) or d.endswith(exp_id_clean)):
-                return exp_id_clean
-            return d
-
-        id_ok = (_clean_cand(found_id_clean) == exp_id_clean) or (exp_id_clean in tokens)
-        if not id_ok:
-            for tok in tokens:
-                if _clean_cand(tok) == exp_id_clean:
-                    id_ok = True
-                    break
-        if not id_ok and len(exp_id_clean) >= 6:
-            raw_digits = re.sub(r'[^0-9]', '', str(raw_text or ''))
-            if exp_id_clean in raw_digits:
-                id_ok = True
-            else:
-                def _lev_dist(s1, s2):
-                    if len(s1) > len(s2):
-                        s1, s2 = s2, s1
-                    distances = range(len(s1) + 1)
-                    for i2, c2 in enumerate(s2):
-                        distances_ = [i2+1]
-                        for i1, c1 in enumerate(s1):
-                            if c1 == c2:
-                                distances_.append(distances[i1])
-                            else:
-                                distances_.append(1 + min((distances[i1], distances[i1 + 1], distances_[-1])))
-                        distances = distances_
-                    return distances[-1]
-
-                max_dist = 3 if len(exp_id_clean) >= 8 else 2
-                all_cands = [re.sub(r'[^0-9]', '', str(tok or '')) for tok in tokens]
-                if found_id_clean:
-                    all_cands.append(re.sub(r'[^0-9]', '', str(found_id_clean)))
-                for cand in all_cands:
-                    if len(cand) >= len(exp_id_clean) - 2 and len(cand) <= len(exp_id_clean) + 2:
-                        if _lev_dist(exp_id_clean, cand) <= max_dist:
-                            id_ok = True
-                            break
-
+        id_ok = verify_student_id_strict(expected_id_no, raw_text, parsed_fields.get('student_id', ''))
         if not id_ok:
             failures.append(f"Student ID mismatch (Expected: '{expected_id_no}', Found in COR: '{parsed_fields.get('student_id', 'Not found')}')")
 
@@ -3355,31 +3353,11 @@ def verify_school_id_fields(raw_text, first_name, middle_name, last_name, **kwar
     if not name_matched:
         failures.append(f"Name mismatch (Expected: '{first_name} {last_name}' on School ID)")
 
-    # 2. Student ID Number (with '0'<->'O', '1'<->'l' confusion tolerance)
+    # 2. Student ID Number
     expected_id_no = kwargs.get('expected_id_no') or kwargs.get('idNo')
     id_ok = True
     if expected_id_no:
-        clean_expected_id = normalize_id_number(expected_id_no)
-        found_id = normalize_id_number(kwargs.get('student_id') or '')
-        tokens = [normalize_id_number(tok) for tok in re.findall(r'\b[0-9a-zA-Z\-]{4,25}\b', str(raw_text or ''))]
-
-        def _clean_cand(t):
-            d = re.sub(r'[^0-9]', '', str(t or ''))
-            if len(clean_expected_id) >= 6 and len(d) == len(clean_expected_id) + 1 and (d.startswith(clean_expected_id) or d.endswith(clean_expected_id)):
-                return clean_expected_id
-            return d
-
-        id_ok = (_clean_cand(found_id) == clean_expected_id) or (clean_expected_id in tokens)
-        if not id_ok:
-            for tok in tokens:
-                if _clean_cand(tok) == clean_expected_id:
-                    id_ok = True
-                    break
-        if not id_ok and len(clean_expected_id) >= 6:
-            raw_digits = re.sub(r'[^0-9]', '', str(raw_text or ''))
-            if clean_expected_id in raw_digits:
-                id_ok = True
-
+        id_ok = verify_student_id_strict(expected_id_no, raw_text, kwargs.get('student_id'))
         if not id_ok:
             failures.append(f"Student ID Number mismatch (Expected: '{expected_id_no}' on School ID)")
 
@@ -3433,9 +3411,7 @@ def verify_national_id_fields(raw_text, first_name, middle_name, last_name, **kw
     expected_id_no = kwargs.get('expected_id_no') or kwargs.get('idNo') or kwargs.get('philsys_no')
     id_ok = True
     if expected_id_no:
-        clean_expected_id = normalize_id_number(expected_id_no)
-        tokens = [normalize_id_number(tok) for tok in re.findall(r'\b[0-9a-zA-Z\-]{4,25}\b', str(raw_text or ''))]
-        id_ok = (clean_expected_id in tokens) or (clean_expected_id in normalize_id_number(raw_text))
+        id_ok = verify_student_id_strict(expected_id_no, raw_text, kwargs.get('student_id'))
         if not id_ok:
             failures.append(f"National ID / PhilSys Number mismatch (Expected: '{expected_id_no}')")
 
