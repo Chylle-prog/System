@@ -1,6 +1,6 @@
 ============================================================
 SCHOLARSHIP INFORMATION
-============================================================
+=======================
 
 The iskoMats system currently supports two scholarship programs:
 
@@ -9,13 +9,11 @@ The iskoMats system currently supports two scholarship programs:
 
 ============================================================
 MAYOR AFRICA SCHOLARSHIP
-============================================================
+========================
 
 Mayor Africa Scholarship has two scholarship categories:
 
-------------------------------------------------------------
-A. Mayor Africa College Scholarship
-------------------------------------------------------------
+## A. Mayor Africa College Scholarship
 
 Eligibility Requirements for Mayor Africa College Scholarship
 
@@ -30,9 +28,7 @@ Required Documents for Mayor Africa College Scholarship
 2. Certified True Copy of Grades.
 3. Student ID.
 
-------------------------------------------------------------
-B. Mayor Africa College Educational Financial Assistance
-------------------------------------------------------------
+## B. Mayor Africa College Educational Financial Assistance
 
 Eligibility Requirements for Mayor Africa College Educational Financial Assistance
 
@@ -50,7 +46,7 @@ Required Documents for Mayor Africa College Educational Financial Assistance
 
 ============================================================
 GOVERNOR VILMA SCHOLARSHIP
-============================================================
+==========================
 
 Governor Vilma Scholarship - College Educational Financial Assistance
 
@@ -69,92 +65,231 @@ Required Documents for Governor Vilma Scholarship
 4. Student ID.
 
 ============================================================
-GENERAL SCHOLARSHIP POLICIES
+GOVERNOR VILMA SCHOLARSHIP OFFICE INFORMATION
+=============================================
+
+• The office for Governor Vilma Scholarship is located within the old Lipa City Hall along P. Torres Street, Barangay Poblacion, Lipa City, Batangas.
+
+• The office of the Executive Assistant of Governor Vilma is located at the Maraouy Barangay Hall, Barangay Maraouy, Lipa City, Batangas.
+
 ============================================================
+SCHOLARSHIP COMPARISON / KEY DIFFERENCES
+========================================
+
+| Scholarship                                             | Residency | Enrollment                    | Grade Requirement  | Residency Certificate |
+| ------------------------------------------------------- | --------- | ----------------------------- | ------------------ | --------------------- |
+| Mayor Africa College Scholarship                        | Lipa City | Currently enrolled in college | No grades below 80 | Not required          |
+| Mayor Africa College Educational Financial Assistance   | Lipa City | Currently enrolled in college | No failing grade   | Required              |
+| Governor Vilma College Educational Financial Assistance | Lipa City | Currently enrolled in college | No failing grade   | Required              |
+
+Key differences between the scholarship programs:
+
+• The Mayor Africa College Scholarship requires applicants to have NO grades below 80.
+
+• The Mayor Africa College Educational Financial Assistance and Governor Vilma College Educational Financial Assistance require applicants to have NO failing grade.
+
+• The Mayor Africa College Scholarship requires a Certified True Copy of Grades, while the two educational financial assistance programs require grades and a Certificate of Barangay Residency.
+
+• All scholarship programs require the applicant to be a resident of Lipa City and currently enrolled in college.
+
+============================================================
+GENERAL SCHOLARSHIP POLICIES
+============================
 
 • Only students who are currently residing in Lipa City and studying in Lipa City may apply through iskoMats.
 
-• Students may apply to multiple scholarship programs if they meet the eligibility requirements.
+• An applicant may apply to only ONE scholarship program through iskoMats.
 
-• Once a student is officially approved and accepts one scholarship, all other scholarship applications will automatically be cancelled because each student may only receive one scholarship through the iskoMats system.
+• Only ONE sibling from the same family may apply for a particular scholarship program. Siblings are not allowed to submit applications for the same scholarship program.
+
+• Applicants must select their intended scholarship carefully because they are only allowed to apply to one scholarship program.
 
 • Meeting all eligibility requirements does not automatically guarantee approval. Final approval is made by the scholarship administrator.
 
+• Each scholarship application is evaluated based on the applicant's eligibility, submitted information, required documents, and other applicable evaluation criteria.
+
+============================================================
+APPLICATION PROCESS
+===================
+
+The general scholarship application process in iskoMats follows these steps:
+
+1. Create an Account – The student creates an account and logs in to the iskoMats system.
+
+2. Complete the Student Profile – The student provides the required personal, academic, residency, and household information.
+
+3. Select a Scholarship – The student selects ONE scholarship program they want to apply for.
+
+4. Eligibility Checking – The system checks the applicant's information against the eligibility requirements of the selected scholarship.
+
+5. Upload Required Documents – The student uploads clear and properly prepared copies of all required documents. Document images must be properly cropped so that the document is clearly visible and unnecessary background areas are removed.
+
+6. Upload Verification Video – The applicant uploads a verification video that must be between 3 and 5 seconds long. Videos outside the required duration may not be accepted by the system.
+
+7. Signature Verification – The applicant provides a signature for the application. The signature should match the signature shown on the back of the submitted identification card. Signature and face verification are implemented at prototype level for demonstration and academic testing purposes only.
+
+8. Submit Application – The student reviews the application information and submits it for evaluation.
+
+9. Document and Information Verification – The system assists in checking the submitted information and documents for completeness and consistency.
+
+10. Admin Evaluation – The scholarship administrator reviews the applicant's information, documents, eligibility, and ranking.
+
+11. Final Decision – The scholarship administrator makes the final approval or rejection decision.
+
+12. Application Status Notification – The student can view the status of their application through the iskoMats system.
+
+============================================================
+DOCUMENT AND VERIFICATION REQUIREMENTS
+======================================
+
+• All uploaded document images must be properly cropped before submission.
+
+• The uploaded document should be clear and readable, with the relevant information fully visible.
+
+• The verification video must be between 3 and 5 seconds in duration.
+
+• The signature submitted in the application should match the signature appearing on the back of the applicant's identification card.
+
+• The signature verification and face verification features are implemented at prototype level only and are intended for demonstration and academic testing purposes.
+
+• If a document or verification submission does not meet the required format, the applicant may be asked to submit a corrected or clearer version.
+
 ============================================================
 MERITS AND AWARDS SCORING SYSTEM
-============================================================
+================================
 
 • Only 1 merit or academic award may be submitted per application.
-• Merits provide up to 25 points toward your total ranking score (Total Ranking Score is 100 points max: GPA is up to 75 points, Merit is up to 25 points, and Household Income is 0 points).
+
+• Merits provide up to 25 points toward your total ranking score.
+
+• The Total Ranking Score has a maximum of 100 points:
+
+* GPA: up to 75 points
+* Merit: up to 25 points
+* Household Income: 0 points
+
 • Only official academic honors and achievements backed by an uploaded certificate, diploma, medal, or formal academic proof are accepted.
+
 • Non-academic achievements (sports, pageantry, social clubs, arts/culture, or other non-academic extracurriculars) are NOT accepted for merit scoring.
 
 Calibrated Scoring Scale for Academic Honors (0 to 25 points):
-1. Summa Cum Laude – 25 points (Highest Academic Distinction / Valedictorian / National Olympiad Champion)
-2. Magna Cum Laude – 23 points (High Academic Distinction / Salutatorian / Regional Olympiad Champion)
-3. 1st Honor / First Honor / With Highest Honors – 20 points (Top Class Academic Honor)
-4. Cum Laude – 18 points (Academic Distinction)
-5. 2nd Honor / Second Honor / With High Honors – 15 points (Second Class Academic Honor)
-6. 3rd Honor / Third Honor / With Honors – 10 points (Third Class Academic Honor / Dean's List / School-level Academic Contests)
+
+1. Summa Cum Laude – 25 points
+   (Highest Academic Distinction / Valedictorian / National Olympiad Champion)
+
+2. Magna Cum Laude – 23 points
+   (High Academic Distinction / Salutatorian / Regional Olympiad Champion)
+
+3. 1st Honor / First Honor / With Highest Honors – 20 points
+   (Top Class Academic Honor)
+
+4. Cum Laude – 18 points
+   (Academic Distinction)
+
+5. 2nd Honor / Second Honor / With High Honors – 15 points
+   (Second Class Academic Honor)
+
+6. 3rd Honor / Third Honor / With Honors – 10 points
+   (Third Class Academic Honor / Dean's List / School-level Academic Contests)
+
 7. General Academic Recognition / Certificate – 7 points
 
-Tip: When submitting, specify the scope/level of the academic honor (School, Division/City, Regional, National, or International) and make sure to upload the clear supporting certificate.
+Tip: When submitting, specify the scope or level of the academic honor (School, Division/City, Regional, National, or International) and make sure to upload the clear supporting certificate.
+
+============================================================
+LIPA CITY HALL INFORMATION
+==========================
+
+Q: Where is the new Lipa City Hall located?
+
+A: The new Lipa City Hall is located at Areza Estate, Barangay Bulacnin, Lipa City, Batangas. It serves as the city's new administrative center and is situated within the Areza Estate development.
+
+Q: Where is the old Lipa City Hall located?
+
+A: The old Lipa City Hall is located along P. Torres Street in Barangay Poblacion, Lipa City, Batangas. The Governor Vilma Scholarship office is located within the old Lipa City Hall.
 
 ============================================================
 COMMON QUESTIONS
-============================================================
+================
 
-Q: Can I apply for both scholarships?
+Q: Can I apply for more than one scholarship?
 
-A: Yes. You may apply for both available scholarships if you satisfy their eligibility requirements. However, once you are officially accepted into one scholarship, your remaining scholarship applications will automatically be cancelled.
+A: No. An applicant may only apply for ONE scholarship program through the iskoMats system. Applicants should select the scholarship that they intend to apply for before submitting their application.
 
-------------------------------------------------------------
+Q: Can my sibling and I apply for the same scholarship?
+
+A: No. Only ONE sibling from the same family is allowed to apply for a particular scholarship program. Siblings cannot submit applications for the same scholarship through iskoMats.
 
 Q: I do not live in Lipa City. Can I apply?
 
 A: No. Only students who are currently residing and studying in Lipa City are eligible to apply through iskoMats.
 
-------------------------------------------------------------
 
 Q: I have one failing grade. Can I apply?
 
 A:
 • Mayor Africa College Educational Financial Assistance – No, applicants must have no failing grades.
-• Governor Vilma Educational Financial Assistance – No, applicants must have no failing grades.
 
-------------------------------------------------------------
+• Governor Vilma Educational Financial Assistance – No, applicants must have no failing grades.
 
 Q: I have a grade below 80. Can I apply for Mayor Africa College Scholarship?
 
 A: No. Applicants for the Mayor Africa College Scholarship must not have any grade below 80.
 
-------------------------------------------------------------
+Q: How long should the verification video be?
+
+A: The verification video must be between 3 and 5 seconds long.
+
+Q: How should I upload my documents?
+
+A: Document images must be properly cropped so that the document is clearly visible and unnecessary background areas are removed.
+
+Q: Does my signature need to match my ID?
+
+A: Yes. The signature submitted in the application should match the signature shown on the back of the applicant's identification card. The signature and face verification features are currently implemented at prototype level for demonstration and academic testing purposes.
 
 Q: Does completing all requirements guarantee approval?
 
-A: No. Completing all requirements only means your application can be evaluated. The final decision is made by the scholarship administrator.
+A: No. Completing all requirements only means that the application can proceed to evaluation. The final decision is made by the scholarship administrator.
 
-------------------------------------------------------------
+Q: What if I upload incomplete or incorrectly prepared documents?
 
-Q: What if I upload incomplete documents?
-
-A: Your application may be marked as incomplete or you may be asked to upload the missing or correct documents before your application can proceed.
-
-------------------------------------------------------------
+A: Your application may be marked as incomplete, or you may be asked to upload missing, corrected, or clearer documents before your application can proceed.
 
 Q: What type of merits can I input?
 
-A: You can input 1 official academic honor or achievement backed by a supporting certificate, diploma, medal, or formal academic recognition. Merits provide up to 25 points toward your ranking score (GPA is up to 75 points, Merits up to 25 points, Total is 100 points). Non-academic achievements (such as sports, pageantry, social clubs, arts/culture, or non-academic extracurriculars) are not accepted for merit scoring.
+A: You can input 1 official academic honor or achievement backed by a supporting certificate, diploma, medal, or formal academic recognition. Merits provide up to 25 points toward your ranking score (GPA is up to 75 points, Merits up to 25 points, Total is 100 points).
+
 
 Examples of valid academic merits and points:
-• Summa Cum Laude / Valedictorian / National Olympiad Champion: 25 points
-• Magna Cum Laude / Salutatorian / Regional Olympiad Champion: 23 points
-• 1st Honor / First Honor / With Highest Honors: 20 points
-• Cum Laude: 18 points
-• 2nd Honor / Second Honor / With High Honors: 15 points
-• 3rd Honor / Third Honor / With Honors / Dean's List: 10 points
-• General Academic Recognition / Certificate: 7 points
 
-Tip: Specify the title and scope/level of the honor (School, Division/City, Regional, National, or International) and upload your clear supporting certificate.
+• Summa Cum Laude / Valedictorian
+• Magna Cum Laude / Salutatorian
+• 1st Honor / First Honor / With Highest Honors
+• Cum Laude
+• 2nd Honor / Second Honor / With High Honors
+• 3rd Honor / Third Honor / With Honors / Dean's List
+• General Academic Recognition / Certificate
 
-------------------------------------------------------------
+Q: Where is the Governor Vilma Scholarship office?
+
+A: The Governor Vilma Scholarship office is located within the old Lipa City Hall along P. Torres Street, Barangay Poblacion, Lipa City, Batangas. The office of the Executive Assistant of Governor Vilma is located at the Maraouy Barangay Hall.
+
+Q: What happens if siblings apply for the same scholarship?
+
+A: Only one sibling from the same family is allowed to apply for a particular scholarship program. Siblings are not allowed to submit applications for the same scholarship through iskoMats.
+
+Q: If I meet the passing grade requirement, am I eligible to apply?
+
+A: Yes. Applicants are eligible to apply if they meet the required passing grade or minimum grade requirement of their selected scholarship. However, meeting the grade requirement only makes the applicant eligible for evaluation and does not guarantee approval. The application must still undergo document verification, eligibility checking, and administrator evaluation.
+
+
+Eligibility Requirements
+
+Applicants are considered eligible to apply if they meet the required passing grade or minimum grade requirement of the scholarship program they selected.
+
+For the Mayor Africa College Scholarship, applicants must have no grades below 80.
+
+For the Mayor Africa College Educational Financial Assistance and Governor Vilma College Educational Financial Assistance, applicants must have no failing grade.
+
+Meeting the applicable passing grade requirement makes the applicant eligible for evaluation, but it does not automatically guarantee approval. Final approval remains subject to the review and decision of the scholarship administrator.
