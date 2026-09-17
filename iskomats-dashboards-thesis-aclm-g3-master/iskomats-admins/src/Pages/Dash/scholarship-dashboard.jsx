@@ -378,7 +378,7 @@ export const getGpaRangeLabel = (grade) => {
   if (grade === null || grade === undefined || grade === '') return '';
   const num = parseFloat(String(grade).replace(/%/g, '').trim());
   if (isNaN(num)) return '';
-  if (num >= 4.00) return '100%';
+  if (num = 4.00) return '100%';
   if (num >= 3.92) return '99%';
   if (num >= 3.83) return '98%';
   if (num >= 3.75) return '97%';
