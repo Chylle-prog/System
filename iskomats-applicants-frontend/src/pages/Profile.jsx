@@ -162,6 +162,25 @@ const Profile = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+
+    if (name === 'mobileNo' || name === 'zipCode') {
+      const sanitizedDigits = value.replace(/\D/g, '').slice(0, name === 'zipCode' ? 4 : 11);
+      setFormData(prev => ({
+        ...prev,
+        [name]: sanitizedDigits
+      }));
+      return;
+    }
+
+    if (name === 'firstName' || name === 'middleName' || name === 'lastName') {
+      const sanitizedName = value.replace(/[^a-zA-Z\sñÑÀ-ÿ.\-']/g, '');
+      setFormData(prev => ({
+        ...prev,
+        [name]: sanitizedName
+      }));
+      return;
+    }
+
     setFormData(prev => ({
       ...prev,
       [name]: value

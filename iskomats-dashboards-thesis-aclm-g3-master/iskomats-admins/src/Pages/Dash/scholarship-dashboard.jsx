@@ -346,31 +346,32 @@ export const normalizeSchoolName = (rawSchool) => {
 
 /**
  * Official 4.0 GPA to Percentage Conversion Table:
- * 98-100   - 4.00 (midpoint ~99%)
- * 95-97    - 3.75 (midpoint ~96%)
- * 92-94    - 3.50 (midpoint ~93%)
- * 89-91    - 3.25 (midpoint ~90%)
- * 86-88    - 3.00 (midpoint ~87%)
- * 83-85    - 2.75 (midpoint ~84%)
- * 80-82    - 2.50 (midpoint ~81%)
- * 77-79    - 2.25 (midpoint ~78%)
- * 75-76    - 2.00 (midpoint ~75.5%)
- * Below 75 - 0.00
+ * 100% = 4.00
+ * 97%  = 3.75
+ * 94%  = 3.50
+ * 90%  = 3.25
+ * 87%  = 3.00
+ * 84%  = 2.75
+ * 81%  = 2.50
+ * 78%  = 2.25
+ * 75%  = 2.00
+ * <75% = 0
+ * anything inbetween is equal to the next one below
  */
 export const getGpaRangeLabel = (grade) => {
   if (grade === null || grade === undefined || grade === '') return '';
   const num = parseFloat(String(grade).replace(/%/g, '').trim());
   if (isNaN(num)) return '';
-  if (num >= 3.88 && num <= 4.0) return '98-100%';
-  if (num >= 3.63 && num < 3.88) return '95-97%';
-  if (num >= 3.38 && num < 3.63) return '92-94%';
-  if (num >= 3.13 && num < 3.38) return '89-91%';
-  if (num >= 2.88 && num < 3.13) return '86-88%';
-  if (num >= 2.63 && num < 2.88) return '83-85%';
-  if (num >= 2.38 && num < 2.63) return '80-82%';
-  if (num >= 2.13 && num < 2.38) return '77-79%';
-  if (num >= 1.90 && num < 2.13) return '75-76%';
-  if (num < 1.90 && num > 0) return 'Below 75%';
+  if (num >= 4.00) return '100%';
+  if (num >= 3.75) return '97%';
+  if (num >= 3.50) return '94%';
+  if (num >= 3.25) return '90%';
+  if (num >= 3.00) return '87%';
+  if (num >= 2.75) return '84%';
+  if (num >= 2.50) return '81%';
+  if (num >= 2.25) return '78%';
+  if (num >= 2.00) return '75%';
+  if (num < 2.00) return '0%';
   return '';
 };
 
@@ -396,8 +397,6 @@ export const convertGpaToPercentage = (val, schoolName = '') => {
       if (upKeywords.some(kw => schoolLower.includes(kw)) && !dlsuKeywords.some(kw => schoolLower.includes(kw))) {
         isUpSystem = true;
       }
-    } else if (num >= 1.0 && num <= 1.9) {
-      isUpSystem = true;
     }
 
     if (isUpSystem) {
@@ -405,21 +404,28 @@ export const convertGpaToPercentage = (val, schoolName = '') => {
       return Math.round((100 - (num - 1.0) * 12.5) * 100) / 100;
     }
 
-    // 4.0 Scale tier mapping from chart
-    if (num >= 3.88) return 99;   // 98-100 (4.00)
-    if (num >= 3.63) return 96;   // 95-97  (3.75)
-    if (num >= 3.38) return 93;   // 92-94  (3.50)
-    if (num >= 3.13) return 90;   // 89-91  (3.25)
-    if (num >= 2.88) return 87;   // 86-88  (3.00)
-    if (num >= 2.63) return 84;   // 83-85  (2.75)
-    if (num >= 2.38) return 81;   // 80-82  (2.50)
-    if (num >= 2.13) return 78;   // 77-79  (2.25)
-    if (num >= 1.90) return 75.5; // 75-76  (2.00)
-    if (num > 0.0) {
-      // Below 2.00 / Below 75
-      return Math.max(0, Math.round((75 - (2.0 - num) * 12) * 100) / 100);
-    }
-    return 0; // 0.00 -> Below 75
+    // 4.0 Scale conversion based on user table:
+    // 100% = 4.00
+    // 97%  = 3.75
+    // 94%  = 3.50
+    // 90%  = 3.25
+    // 87%  = 3.00
+    // 84%  = 2.75
+    // 81%  = 2.50
+    // 78%  = 2.25
+    // 75%  = 2.00
+    // <75% = 0 (< 2.00)
+    // anything inbetween is equal to the next one below
+    if (num >= 4.00) return 100;
+    if (num >= 3.75) return 97;
+    if (num >= 3.50) return 94;
+    if (num >= 3.25) return 90;
+    if (num >= 3.00) return 87;
+    if (num >= 2.75) return 84;
+    if (num >= 2.50) return 81;
+    if (num >= 2.25) return 78;
+    if (num >= 2.00) return 75;
+    return 0; // < 2.00 (<75%) = 0
   }
 
   // Fraction scale (e.g. 0.85 = 85%)

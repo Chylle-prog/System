@@ -7088,8 +7088,9 @@ const StudentInfo = () => {
       return;
     }
 
+    // Number-only fields: accept only digits
     if (name === 'schoolIdNumber') {
-      const sanitizedId = value.slice(0, 12);
+      const sanitizedId = value.replace(/\D/g, '').slice(0, 12);
       invalidateVerificationDependencies(name, sanitizedId);
       setFormData(prev => ({
         ...prev,
@@ -7104,6 +7105,59 @@ const StudentInfo = () => {
       setFormData(prev => ({
         ...prev,
         [name]: sanitizedPhone
+      }));
+      return;
+    }
+
+    if (name === 'numberOfSiblings') {
+      const sanitizedSiblings = value.replace(/\D/g, '').slice(0, 2);
+      invalidateVerificationDependencies(name, sanitizedSiblings);
+      setFormData(prev => ({
+        ...prev,
+        [name]: sanitizedSiblings
+      }));
+      return;
+    }
+
+    if (name === 'zipCode') {
+      const sanitizedZip = value.replace(/\D/g, '').slice(0, 4);
+      invalidateVerificationDependencies(name, sanitizedZip);
+      setFormData(prev => ({
+        ...prev,
+        [name]: sanitizedZip
+      }));
+      return;
+    }
+
+    // Name fields: reject all numbers and invalid symbols, keep only letters, spaces, hyphens, periods, apostrophes, and ñ/Ñ
+    if (name === 'lastName' || name === 'firstName' || name === 'middleName' || name === 'maidenName' || name === 'fatherName' || name === 'motherName') {
+      const sanitizedName = value.replace(/[^a-zA-Z\sñÑÀ-ÿ.\-']/g, '');
+      invalidateVerificationDependencies(name, sanitizedName);
+      setFormData(prev => ({
+        ...prev,
+        [name]: sanitizedName
+      }));
+      return;
+    }
+
+    // Citizenship: only letters, spaces, and hyphens (reject numbers)
+    if (name === 'citizenship') {
+      const sanitizedCitizenship = value.replace(/[^a-zA-Z\sñÑ\-]/g, '');
+      invalidateVerificationDependencies(name, sanitizedCitizenship);
+      setFormData(prev => ({
+        ...prev,
+        [name]: sanitizedCitizenship
+      }));
+      return;
+    }
+
+    // Occupations & Place of Birth: reject all numbers
+    if (name === 'fatherOccupation' || name === 'motherOccupation' || name === 'placeOfBirth') {
+      const sanitizedText = value.replace(/[0-9]/g, '');
+      invalidateVerificationDependencies(name, sanitizedText);
+      setFormData(prev => ({
+        ...prev,
+        [name]: sanitizedText
       }));
       return;
     }
@@ -9407,7 +9461,17 @@ const StudentInfo = () => {
                 <div className="form-row">
                   <div className="form-group">
                     <label>Number of Siblings <span style={{ color: '#e74c3c' }}>*</span></label>
-                    <input type="number" name="numberOfSiblings" value={formData.numberOfSiblings} onChange={handleInputChange} placeholder="0" required={currentStep === 2} />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={2}
+                      name="numberOfSiblings"
+                      value={formData.numberOfSiblings}
+                      onChange={handleInputChange}
+                      placeholder="0"
+                      required={currentStep === 2}
+                    />
                   </div>
                   <div className="form-group">
                     <label>Parents' Gross Income <span style={{ color: '#e74c3c' }}>*</span></label>
@@ -9463,11 +9527,13 @@ const StudentInfo = () => {
                       value={formData.schoolIdNumber}
                       onChange={handleInputChange}
                       placeholder="e.g. 1500017172"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       minLength={6}
                       maxLength={12}
                       required={currentStep === 3}
                     />
-                    <small style={{ color: '#64748b', fontSize: '0.75rem' }}>6–12 characters (e.g., 1500017172)</small>
+                    <small style={{ color: '#64748b', fontSize: '0.75rem' }}>6–12 digits (numbers only, e.g., 1500017172)</small>
                   </div>
                   <div className="form-group">
                     <label>Name of School <span style={{ color: '#e74c3c' }}>*</span></label>
