@@ -2000,94 +2000,103 @@ function courseMatchesText(expectedCourse, text) {
     .replace(/\b(?:college|department|faculty|school|division|institute)\s+of\s+[^\r\n,;]+/gi, ' ')
     .replace(/\b(?:cite|ccs|coe|cba|ceas|cas|con|cit)\b/gi, ' ');
 
-  const normStripped = normalizeForOcr(strippedText);
   const fixedText = strippedText.replace(/b5it/g, 'bsit').replace(/5/g, 's');
 
   const kv = extractOcrKeyValues(text);
   const targetKv = kv.course ? normalizeForOcr(kv.course) : "";
   const expLower = String(expectedCourse).toLowerCase().trim();
 
-  // Canonical Major / Program Definitions
+  // Canonical Major / Program Definitions (Exact Match only)
   const CANONICAL_COURSES = [
     {
       id: 'cpe',
-      check: (exp) => /\b(?:computer\s*eng\w*|bs\s*cpe|cpe)\b/i.test(exp),
-      docHasProgram: (s, kvText) => /\b(?:bscpe|cpe|bs-cpe|bs\s*cpe)\b/i.test(s) || /\b(?:bscpe|cpe|bs-cpe|bs\s*cpe)\b/i.test(kvText) || /\bcomputer\s+engineering\b/i.test(s) || /\bcomputer\s+engineering\b/i.test(kvText)
+      check: (exp) => /\b(?:computer\s*engineering|bs\s*cpe|bscpe|bs-cpe)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bscpe|bs-cpe|bs\s*cpe)\b/i.test(s) || /\b(?:bscpe|bs-cpe|bs\s*cpe)\b/i.test(kvText) || /\bcomputer\s+engineering\b/i.test(s) || /\bcomputer\s+engineering\b/i.test(kvText)
     },
     {
       id: 'cs',
-      check: (exp) => /\b(?:computer\s*sci\w*|bs\s*cs|comp\s*sci)\b/i.test(exp),
+      check: (exp) => /\b(?:computer\s*science|bs\s*cs|bscs|bs-cs)\b/i.test(exp),
       docHasProgram: (s, kvText) => /\b(?:bscs|bs-cs|bs\s*cs)\b/i.test(s) || /\b(?:bscs|bs-cs|bs\s*cs)\b/i.test(kvText) || /\bcomputer\s+science\b/i.test(s) || /\bcomputer\s+science\b/i.test(kvText)
     },
     {
       id: 'it',
-      check: (exp) => /\b(?:information\s*tech\w*|bs\s*it|info\s*tech\w*|b5it)\b/i.test(exp),
-      docHasProgram: (s, kvText) => /\b(?:bsit|bs-it|b5it|bs\s*it)\b/i.test(s) || /\b(?:bsit|bs-it|b5it|bs\s*it)\b/i.test(kvText) || /\binformation\s+technology\b/i.test(s) || /\binfo\s*tech\b/i.test(s) || /\binformation\s+technology\b/i.test(kvText)
+      check: (exp) => /\b(?:information\s*technology|bs\s*it|bsit|bs-it|b5it)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bsit|bs-it|b5it|bs\s*it)\b/i.test(s) || /\b(?:bsit|bs-it|b5it|bs\s*it)\b/i.test(kvText) || /\binformation\s+technology\b/i.test(s) || /\binformation\s+technology\b/i.test(kvText)
     },
     {
       id: 'ce',
-      check: (exp) => /\b(?:civil\s*eng\w*|bs\s*ce)\b/i.test(exp),
+      check: (exp) => /\b(?:civil\s*engineering|bs\s*ce|bsce|bs-ce)\b/i.test(exp),
       docHasProgram: (s, kvText) => /\b(?:bsce|bs-ce|bs\s*ce)\b/i.test(s) || /\b(?:bsce|bs-ce|bs\s*ce)\b/i.test(kvText) || /\bcivil\s+engineering\b/i.test(s) || /\bcivil\s+engineering\b/i.test(kvText)
     },
     {
       id: 'ee',
-      check: (exp) => /\b(?:electrical\s*eng\w*|bs\s*ee)\b/i.test(exp),
+      check: (exp) => /\b(?:electrical\s*engineering|bs\s*ee|bsee|bs-ee)\b/i.test(exp),
       docHasProgram: (s, kvText) => /\b(?:bsee|bs-ee|bs\s*ee)\b/i.test(s) || /\b(?:bsee|bs-ee|bs\s*ee)\b/i.test(kvText) || /\belectrical\s+engineering\b/i.test(s) || /\belectrical\s+engineering\b/i.test(kvText)
     },
     {
       id: 'ece',
-      check: (exp) => /\b(?:electronics\s*(?:and\s*comm\w*)?\s*eng\w*|bs\s*ece|ece)\b/i.test(exp),
+      check: (exp) => /\b(?:electronics\s*(?:and\s*communications\s*)?engineering|bs\s*ece|bsece|bs-ece)\b/i.test(exp),
       docHasProgram: (s, kvText) => /\b(?:bsece|bs-ece|bs\s*ece)\b/i.test(s) || /\b(?:bsece|bs-ece|bs\s*ece)\b/i.test(kvText) || /\belectronics\s+(?:and\s+communications\s+)?engineering\b/i.test(s) || /\belectronics\s+(?:and\s+communications\s+)?engineering\b/i.test(kvText)
     },
     {
       id: 'me',
-      check: (exp) => /\b(?:mechanical\s*eng\w*|bs\s*me)\b/i.test(exp),
+      check: (exp) => /\b(?:mechanical\s*engineering|bs\s*me|bsme|bs-me)\b/i.test(exp),
       docHasProgram: (s, kvText) => /\b(?:bsme|bs-me|bs\s*me)\b/i.test(s) || /\b(?:bsme|bs-me|bs\s*me)\b/i.test(kvText) || /\bmechanical\s+engineering\b/i.test(s) || /\bmechanical\s+engineering\b/i.test(kvText)
     },
     {
       id: 'ie',
-      check: (exp) => /\b(?:industrial\s*eng\w*|bs\s*ie)\b/i.test(exp),
+      check: (exp) => /\b(?:industrial\s*engineering|bs\s*ie|bsie|bs-ie)\b/i.test(exp),
       docHasProgram: (s, kvText) => /\b(?:bsie|bs-ie|bs\s*ie)\b/i.test(s) || /\b(?:bsie|bs-ie|bs\s*ie)\b/i.test(kvText) || /\bindustrial\s+engineering\b/i.test(s) || /\bindustrial\s+engineering\b/i.test(kvText)
     },
     {
-      id: 'ba',
-      check: (exp) => /\b(?:business\s*admin\w*|bs\s*ba|marketing\s*mgmt|financial\s*mgmt|business\s*management)\b/i.test(exp),
-      docHasProgram: (s, kvText) => /\b(?:bsba|bs-ba|bs\s*ba)\b/i.test(s) || /\b(?:bsba|bs-ba|bs\s*ba)\b/i.test(kvText) || /\bbusiness\s+administration\b/i.test(s) || /\bbusiness\s+administration\b/i.test(kvText)
-    },
-    {
       id: 'accountancy',
-      check: (exp) => /\b(?:accountancy|accounting|bs\s*a)\b/i.test(exp),
+      check: (exp) => /\b(?:accountancy|accounting|bs\s*a|bsa|bs-a)\b/i.test(exp),
       docHasProgram: (s, kvText) => /\b(?:bsa|bs-a|bs\s*a)\b/i.test(s) || /\b(?:bsa|bs-a|bs\s*a)\b/i.test(kvText) || /\baccountancy\b|\baccounting\b/i.test(s) || /\baccountancy\b|\baccounting\b/i.test(kvText)
     },
     {
+      id: 'ba',
+      check: (exp) => /\b(?:business\s*administration|bs\s*ba|bsba|bs-ba)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bsba|bs-ba|bs\s*ba)\b/i.test(s) || /\b(?:bsba|bs-ba|bs\s*ba)\b/i.test(kvText) || /\bbusiness\s+administration\b/i.test(s) || /\bbusiness\s+administration\b/i.test(kvText)
+    },
+    {
       id: 'nursing',
-      check: (exp) => /\b(?:nursing|bs\s*n)\b/i.test(exp),
+      check: (exp) => /\b(?:nursing|bs\s*n|bsn|bs-n)\b/i.test(exp),
       docHasProgram: (s, kvText) => /\b(?:bsn|bs-n|bs\s*n)\b/i.test(s) || /\b(?:bsn|bs-n|bs\s*n)\b/i.test(kvText) || /\bnursing\b/i.test(s) || /\bnursing\b/i.test(kvText)
     },
     {
       id: 'criminology',
-      check: (exp) => /\b(?:criminology|bs\s*crim)\b/i.test(exp),
+      check: (exp) => /\b(?:criminology|bs\s*crim|bscrim|bs-crim)\b/i.test(exp),
       docHasProgram: (s, kvText) => /\b(?:bscrim|bs-crim|bs\s*crim)\b/i.test(s) || /\b(?:bscrim|bs-crim|bs\s*crim)\b/i.test(kvText) || /\bcriminology\b/i.test(s) || /\bcriminology\b/i.test(kvText)
     },
     {
       id: 'hm',
-      check: (exp) => /\b(?:hospitality\s*mgmt|hospitality\s*management|hotel\s*and\s*rest|bs\s*hm|bs\s*hrm)\b/i.test(exp),
-      docHasProgram: (s, kvText) => /\b(?:bshm|bshrm|bs\s*hm)\b/i.test(s) || /\b(?:bshm|bshrm|bs\s*hm)\b/i.test(kvText) || /\bhospitality\s+management\b|\bhotel\s+and\s+restaurant\b/i.test(s) || /\bhospitality\s+management\b|\bhotel\s+and\s+restaurant\b/i.test(kvText)
+      check: (exp) => /\b(?:hospitality\s*management|hotel\s*and\s*restaurant\s*management|bs\s*hm|bshm|bs-hm|bshrm|bs\s*hrm)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bshm|bshrm|bs-hm|bs\s*hm)\b/i.test(s) || /\b(?:bshm|bshrm|bs-hm|bs\s*hm)\b/i.test(kvText) || /\bhospitality\s+management\b|\bhotel\s+and\s+restaurant\s+management\b/i.test(s) || /\bhospitality\s+management\b|\bhotel\s+and\s+restaurant\s+management\b/i.test(kvText)
     },
     {
       id: 'tm',
-      check: (exp) => /\b(?:tourism\s*mgmt|tourism\s*management|tourism|bs\s*tm)\b/i.test(exp),
-      docHasProgram: (s, kvText) => /\b(?:bstm|bs\s*tm)\b/i.test(s) || /\b(?:bstm|bs\s*tm)\b/i.test(kvText) || /\btourism\s+management\b|\btourism\b/i.test(s) || /\btourism\s+management\b|\btourism\b/i.test(kvText)
+      check: (exp) => /\b(?:tourism\s*management|tourism|bs\s*tm|bstm|bs-tm)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bstm|bs-tm|bs\s*tm)\b/i.test(s) || /\b(?:bstm|bs-tm|bs\s*tm)\b/i.test(kvText) || /\btourism\s+management\b|\btourism\b/i.test(s) || /\btourism\s+management\b|\btourism\b/i.test(kvText)
     },
     {
       id: 'educ',
-      check: (exp) => /\b(?:secondary\s*educ\w*|elementary\s*educ\w*|bs\s*ed|be\s*ed|teacher\s*educ\w*|education)\b/i.test(exp),
-      docHasProgram: (s, kvText) => /\b(?:bsed|beed|bs\s*ed)\b/i.test(s) || /\b(?:bsed|beed|bs\s*ed)\b/i.test(kvText) || /\bsecondary\s+education\b|\belementary\s+education\b|\bteacher\s+education\b/i.test(s) || /\bsecondary\s+education\b|\belementary\s+education\b/i.test(kvText)
+      check: (exp) => /\b(?:secondary\s*education|bs\s*ed|bsed|bs-ed)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bsed|bs-ed|bs\s*ed)\b/i.test(s) || /\b(?:bsed|bs-ed|bs\s*ed)\b/i.test(kvText) || /\bsecondary\s+education\b/i.test(s) || /\bsecondary\s+education\b/i.test(kvText)
+    },
+    {
+      id: 'beed',
+      check: (exp) => /\b(?:elementary\s*education|be\s*ed|beed|be-ed)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:beed|be-ed|be\s*ed)\b/i.test(s) || /\b(?:beed|be-ed|be\s*ed)\b/i.test(kvText) || /\belementary\s+education\b/i.test(s) || /\belementary\s+education\b/i.test(kvText)
     },
     {
       id: 'psychology',
-      check: (exp) => /\b(?:psychology|bs\s*psych|ab\s*psych)\b/i.test(exp),
-      docHasProgram: (s, kvText) => /\b(?:bspsych|abpsych|bs\s*psych)\b/i.test(s) || /\b(?:bspsych|abpsych|bs\s*psych)\b/i.test(kvText) || /\bpsychology\b/i.test(s) || /\bpsychology\b/i.test(kvText)
+      check: (exp) => /\b(?:psychology|bs\s*psych|bspsych|bs-psych|ab\s*psych|abpsych|ab-psych)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bspsych|abpsych|bs-psych|bs\s*psych|ab\s*psych)\b/i.test(s) || /\b(?:bspsych|abpsych|bs-psych|bs\s*psych|ab\s*psych)\b/i.test(kvText) || /\bpsychology\b/i.test(s) || /\bpsychology\b/i.test(kvText)
+    },
+    {
+      id: 'architecture',
+      check: (exp) => /\b(?:architecture|bs\s*arch|bsarch|bs-arch)\b/i.test(exp),
+      docHasProgram: (s, kvText) => /\b(?:bsarch|bs-arch|bs\s*arch)\b/i.test(s) || /\b(?:bsarch|bs-arch|bs\s*arch)\b/i.test(kvText) || /\barchitecture\b/i.test(s) || /\barchitecture\b/i.test(kvText)
     }
   ];
 
@@ -2099,34 +2108,25 @@ function courseMatchesText(expectedCourse, text) {
   }
 
   // 2. If the document itself contains a recognized canonical program (e.g. document is BSIT)
-  // but the user's input did NOT match canon.check (e.g. user entered truncated "BS Information", "BS Computer", etc.)
+  // but the user's input did NOT match canon.check
   for (const canon of CANONICAL_COURSES) {
     if (canon.docHasProgram(fixedText, targetKv)) {
-      // The document is an accredited canonical program; user input must strictly match the full program
       return false;
     }
   }
 
   // 3. Fallback for custom / non-canonical courses:
-  // Must match all significant words (length >= 3, excluding filler words) strictly in word boundaries
+  // Must match all significant words strictly in word boundaries
   const words = String(expectedCourse).trim().split(/\s+/);
   const genericWords = ['bachelor', 'master', 'doctor', 'science', 'arts', 'degree', 'major', 'in', 'of', 'and', 'bs', 'ba', 'ms', 'ma', 'college', 'department', 'school'];
   const sigWords = words.map(normalizeForOcr).filter(w => w.length >= 3 && !genericWords.includes(w));
 
-  // Single word inputs like "Information", "Engineering", "Technology", "Science" are too ambiguous and must be rejected
-  if (sigWords.length <= 1) {
-    const normCourse = normalizeForOcr(expectedCourse);
-    if (targetKv && targetKv === normCourse) return true;
+  if (sigWords.length === 0) {
     return false;
   }
 
-  if (sigWords.length > 1) {
-    const searchArea = targetKv || fixedText;
-    const allMatched = sigWords.every(w => new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(searchArea));
-    if (allMatched) return true;
-  }
-
-  return false;
+  const searchArea = targetKv ? `${targetKv} ${fixedText}` : fixedText;
+  return sigWords.every(w => new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(searchArea));
 }
 
 // Helper: truncate to 2 decimal places without rounding up (e.g. 3.5555 -> "3.55", 3.4375 -> "3.43", 3.5 -> "3.50")
@@ -5946,9 +5946,12 @@ const StudentInfo = () => {
       showPromptMessage('Please select your Barangay first in Step 1.');
       return;
     }
-    if (!isNationalId && String(formData.schoolIdNumber).replace(/[^0-9a-zA-Z]/g, '').length < 3) {
-      showPromptMessage('Please enter a valid School ID Number.');
-      return;
+    if (!isNationalId) {
+      const cleanId = String(formData.schoolIdNumber || '').trim();
+      if (cleanId.length < 6 || cleanId.length > 12) {
+        showPromptMessage('School ID Number must be between 6 and 12 characters (e.g., 1500017172).');
+        return;
+      }
     }
 
     setLoadingMessage({ title: isNationalId ? 'Scanning National ID' : 'Scanning School ID', message: isNationalId ? 'Verifying your National ID image and Video Content...' : 'Verifying your School ID images and Video Content...' });
@@ -7085,6 +7088,16 @@ const StudentInfo = () => {
       return;
     }
 
+    if (name === 'schoolIdNumber') {
+      const sanitizedId = value.slice(0, 12);
+      invalidateVerificationDependencies(name, sanitizedId);
+      setFormData(prev => ({
+        ...prev,
+        [name]: sanitizedId
+      }));
+      return;
+    }
+
     if (name === 'mobileNumber' || name === 'fatherPhoneNumber' || name === 'motherPhoneNumber') {
       const sanitizedPhone = value.replace(/\D/g, '').slice(0, 11);
       invalidateVerificationDependencies(name, sanitizedPhone);
@@ -7432,6 +7445,13 @@ const StudentInfo = () => {
     }
 
     if (currentStep === 3) {
+      if (formData.schoolIdNumber) {
+        const idLen = String(formData.schoolIdNumber).trim().length;
+        if (idLen < 6 || idLen > 12) {
+          showPromptMessage('School ID Number must be between 6 and 12 characters (e.g., 1500017172).');
+          return;
+        }
+      }
       const hasMerit = meritList.some(m => m.title && m.title.trim());
       if (hasMerit && meritScanVerified !== 'success') {
         showPromptMessage('Please verify your Academic Merit certificate before proceeding to the next step.');
@@ -7579,6 +7599,15 @@ const StudentInfo = () => {
       setIsSubmitting(false);
       showPromptMessage(`Please fill in all fields: ${missingLabel} is missing.`);
       return;
+    }
+
+    if (formData.schoolIdNumber) {
+      const idLen = String(formData.schoolIdNumber).trim().length;
+      if (idLen < 6 || idLen > 12) {
+        setIsSubmitting(false);
+        showPromptMessage('School ID Number must be between 6 and 12 characters (e.g., 1500017172).');
+        return;
+      }
     }
 
     if (formData.mobileNumber && formData.mobileNumber.length !== 11) {
@@ -9428,7 +9457,17 @@ const StudentInfo = () => {
                 <div className="form-row">
                   <div className="form-group">
                     <label>School ID Number <span style={{ color: '#e74c3c' }}>*</span></label>
-                    <input type="text" name="schoolIdNumber" value={formData.schoolIdNumber} onChange={handleInputChange} placeholder="ID Number" required={currentStep === 3} />
+                    <input
+                      type="text"
+                      name="schoolIdNumber"
+                      value={formData.schoolIdNumber}
+                      onChange={handleInputChange}
+                      placeholder="e.g. 1500017172"
+                      minLength={6}
+                      maxLength={12}
+                      required={currentStep === 3}
+                    />
+                    <small style={{ color: '#64748b', fontSize: '0.75rem' }}>6–12 characters (e.g., 1500017172)</small>
                   </div>
                   <div className="form-group">
                     <label>Name of School <span style={{ color: '#e74c3c' }}>*</span></label>

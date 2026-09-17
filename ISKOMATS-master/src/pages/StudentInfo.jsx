@@ -1817,6 +1817,16 @@ const StudentInfo = () => {
       return;
     }
 
+    if (name === 'schoolIdNumber') {
+      const sanitizedId = value.slice(0, 12);
+      invalidateVerificationDependencies(name, sanitizedId);
+      setFormData(prev => ({
+        ...prev,
+        [name]: sanitizedId
+      }));
+      return;
+    }
+
     if (type === 'checkbox') {
       invalidateVerificationDependencies(name, checked);
       setFormData(prev => ({
@@ -2027,6 +2037,13 @@ const StudentInfo = () => {
     }
 
     if (currentStep === 3) {
+      if (formData.schoolIdNumber) {
+        const idLen = String(formData.schoolIdNumber).trim().length;
+        if (idLen < 6 || idLen > 12) {
+          showPromptMessage('⚠️ School ID Number must be between 6 and 12 characters (e.g., 1500017172).');
+          return;
+        }
+      }
       if (!schoolIdPhotos.front || !schoolIdPhotos.back) {
         showPromptMessage('⚠️ Please upload both Front and Back of your ID.');
         return;
@@ -3379,7 +3396,17 @@ const StudentInfo = () => {
                 <div className="form-row">
                   <div className="form-group">
                     <label>School ID Number <span style={{ color: '#e74c3c' }}>*</span></label>
-                    <input type="text" name="schoolIdNumber" value={formData.schoolIdNumber} onChange={handleInputChange} placeholder="ID Number" required={currentStep === 3} />
+                    <input
+                      type="text"
+                      name="schoolIdNumber"
+                      value={formData.schoolIdNumber}
+                      onChange={handleInputChange}
+                      placeholder="e.g. 1500017172"
+                      minLength={6}
+                      maxLength={12}
+                      required={currentStep === 3}
+                    />
+                    <small style={{ color: '#64748b', fontSize: '0.75rem' }}>6–12 characters (e.g., 1500017172)</small>
                   </div>
                   <div className="form-group">
                     <label>Name of School <span style={{ color: '#e74c3c' }}>*</span></label>

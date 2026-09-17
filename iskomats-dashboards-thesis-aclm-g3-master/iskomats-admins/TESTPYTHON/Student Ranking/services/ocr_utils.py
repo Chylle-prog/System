@@ -1163,6 +1163,141 @@ def verify_student_id_strict(expected_id, raw_text, extracted_id=None):
     return False
 
 
+def verify_course_strict(expected_course, raw_text, found_course=None):
+    """
+    Strict Course / Degree Verification.
+    Enforces exact major / program match between user input and document OCR text.
+    Rejects mismatched courses (e.g. BSCS vs BSIT, BS Civil vs BS Mechanical).
+    """
+    if not expected_course or not str(expected_course).strip():
+        return True
+    
+    exp_lower = str(expected_course).lower().strip()
+    raw_str = str(raw_text or '').lower()
+    found_str = str(found_course or '').lower()
+    
+    # Strip department/college organizational headers (e.g. "College of Computer Studies")
+    clean_raw = re.sub(r'\b(?:college|department|faculty|school|division|institute)\s+of\s+[^\r\n,;]+', ' ', raw_str)
+    clean_raw = re.sub(r'\b(?:cite|ccs|coe|cba|ceas|cas|con|cit)\b', ' ', clean_raw)
+    clean_raw = clean_raw.replace('b5it', 'bsit')
+    
+    clean_found = re.sub(r'\b(?:college|department|faculty|school|division|institute)\s+of\s+[^\r\n,;]+', ' ', found_str)
+    clean_found = clean_found.replace('b5it', 'bsit')
+    
+    search_area = f"{clean_found} {clean_raw}"
+
+    canonical_programs = [
+        (
+            'cpe',
+            re.compile(r'\b(?:computer\s*engineering|bs\s*cpe|bscpe|bs-cpe)\b', re.I),
+            re.compile(r'\b(?:bscpe|bs-cpe|bs\s*cpe|computer\s+engineering)\b', re.I)
+        ),
+        (
+            'cs',
+            re.compile(r'\b(?:computer\s*science|bs\s*cs|bscs|bs-cs)\b', re.I),
+            re.compile(r'\b(?:bscs|bs-cs|bs\s*cs|computer\s+science)\b', re.I)
+        ),
+        (
+            'it',
+            re.compile(r'\b(?:information\s*technology|bs\s*it|bsit|bs-it|b5it)\b', re.I),
+            re.compile(r'\b(?:bsit|bs-it|b5it|bs\s*it|information\s+technology)\b', re.I)
+        ),
+        (
+            'ce',
+            re.compile(r'\b(?:civil\s*engineering|bs\s*ce|bsce|bs-ce)\b', re.I),
+            re.compile(r'\b(?:bsce|bs-ce|bs\s*ce|civil\s+engineering)\b', re.I)
+        ),
+        (
+            'ee',
+            re.compile(r'\b(?:electrical\s*engineering|bs\s*ee|bsee|bs-ee)\b', re.I),
+            re.compile(r'\b(?:bsee|bs-ee|bs\s*ee|electrical\s+engineering)\b', re.I)
+        ),
+        (
+            'ece',
+            re.compile(r'\b(?:electronics\s*(?:and\s*communications\s*)?engineering|bs\s*ece|bsece|bs-ece)\b', re.I),
+            re.compile(r'\b(?:bsece|bs-ece|bs\s*ece|electronics\s+(?:and\s+communications\s+)?engineering)\b', re.I)
+        ),
+        (
+            'me',
+            re.compile(r'\b(?:mechanical\s*engineering|bs\s*me|bsme|bs-me)\b', re.I),
+            re.compile(r'\b(?:bsme|bs-me|bs\s*me|mechanical\s+engineering)\b', re.I)
+        ),
+        (
+            'ie',
+            re.compile(r'\b(?:industrial\s*engineering|bs\s*ie|bsie|bs-ie)\b', re.I),
+            re.compile(r'\b(?:bsie|bs-ie|bs\s*ie|industrial\s+engineering)\b', re.I)
+        ),
+        (
+            'accountancy',
+            re.compile(r'\b(?:accountancy|accounting|bs\s*a|bsa|bs-a)\b', re.I),
+            re.compile(r'\b(?:bsa|bs-a|bs\s*a|accountancy|accounting)\b', re.I)
+        ),
+        (
+            'ba',
+            re.compile(r'\b(?:business\s*administration|bs\s*ba|bsba|bs-ba)\b', re.I),
+            re.compile(r'\b(?:bsba|bs-ba|bs\s*ba|business\s+administration)\b', re.I)
+        ),
+        (
+            'nursing',
+            re.compile(r'\b(?:nursing|bs\s*n|bsn|bs-n)\b', re.I),
+            re.compile(r'\b(?:bsn|bs-n|bs\s*n|nursing)\b', re.I)
+        ),
+        (
+            'criminology',
+            re.compile(r'\b(?:criminology|bs\s*crim|bscrim|bs-crim)\b', re.I),
+            re.compile(r'\b(?:bscrim|bs-crim|bs\s*crim|criminology)\b', re.I)
+        ),
+        (
+            'hm',
+            re.compile(r'\b(?:hospitality\s*management|hotel\s*and\s*restaurant\s*management|bs\s*hm|bshm|bs-hm|bshrm|bs\s*hrm)\b', re.I),
+            re.compile(r'\b(?:bshm|bshrm|bs-hm|bs\s*hm|hospitality\s+management|hotel\s+and\s+restaurant\s+management)\b', re.I)
+        ),
+        (
+            'tm',
+            re.compile(r'\b(?:tourism\s*management|tourism|bs\s*tm|bstm|bs-tm)\b', re.I),
+            re.compile(r'\b(?:bstm|bs-tm|bs\s*tm|tourism\s+management|tourism)\b', re.I)
+        ),
+        (
+            'bsed',
+            re.compile(r'\b(?:secondary\s*education|bs\s*ed|bsed|bs-ed)\b', re.I),
+            re.compile(r'\b(?:bsed|bs-ed|bs\s*ed|secondary\s+education)\b', re.I)
+        ),
+        (
+            'beed',
+            re.compile(r'\b(?:elementary\s*education|be\s*ed|beed|be-ed)\b', re.I),
+            re.compile(r'\b(?:beed|be-ed|be\s*ed|elementary\s+education)\b', re.I)
+        ),
+        (
+            'psychology',
+            re.compile(r'\b(?:psychology|bs\s*psych|bspsych|bs-psych|ab\s*psych|abpsych|ab-psych)\b', re.I),
+            re.compile(r'\b(?:bspsych|abpsych|bs-psych|bs\s*psych|ab\s*psych|psychology)\b', re.I)
+        ),
+        (
+            'architecture',
+            re.compile(r'\b(?:architecture|bs\s*arch|bsarch|bs-arch)\b', re.I),
+            re.compile(r'\b(?:bsarch|bs-arch|bs\s*arch|architecture)\b', re.I)
+        )
+    ]
+
+    # 1. If user inputs a canonical program
+    for prog_id, input_pat, doc_pat in canonical_programs:
+        if input_pat.search(exp_lower):
+            return bool(doc_pat.search(search_area))
+
+    # 2. If document contains a canonical program that the user input did NOT match
+    for prog_id, input_pat, doc_pat in canonical_programs:
+        if doc_pat.search(search_area):
+            return False
+
+    # 3. Custom / Non-canonical courses
+    generic_words = {'bachelor', 'master', 'doctor', 'science', 'arts', 'degree', 'major', 'in', 'of', 'and', 'bs', 'ba', 'ms', 'ma', 'college', 'department', 'school'}
+    words = [w for w in re.split(r'\s+', exp_lower) if len(w) >= 3 and w not in generic_words]
+    if not words:
+        return False
+
+    return all(bool(re.search(r'\b' + re.escape(w) + r'\b', search_area, re.I)) for w in words)
+
+
 def is_similar_name_word(w1, w2, strict_spelling=False):
     """
     Returns True if name word w1 matches token w2.
@@ -1904,46 +2039,10 @@ def verify_cor_fields(parsed_fields, raw_text, first_name, middle_name, last_nam
             found_desc = f"{found_num}nd Sem" if found_num == 2 else (f"{found_num}st Sem" if found_num == 1 else (f"{found_num}rd Sem" if found_num == 3 else found_sy_sem))
             failures.append(f"Semester mismatch (Expected: '{expected_semester}', Found in COR: '{found_desc}')")
 
-    # 4. COURSE / DEGREE MATCHING
+    # 4. COURSE / DEGREE MATCHING (Strict major/course verification)
     if expected_course and str(expected_course).strip():
         found_course = parsed_fields.get('course', raw_text)
-        c_exp = normalize_text(expected_course)
-        c_found = normalize_text(found_course)
-        c_raw = normalize_text(raw_text)
-
-        # Fix digit/letter OCR confusions (e.g. b5it -> bsit)
-        c_found_fixed = c_found.replace('b5it', 'bsit').replace('5', 's')
-        c_raw_fixed = c_raw.replace('b5it', 'bsit').replace('5', 's')
-
-        course_ok = False
-        if (c_exp in c_found_fixed) or (c_exp in c_raw_fixed):
-            course_ok = True
-        
-        # Course synonyms check
-        course_map = {
-            'bsit': ['information technology', 'info tech', 'it', 'b5it'],
-            'bscs': ['computer science', 'comp sci', 'cs'],
-            'bsba': ['business administration', 'business', 'management'],
-            'bscpe': ['computer engineering', 'cpe'],
-            'bsee': ['electrical engineering', 'ee'],
-            'bsece': ['electronics engineering', 'ece'],
-            'bsme': ['mechanical engineering', 'me'],
-            'bsn': ['nursing']
-        }
-        for code, synonyms in course_map.items():
-            if code in c_exp or any(s in c_exp for s in synonyms):
-                if code in c_raw_fixed or any(s in c_raw_fixed for s in synonyms):
-                    course_ok = True
-                    break
-
-        if not course_ok:
-            exp_words = [w for w in c_exp.split() if w not in {'bachelor', 'of', 'science', 'in', 'and', 'the', 'bs', 'degree', 'major'}]
-            if exp_words:
-                matched_count = sum(1 for w in exp_words if w in c_raw_fixed)
-                required_ratio = 1.0 if len(exp_words) <= 2 else 0.6
-                if (matched_count / len(exp_words)) >= required_ratio:
-                    course_ok = True
-
+        course_ok = verify_course_strict(expected_course, raw_text, found_course=found_course)
         if not course_ok:
             failures.append(f"Course mismatch (Expected: '{expected_course}', Found in COR: '{found_course}')")
 
@@ -2418,15 +2517,8 @@ def student_name_matches_text(target_text, first_name, middle_name, last_name, i
 def course_matches_text(expected_course, raw_text):
     if not expected_course or not str(expected_course).strip():
         return True, None
-    c_exp = normalize_text(expected_course)
-    c_raw = normalize_text(raw_text)
-    course_ok = c_exp in c_raw
-    if not course_ok:
-        exp_words = [w for w in c_exp.split() if w not in {'bachelor', 'of', 'science', 'in', 'and', 'the', 'bs', 'degree', 'major'}]
-        if exp_words:
-            matched = sum(1 for w in exp_words if w in c_raw)
-            course_ok = (matched / len(exp_words)) >= (1.0 if len(exp_words) <= 2 else 0.6)
-    return course_ok, expected_course
+    course_ok = verify_course_strict(expected_course, raw_text)
+    return course_ok, (expected_course if course_ok else None)
 
 def student_id_no_matches_text(expected_id_no, raw_text):
     if not expected_id_no or not str(expected_id_no).strip():
