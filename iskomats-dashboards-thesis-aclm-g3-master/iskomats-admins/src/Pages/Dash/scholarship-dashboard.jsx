@@ -346,30 +346,62 @@ export const normalizeSchoolName = (rawSchool) => {
 
 /**
  * Official 4.0 GPA to Percentage Conversion Table:
- * 100% = 4.00
- * 97%  = 3.75
- * 94%  = 3.50
- * 90%  = 3.25
- * 87%  = 3.00
- * 84%  = 2.75
- * 81%  = 2.50
- * 78%  = 2.25
- * 75%  = 2.00
- * <75% = 0
- * anything inbetween is equal to the next one below
+ * 100% (4.00)
+ * 99%  (3.92)
+ * 98%  (3.83)
+ * 97%  (3.75)
+ * 96%  (3.67)
+ * 95%  (3.58)
+ * 94%  (3.50)
+ * 93%  (3.42)
+ * 92%  (3.33)
+ * 91%  (3.25)
+ * 90%  (3.17)
+ * 89%  (3.08)
+ * 88%  (3.00)
+ * 87%  (2.92)
+ * 86%  (2.83)
+ * 85%  (2.75)
+ * 84%  (2.67)
+ * 83%  (2.58)
+ * 82%  (2.50)
+ * 81%  (2.42)
+ * 80%  (2.33)
+ * 79%  (2.25)
+ * 78%  (2.17)
+ * 77%  (2.08)
+ * 76%  (2.00)
+ * 75%  (2.00)
+ * Below 75% (0.00)
  */
 export const getGpaRangeLabel = (grade) => {
   if (grade === null || grade === undefined || grade === '') return '';
   const num = parseFloat(String(grade).replace(/%/g, '').trim());
   if (isNaN(num)) return '';
   if (num >= 4.00) return '100%';
+  if (num >= 3.92) return '99%';
+  if (num >= 3.83) return '98%';
   if (num >= 3.75) return '97%';
+  if (num >= 3.67) return '96%';
+  if (num >= 3.58) return '95%';
   if (num >= 3.50) return '94%';
-  if (num >= 3.25) return '90%';
-  if (num >= 3.00) return '87%';
-  if (num >= 2.75) return '84%';
-  if (num >= 2.50) return '81%';
-  if (num >= 2.25) return '78%';
+  if (num >= 3.42) return '93%';
+  if (num >= 3.33) return '92%';
+  if (num >= 3.25) return '91%';
+  if (num >= 3.17) return '90%';
+  if (num >= 3.08) return '89%';
+  if (num >= 3.00) return '88%';
+  if (num >= 2.92) return '87%';
+  if (num >= 2.83) return '86%';
+  if (num >= 2.75) return '85%';
+  if (num >= 2.67) return '84%';
+  if (num >= 2.58) return '83%';
+  if (num >= 2.50) return '82%';
+  if (num >= 2.42) return '81%';
+  if (num >= 2.33) return '80%';
+  if (num >= 2.25) return '79%';
+  if (num >= 2.17) return '78%';
+  if (num >= 2.08) return '77%';
   if (num >= 2.00) return '75%';
   if (num < 2.00) return '0%';
   return '';
@@ -405,25 +437,30 @@ export const convertGpaToPercentage = (val, schoolName = '') => {
     }
 
     // 4.0 Scale conversion based on user table:
-    // 100% = 4.00
-    // 97%  = 3.75
-    // 94%  = 3.50
-    // 90%  = 3.25
-    // 87%  = 3.00
-    // 84%  = 2.75
-    // 81%  = 2.50
-    // 78%  = 2.25
-    // 75%  = 2.00
-    // <75% = 0 (< 2.00)
-    // anything inbetween is equal to the next one below
     if (num >= 4.00) return 100;
+    if (num >= 3.92) return 99;
+    if (num >= 3.83) return 98;
     if (num >= 3.75) return 97;
+    if (num >= 3.67) return 96;
+    if (num >= 3.58) return 95;
     if (num >= 3.50) return 94;
-    if (num >= 3.25) return 90;
-    if (num >= 3.00) return 87;
-    if (num >= 2.75) return 84;
-    if (num >= 2.50) return 81;
-    if (num >= 2.25) return 78;
+    if (num >= 3.42) return 93;
+    if (num >= 3.33) return 92;
+    if (num >= 3.25) return 91;
+    if (num >= 3.17) return 90;
+    if (num >= 3.08) return 89;
+    if (num >= 3.00) return 88;
+    if (num >= 2.92) return 87;
+    if (num >= 2.83) return 86;
+    if (num >= 2.75) return 85;
+    if (num >= 2.67) return 84;
+    if (num >= 2.58) return 83;
+    if (num >= 2.50) return 82;
+    if (num >= 2.42) return 81;
+    if (num >= 2.33) return 80;
+    if (num >= 2.25) return 79;
+    if (num >= 2.17) return 78;
+    if (num >= 2.08) return 77;
     if (num >= 2.00) return 75;
     return 0; // < 2.00 (<75%) = 0
   }
