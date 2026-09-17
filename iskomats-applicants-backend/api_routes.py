@@ -1444,6 +1444,26 @@ def notify_all_applicants(title, message, notif_type='scholarship'):
             conn.commit()
             print(f"[NOTIF BATCH] Fast batch notification sent to all applicants (title='{title}')", flush=True)
             safe_emit('new_notification', {'title': title, 'message': message, 'type': notif_type}, broadcast=True)
+            
+            # SMS dispatch for batch notifications
+            def _bg_batch_sms():
+                try:
+                    with get_db() as sconn:
+                        scur = sconn.cursor()
+                        scur.execute("SELECT DISTINCT mobile_no FROM applicants WHERE mobile_no IS NOT NULL")
+                        mobiles = scur.fetchall()
+                        from services.notification_service import send_sms_logic
+                        sms_text = f"ISKOMATS: {title} - {message}"
+                        if len(sms_text) > 300:
+                            sms_text = sms_text[:297] + "..."
+                        for m in mobiles:
+                            mob_num = m.get('mobile_no') if hasattr(m, 'get') else m[0]
+                            if mob_num:
+                                send_sms_logic(mob_num, sms_text)
+                except Exception as b_err:
+                    print(f"[NOTIF BATCH SMS ERROR] {b_err}", flush=True)
+
+            threading.Thread(target=_bg_batch_sms, daemon=True).start()
     except Exception as exc:
         print(f"[NOTIF ERROR] Failed to batch notify applicants: {exc}", flush=True)
 
@@ -1493,12 +1513,13 @@ def notify_announcement_applicants(
                         ast.applicant_no, 
                         a.first_name, 
                         a.last_name, 
-                        e.email_address
+                        e.email_address,
+                        a.mobile_no
                     FROM applicant_status ast
                     JOIN scholarships s ON ast.scholarship_no = s.req_no
                     JOIN applicants a ON ast.applicant_no = a.applicant_no
                     LEFT JOIN {applicant_email_table} e ON a.applicant_no = e.applicant_no
-                    WHERE s.pro_no = %s AND ast.applicant_no IS NOT NULL AND e.email_address IS NOT NULL
+                    WHERE s.pro_no = %s AND ast.applicant_no IS NOT NULL
                     """,
                     (provider_no,),
                 )
@@ -1511,10 +1532,11 @@ def notify_announcement_applicants(
                         e.applicant_no, 
                         a.first_name, 
                         a.last_name, 
-                        e.email_address
+                        e.email_address,
+                        a.mobile_no
                     FROM {applicant_email_table} e
                     LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
-                    WHERE e.is_verified = TRUE AND e.applicant_no IS NOT NULL AND e.email_address IS NOT NULL
+                    WHERE e.is_verified = TRUE AND e.applicant_no IS NOT NULL
                     """
                 )
                 recipients = cur.fetchall()
@@ -1527,10 +1549,11 @@ def notify_announcement_applicants(
                             e.applicant_no, 
                             a.first_name, 
                             a.last_name, 
-                            e.email_address
+                            e.email_address,
+                            a.mobile_no
                         FROM {applicant_email_table} e
                         LEFT JOIN applicants a ON e.applicant_no = a.applicant_no
-                        WHERE e.applicant_no IS NOT NULL AND e.email_address IS NOT NULL
+                        WHERE e.applicant_no IS NOT NULL
                         """
                     )
                     recipients = cur.fetchall()
@@ -1648,6 +1671,23 @@ ISKOMATS Team
                     email_success_count = sum(1 for r in results if r)
                     email_failure_count = len(valid_recipients) - email_success_count
                 
+        # 3. Asynchronous SMS delivery for announcements
+        try:
+            from services.notification_service import send_sms_logic
+            sms_body = f"ISKOMATS Announcement: {title} - {notification_message}"
+            if len(sms_body) > 300:
+                sms_body = sms_body[:297] + "..."
+            
+            def _bg_ann_sms():
+                for r in recipients:
+                    mob = r.get('mobile_no') if hasattr(r, 'get') else (r['mobile_no'] if 'mobile_no' in r else None)
+                    if mob:
+                        send_sms_logic(mob, sms_body)
+
+            threading.Thread(target=_bg_ann_sms, daemon=True).start()
+        except Exception as ann_sms_err:
+            log(f"[ANNOUNCEMENT SMS ERROR] {ann_sms_err}")
+
         log(f"[ANNOUNCEMENT NOTIF] Real-time task completed. Total Recipients: {len(recipients)}, Email Success: {email_success_count}, Failure: {email_failure_count}")
 
     except Exception as exc:

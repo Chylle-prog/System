@@ -1572,6 +1572,24 @@ ISKOMATS Team
                     email_success_count = sum(1 for r in results if r)
                     email_failure_count = len(valid_recipients) - email_success_count
 
+        # 3. Asynchronous SMS delivery for announcements
+        try:
+            from services.notification_service import send_sms_logic
+            sms_body = f"ISKOMATS Announcement: {title} - {notification_message}"
+            if len(sms_body) > 300:
+                sms_body = sms_body[:297] + "..."
+            
+            def _bg_ann_sms():
+                for r in recipients:
+                    mob = r.get('mobile_no') if hasattr(r, 'get') else (r['mobile_no'] if isinstance(r, dict) and 'mobile_no' in r else None)
+                    if mob:
+                        send_sms_logic(mob, sms_body)
+
+            import threading
+            threading.Thread(target=_bg_ann_sms, daemon=True).start()
+        except Exception as ann_sms_err:
+            print(f"[ANNOUNCEMENT SMS ERROR] {ann_sms_err}", flush=True)
+
         if send_email_alerts:
             print(
                 f"[ANNOUNCEMENT EMAIL] Notification email dispatch finished for provider {provider_no}: "

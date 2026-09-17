@@ -238,32 +238,59 @@ The ISKOMATS Team
     return send_email_message(msg)
 
 
+ALLOWED_SMS_RECIPIENTS = {
+    '09949878905',
+    '09464417742',
+    '09458654425',
+    '09927400293'
+}
+
+def normalize_ph_mobile_number(raw_num):
+    """Normalize Philippine mobile number to standard 11-digit format 09XXXXXXXXX."""
+    digits = "".join(c for c in str(raw_num or '') if c.isdigit())
+    if digits.startswith('63') and len(digits) == 12:
+        return '0' + digits[2:]
+    if digits.startswith('9') and len(digits) == 10:
+        return '0' + digits
+    return digits
+
+def is_sms_recipient_allowed(raw_num):
+    """Check if number is in the allowed whitelist to save Semaphore credits."""
+    norm = normalize_ph_mobile_number(raw_num)
+    env_allowed = os.environ.get('SMS_ALLOWED_NUMBERS', '').strip()
+    if env_allowed:
+        whitelist = {normalize_ph_mobile_number(n.strip()) for n in env_allowed.split(',') if n.strip()}
+    else:
+        whitelist = ALLOWED_SMS_RECIPIENTS
+    return norm in whitelist
+
 def send_sms_logic(number, message):
-    """Sends SMS to a mobile number using Semaphore or Twilio."""
+    """Sends SMS to a mobile number using Semaphore or Twilio (restricted to allowed numbers)."""
     import urllib.parse
     import base64
     
     # Feature flag to toggle SMS globally. Set ENABLE_SMS=true in .env to turn on.
     enable_sms = os.environ.get('ENABLE_SMS', 'false').strip().lower() in ('true', '1', 'yes')
     if not enable_sms:
-        print("[SMS INFO] SMS notifications are currently disabled (ENABLE_SMS=false).")
+        print("[SMS INFO] SMS notifications are currently disabled (ENABLE_SMS=false).", flush=True)
+        return False
+
+    # Normalize Philippine mobile numbers (09XXXXXXXXX)
+    clean_number = normalize_ph_mobile_number(number)
+    if not clean_number or len(clean_number) < 10:
+        print(f"[SMS ERROR] Invalid mobile number: {number}", flush=True)
+        return False
+
+    # Whitelist filtering to save Semaphore credits
+    if not is_sms_recipient_allowed(clean_number):
+        print(f"[SMS FILTER] Number {clean_number} is not in allowed SMS recipients whitelist. Skipping SMS to save Semaphore credits.", flush=True)
         return False
 
     provider = os.environ.get('SMS_PROVIDER', 'semaphore').strip().lower()
     if not provider or provider == 'none':
         provider = 'semaphore'
         
-    print(f"[SMS INFO] Attempting to send SMS via {provider} to {number}...", flush=True)
-    
-    # Simple sanitization of number to ensure it works with Semaphore and Twilio
-    raw_digits = "".join(c for c in str(number) if c.isdigit())
-    # Normalize Philippine mobile numbers (09XXXXXXXXX or 639XXXXXXXXX)
-    if raw_digits.startswith('63') and len(raw_digits) == 12:
-        clean_number = '0' + raw_digits[2:]
-    elif raw_digits.startswith('9') and len(raw_digits) == 10:
-        clean_number = '0' + raw_digits
-    else:
-        clean_number = raw_digits
+    print(f"[SMS INFO] Attempting to send SMS via {provider} to {clean_number}...", flush=True)
     
     if provider == 'semaphore':
         api_key = os.environ.get('SEMAPHORE_API_KEY', '6f921f42fdbd618957783dd03c425cc9').strip()
