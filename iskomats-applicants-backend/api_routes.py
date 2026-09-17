@@ -84,9 +84,31 @@ def on_blueprint_init(state):
         app.add_url_rule('/api/messages/all', 'global_get_all_messages', get_all_messages_rest, methods=['GET'])
         app.add_url_rule('/api/messages/provider/<int:pro_no>', 'global_get_provider_messages', get_all_messages_rest, methods=['GET'])
         app.add_url_rule('/api/messages/<path:room_id>', 'global_handle_room_messages', handle_room_messages_rest, methods=['GET', 'POST'])
-        print("[BACKEND] Registered global /api/messages REST endpoints.")
+        app.add_url_rule('/api/test-sms', 'global_test_sms', test_sms_rest, methods=['GET', 'POST'])
+        app.add_url_rule('/api/admin/test-sms', 'admin_test_sms', test_sms_rest, methods=['GET', 'POST'])
+        print("[BACKEND] Registered global /api/messages and /api/test-sms REST endpoints.")
     except Exception as e:
         print(f"[BACKEND] Error registering global message rules: {e}")
+
+def test_sms_rest():
+    """Direct test endpoint to verify SMS sending configuration."""
+    number = request.args.get('number') or (request.get_json(silent=True) or {}).get('number')
+    message = request.args.get('message') or (request.get_json(silent=True) or {}).get('message') or "ISKOMATS SMS Test: Semaphore is working successfully!"
+    if not number:
+        return jsonify({
+            'status': 'error',
+            'message': 'Missing phone number. Please provide ?number=09XXXXXXXXX'
+        }), 400
+    
+    from services.notification_service import send_sms_logic
+    success = send_sms_logic(number, message)
+    return jsonify({
+        'status': 'success' if success else 'failed',
+        'sms_sent': success,
+        'number': number,
+        'provider': os.environ.get('SMS_PROVIDER', 'semaphore'),
+        'enable_sms': os.environ.get('ENABLE_SMS', 'false')
+    }), (200 if success else 500)
 
 from project_config import get_db, get_db_startup, use_storage, upload_to_supabase
 from services.notification_service import create_notification, init_socketio as init_notification_socketio, fetch_google_access_token, send_verification_email, send_email_message

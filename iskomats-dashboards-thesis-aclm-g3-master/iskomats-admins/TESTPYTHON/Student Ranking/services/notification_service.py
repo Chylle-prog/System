@@ -263,40 +263,54 @@ def send_sms_logic(number, message):
         print("[SMS INFO] SMS notifications are currently disabled (ENABLE_SMS=false).")
         return False
 
-    provider = os.environ.get('SMS_PROVIDER', '').strip().lower()
+    provider = os.environ.get('SMS_PROVIDER', 'semaphore').strip().lower()
     if not provider or provider == 'none':
-        print("[SMS INFO] SMS notifications are disabled (SMS_PROVIDER not set).")
-        return False
+        provider = 'semaphore'
         
-    print(f"[SMS INFO] Attempting to send SMS via {provider} to {number}...")
+    print(f"[SMS INFO] Attempting to send SMS via {provider} to {number}...", flush=True)
     
     # Simple sanitization of number to ensure it works with Semaphore and Twilio
-    # Strip any non-digit chars
-    clean_number = "".join(c for c in str(number) if c.isdigit() or c == '+')
+    raw_digits = "".join(c for c in str(number) if c.isdigit())
+    # Normalize Philippine mobile numbers (09XXXXXXXXX or 639XXXXXXXXX)
+    if raw_digits.startswith('63') and len(raw_digits) == 12:
+        clean_number = '0' + raw_digits[2:]
+    elif raw_digits.startswith('9') and len(raw_digits) == 10:
+        clean_number = '0' + raw_digits
+    else:
+        clean_number = raw_digits
     
     if provider == 'semaphore':
-        api_key = os.environ.get('SEMAPHORE_API_KEY', '').strip()
-        sender_name = os.environ.get('SEMAPHORE_SENDER_NAME', 'SEMAPHORE').strip()
+        api_key = os.environ.get('SEMAPHORE_API_KEY', '6f921f42fdbd618957783dd03c425cc9').strip()
+        sender_name = os.environ.get('SEMAPHORE_SENDER_NAME', 'Iskomats').strip()
         if not api_key:
-            print("[SMS ERROR] Semaphore apikey not configured (SEMAPHORE_API_KEY is empty)")
+            print("[SMS ERROR] Semaphore apikey not configured (SEMAPHORE_API_KEY is empty)", flush=True)
             return False
             
         url = "https://api.semaphore.co/api/v4/messages"
-        data = urllib.parse.urlencode({
+        payload_dict = {
             'apikey': api_key,
             'number': clean_number,
             'message': message,
-            'sendername': sender_name
-        }).encode('utf-8')
-        
+        }
+        if sender_name:
+            payload_dict['sendername'] = sender_name
+
+        data = urllib.parse.urlencode(payload_dict).encode('utf-8')
         req = urllib_request.Request(url, data=data, method='POST')
         try:
             with urllib_request.urlopen(req, timeout=15) as response:
                 resp_data = json.loads(response.read().decode('utf-8'))
-                print(f"[SMS SUCCESS] Semaphore response: {resp_data}")
+                print(f"[SMS SUCCESS] Semaphore response: {resp_data}", flush=True)
                 return True
+        except urllib_error.HTTPError as err:
+            try:
+                err_body = err.read().decode('utf-8')
+                print(f"[SMS ERROR] Semaphore HTTP Error {err.code}: {err_body}", flush=True)
+            except Exception:
+                print(f"[SMS ERROR] Semaphore HTTP Error {err.code}: {err}", flush=True)
+            return False
         except Exception as err:
-            print(f"[SMS ERROR] Semaphore failed: {err}")
+            print(f"[SMS ERROR] Semaphore failed: {err}", flush=True)
             return False
             
     elif provider == 'twilio':
@@ -417,8 +431,29 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
         
         if not db_conn: conn.commit()
         
-        receiver_email = user_row['email_address'] if user_row else None
-        receiver_mobile = mobile_row['mobile_no'] if mobile_row else None
+        receiver_email = None
+        receiver_mobile = None
+        if user_row:
+            if isinstance(user_row, dict):
+                receiver_email = user_row.get('email_address')
+            elif isinstance(user_row, (list, tuple)):
+                receiver_email = user_row[0]
+            elif hasattr(user_row, '__getitem__'):
+                try:
+                    receiver_email = user_row['email_address']
+                except Exception:
+                    receiver_email = user_row[0]
+                    
+        if mobile_row:
+            if isinstance(mobile_row, dict):
+                receiver_mobile = mobile_row.get('mobile_no')
+            elif isinstance(mobile_row, (list, tuple)):
+                receiver_mobile = mobile_row[0]
+            elif hasattr(mobile_row, '__getitem__'):
+                try:
+                    receiver_mobile = mobile_row['mobile_no']
+                except Exception:
+                    receiver_mobile = mobile_row[0]
         
         # SMS alert trigger in the background
         sms_sent = False
@@ -431,6 +466,8 @@ def create_notification(user_no, title, message, notif_type='message', send_emai
             sms_thread.daemon = True
             sms_thread.start()
             sms_sent = True
+        else:
+            print(f"[NOTIF SMS SKIP] No mobile number found for applicant {user_no}", flush=True)
 
         if not send_email or not receiver_email:
             if should_close_conn: conn.close()
