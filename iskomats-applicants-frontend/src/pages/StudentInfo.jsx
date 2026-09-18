@@ -6,6 +6,7 @@ import { applicantAPI, applicationAPI, scholarshipAPI, verificationAPI, uploadPr
 import { SCHOOLS, BARANGAYS } from '../utils/constants';
 
 const FIND_SCHOLARSHIP_PROFILE_KEY = 'findScholarshipProfile';
+const SHOW_DEBUG_OPTIONS = String(import.meta.env.VITE_SHOW_DEBUG_OPTIONS || import.meta.env.VITE_ENABLE_DEBUG || '').toLowerCase() === 'true';
 
 
 // COURSES array removed as per user request to change to normal text field
@@ -8800,179 +8801,177 @@ const StudentInfo = () => {
       `}</style>
 
       {/* Dev Debug & Global Requirements Checklist Toggle */}
-      <div style={{
-        position: 'fixed',
-        bottom: '20px',
-        left: '20px',
-        zIndex: 9999,
-      }}>
-        {!showDebugMenu ? (
-          <button
-            type="button"
-            onClick={() => setShowDebugMenu(true)}
-            style={{
+      {SHOW_DEBUG_OPTIONS && (
+        <div style={{
+          position: 'fixed',
+          bottom: '20px',
+          left: '20px',
+          zIndex: 9999,
+        }}>
+          {!showDebugMenu ? (
+            <button
+              type="button"
+              onClick={() => setShowDebugMenu(true)}
+              style={{
+                background: '#1e293b',
+                color: '#38bdf8',
+                border: '1px solid #334155',
+                padding: '8px 14px',
+                borderRadius: '20px',
+                boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
+                fontSize: '0.75rem',
+                fontWeight: '800',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <i className="fas fa-bug"></i>
+              Debug Options
+            </button>
+          ) : (
+            <div style={{
               background: '#1e293b',
-              color: '#38bdf8',
-              border: '1px solid #334155',
-              padding: '8px 14px',
-              borderRadius: '20px',
-              boxShadow: '0 8px 20px rgba(0,0,0,0.3)',
+              color: '#fff',
+              padding: '14px 16px',
+              borderRadius: '18px',
+              boxShadow: '0 10px 25px rgba(0,0,0,0.35)',
               fontSize: '0.75rem',
-              fontWeight: '800',
-              cursor: 'pointer',
+              fontWeight: 'bold',
               display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <i className="fas fa-bug"></i>
-            Debug Options
-          </button>
-        ) : (
-          <div style={{
-            background: '#1e293b',
-            color: '#fff',
-            padding: '14px 16px',
-            borderRadius: '18px',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.35)',
-            fontSize: '0.75rem',
-            fontWeight: 'bold',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '10px',
-            border: '1px solid #334155',
-            minWidth: '240px',
-            animation: 'fadeIn 0.2s ease'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>
-              <span style={{ color: '#38bdf8', fontSize: '0.8rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <i className="fas fa-bug"></i> Debug Options
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowDebugMenu(false)}
-                style={{
-                  background: 'transparent',
-                  color: '#94a3b8',
-                  border: 'none',
-                  fontSize: '0.9rem',
-                  cursor: 'pointer',
-                  padding: '2px 6px'
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Alt Account Check Row */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: debugFlags.skip_alternate_check ? '#10b981' : '#ef4444' }}>●</span>
-                <span>Alt Check: {debugFlags.skip_alternate_check ? 'Bypassed' : 'Enabled'}</span>
+              flexDirection: 'column',
+              gap: '10px',
+              border: '1px solid #334155',
+              minWidth: '240px',
+              animation: 'fadeIn 0.2s ease'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>
+                <span style={{ color: '#38bdf8', fontSize: '0.8rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <i className="fas fa-bug"></i> Debug Options
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowDebugMenu(false)}
+                  style={{
+                    background: 'transparent',
+                    color: '#94a3b8',
+                    border: 'none',
+                    fontSize: '0.9rem',
+                    cursor: 'pointer',
+                    padding: '2px 6px'
+                  }}
+                >
+                  ✕
+                </button>
               </div>
+
+              {/* Alt Account Check Row */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ color: debugFlags.skip_alternate_check ? '#10b981' : '#ef4444' }}>●</span>
+                  <span>Alt Check: {debugFlags.skip_alternate_check ? 'Bypassed' : 'Enabled'}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const newVal = !debugFlags.skip_alternate_check;
+                    localStorage.setItem('debug_skip_alternate_check', newVal ? 'true' : 'false');
+                    sessionStorage.setItem('debug_skip_alternate_check', newVal ? 'true' : 'false');
+                    setDebugFlags(prev => ({ ...prev, skip_alternate_check: newVal }));
+                    await debugAPI.setFlag('skip_alternate_check', newVal);
+                  }}
+                  style={{
+                    background: '#3b82f6',
+                    color: 'white',
+                    border: 'none',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '0.7rem',
+                    fontWeight: '700'
+                  }}
+                >
+                  Toggle
+                </button>
+              </div>
+
+              {/* Pass Step Verifications Debug Button */}
               <button
                 type="button"
-                onClick={async () => {
-                  const newVal = !debugFlags.skip_alternate_check;
-                  localStorage.setItem('debug_skip_alternate_check', newVal ? 'true' : 'false');
-                  sessionStorage.setItem('debug_skip_alternate_check', newVal ? 'true' : 'false');
-                  setDebugFlags(prev => ({ ...prev, skip_alternate_check: newVal }));
-                  await debugAPI.setFlag('skip_alternate_check', newVal);
-                }}
+                onClick={passCurrentStepVerifications}
                 style={{
-                  background: '#3b82f6',
+                  width: '100%',
+                  background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
                   color: 'white',
                   border: 'none',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
+                  padding: '8px 12px',
+                  borderRadius: '10px',
                   cursor: 'pointer',
-                  fontSize: '0.7rem',
-                  fontWeight: '700'
+                  fontSize: '0.75rem',
+                  fontWeight: '800',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  boxShadow: '0 4px 12px rgba(139, 92, 246, 0.35)'
                 }}
               >
-                Toggle
+                <i className="fas fa-bolt"></i> Pass Step {currentStep} Verifications
+              </button>
+
+              {/* Fill Docs from Supabase Button */}
+              <button
+                type="button"
+                onClick={fillDocsFromSupabase}
+                style={{
+                  width: '100%',
+                  background: '#059669',
+                  color: 'white',
+                  border: 'none',
+                  padding: '7px 12px',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                  fontWeight: '800',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span style={{ fontSize: '0.9rem' }}>📂</span> Prefill Docs from Supabase
+              </button>
+
+              {/* Global Requirements Checklist Toggle Button */}
+              <button
+                type="button"
+                onClick={() => setShowAllRequirementsChecklist(prev => !prev)}
+                style={{
+                  width: '100%',
+                  background: showAllRequirementsChecklist ? '#6366f1' : '#475569',
+                  color: 'white',
+                  border: 'none',
+                  padding: '7px 12px',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                  fontWeight: '800',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                }}
+              >
+                <i className={`fas ${showAllRequirementsChecklist ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                {showAllRequirementsChecklist ? 'Hide Requirements Info' : 'Show Requirements Info'}
               </button>
             </div>
-
-
-
-            {/* Pass Step Verifications Debug Button */}
-            <button
-              type="button"
-              onClick={passCurrentStepVerifications}
-              style={{
-                width: '100%',
-                background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
-                color: 'white',
-                border: 'none',
-                padding: '8px 12px',
-                borderRadius: '10px',
-                cursor: 'pointer',
-                fontSize: '0.75rem',
-                fontWeight: '800',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                boxShadow: '0 4px 12px rgba(139, 92, 246, 0.35)'
-              }}
-            >
-              <i className="fas fa-bolt"></i> Pass Step {currentStep} Verifications
-            </button>
-
-
-
-            {/* Fill Docs from Supabase Button */}
-            <button
-              type="button"
-              onClick={fillDocsFromSupabase}
-              style={{
-                width: '100%',
-                background: '#059669',
-                color: 'white',
-                border: 'none',
-                padding: '7px 12px',
-                borderRadius: '10px',
-                cursor: 'pointer',
-                fontSize: '0.75rem',
-                fontWeight: '800',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px'
-              }}
-            >
-              <span style={{ fontSize: '0.9rem' }}>📂</span> Prefill Docs from Supabase
-            </button>
-
-            {/* Global Requirements Checklist Toggle Button */}
-            <button
-              type="button"
-              onClick={() => setShowAllRequirementsChecklist(prev => !prev)}
-              style={{
-                width: '100%',
-                background: showAllRequirementsChecklist ? '#6366f1' : '#475569',
-                color: 'white',
-                border: 'none',
-                padding: '7px 12px',
-                borderRadius: '10px',
-                cursor: 'pointer',
-                fontSize: '0.75rem',
-                fontWeight: '800',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-              }}
-            >
-              <i className={`fas ${showAllRequirementsChecklist ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-              {showAllRequirementsChecklist ? 'Hide Requirements Info' : 'Show Requirements Info'}
-            </button>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       <nav className="navbar">
         <Link to="/portal" className="navbar-brand">iskoMats</Link>
