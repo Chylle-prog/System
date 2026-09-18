@@ -4435,7 +4435,7 @@ def get_applicants(current_user_id, pro_no, role, program):
                             'id': mp.get('merit_id')
                         })
                 a['meritFiles'] = merit_files
-
+ 
                 # The merit_proofs table (merit_title) is the single source of truth for application merits
                 if a_merit_proofs and proof_titles:
                     app_merit_text = ', '.join(proof_titles)
