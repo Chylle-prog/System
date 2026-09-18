@@ -252,6 +252,10 @@ def send_email_message(msg):
     raise RuntimeError(f"Email delivery to {receiver_email} failed via both SMTP and OAuth.")
 
 
+# Whitelist of allowed SMS recipients.
+# Options:
+# - Set to {True}, True, {'*'}, or {'all'} to allow sending SMS to ALL valid real numbers.
+# - Set to a set of specific numbers, e.g. {'09949878905', '09464417742'}, to restrict sending.
 ALLOWED_SMS_RECIPIENTS = {
     '09949878905',
     '09464417742',
@@ -269,14 +273,43 @@ def normalize_ph_mobile_number(raw_num):
     return digits
 
 def is_sms_recipient_allowed(raw_num):
-    """Check if number is in the allowed whitelist to save Semaphore credits."""
+    """
+    Check if number is in the allowed whitelist to save Semaphore credits.
+    Supports allowing ALL valid mobile numbers if:
+    - ALLOWED_SMS_RECIPIENTS is {True}, True, {'*'}, {'all'}, or '*'
+    - OR environment variable SMS_ALLOWED_NUMBERS is '*', 'all', 'true', or '1'
+    """
     norm = normalize_ph_mobile_number(raw_num)
+    if not norm or len(norm) < 10:
+        return False
+
     env_allowed = os.environ.get('SMS_ALLOWED_NUMBERS', '').strip()
+
+    # 1. If SMS_ALLOWED_NUMBERS is set to 'true', '*', or 'all', bypass whitelist and allow ALL numbers
+    if env_allowed.lower() in ('*', 'all', 'true', '1', 'any'):
+        return True
+
+    # 2. If SMS_ALLOWED_NUMBERS is explicitly 'false', '0', 'none', or 'off', block all numbers
+    if env_allowed.lower() in ('false', '0', 'none', 'off', 'disable', 'disabled'):
+        return False
+
+    # 3. If env var provides comma-separated numbers (e.g. "09949878905,09464417742"), check that whitelist
     if env_allowed:
         whitelist = {normalize_ph_mobile_number(n.strip()) for n in env_allowed.split(',') if n.strip()}
-    else:
-        whitelist = ALLOWED_SMS_RECIPIENTS
-    return norm in whitelist
+        return norm in whitelist
+
+    # 4. Fall back to ALLOWED_SMS_RECIPIENTS in the code
+    if ALLOWED_SMS_RECIPIENTS is True or str(ALLOWED_SMS_RECIPIENTS).strip().lower() in ('*', 'all', 'true', '1', 'any'):
+        return True
+
+    if isinstance(ALLOWED_SMS_RECIPIENTS, (set, list, tuple)):
+        for item in ALLOWED_SMS_RECIPIENTS:
+            if item is True or str(item).strip().lower() in ('true', '1', '*', 'all', 'any'):
+                return True
+        whitelist = {normalize_ph_mobile_number(n) for n in ALLOWED_SMS_RECIPIENTS if n is not None}
+        return norm in whitelist
+
+    return False
 
 def send_sms_logic(number, message):
     """Sends SMS to a mobile number using Semaphore or Twilio (restricted to allowed numbers)."""
