@@ -2949,6 +2949,7 @@ export default function ScholarshipDashboard({
     return (data.scholarshipPosts || []).find(s => String(s.reqNo || s.id || '') === String(reqNo));
   };
 
+  //GPA Scoring (75 points max)
   const calculateDeservednessScoreDetails = (a, sch) => {
     if (!a) return { total: 0, gpaScore: 0, incomeScore: 0, meritScore: 0, reason: '' };
 
@@ -2968,7 +2969,7 @@ export default function ScholarshipDashboard({
       gpaScore = Math.min(75, Math.max(0, ((normalizedGpa - 75) / 25) * 75));
     }
 
-    // Income points completely removed (0 pts)
+
     const incomeScore = 0;
 
     const meritScore = Math.min(25, Math.max(0, Number(a.meritScore ?? 0)));
@@ -7212,9 +7213,8 @@ export default function ScholarshipDashboard({
               <div className="mt-3 p-3 rounded-xl bg-gradient-to-r from-amber-50/80 to-orange-50/40 border border-amber-200/80 shadow-xs">
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div className="flex items-center gap-1.5">
-                    <FaRobot className="text-amber-600 text-xs sm:text-sm" />
                     <span className="text-[10px] sm:text-xs font-black text-amber-900 uppercase tracking-wider">
-                      Score Explanation for Merits / Awards
+                      Score for Merits / Awards
                     </span>
                   </div>
                   <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-bold border border-amber-300 shadow-xs">
