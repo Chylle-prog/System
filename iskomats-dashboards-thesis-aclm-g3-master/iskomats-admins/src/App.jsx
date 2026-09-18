@@ -13,7 +13,6 @@ import Suspended from './Pages/Auth/Suspended/suspended'
 import VerifyEmail from './Pages/Auth/VerifyE/verify-email'
 import { authAPI, API_ORIGIN } from './services/api'
 import { clearAdminSession } from './utils/admin-session'
-import SuperAdminDebugPanel from './Components/Debug/SuperAdminDebugPanel'
 
 const REMOTE_SESSION_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const FORCED_SESSION_CHECK_COOLDOWN_MS = 30 * 1000;
@@ -204,7 +203,6 @@ function AppContent() {
         } />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
-      {isLoggedIn && <SuperAdminDebugPanel />}
     </>
   );
 }
