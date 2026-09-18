@@ -378,7 +378,7 @@ export const getGpaRangeLabel = (grade) => {
   if (grade === null || grade === undefined || grade === '') return '';
   const num = parseFloat(String(grade).replace(/%/g, '').trim());
   if (isNaN(num)) return '';
-  if (num = 4.00) return '100%';
+  if (num >= 4.00) return '100%';
   if (num >= 3.92) return '99%';
   if (num >= 3.83) return '98%';
   if (num >= 3.75) return '97%';
@@ -5314,7 +5314,6 @@ export default function ScholarshipDashboard({
               <tr className="bg-[#800020] text-white select-none">
                 <th className="px-4 py-3 text-left font-semibold">Name</th>
                 <th className="px-4 py-3 text-left font-semibold">Grade / GPA</th>
-                <th className="px-4 py-3 text-left font-semibold">Points</th>
                 <th className="px-4 py-3 text-left font-semibold">School &amp; Course</th>
                 <th className="px-4 py-3 text-left font-semibold">Contact &amp; Address</th>
                 <th className="px-4 py-3 text-center font-semibold">Accept / Decline</th>
@@ -5324,7 +5323,7 @@ export default function ScholarshipDashboard({
             <tbody>
               {paginatedTrackApplicants.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-4 py-12 text-center text-gray-500 font-medium">
+                  <td colSpan="6" className="px-4 py-12 text-center text-gray-500 font-medium">
                     No applicants found matching your criteria.
                   </td>
                 </tr>
@@ -5371,7 +5370,6 @@ export default function ScholarshipDashboard({
                       <td className="px-3 py-2 text-sm font-semibold text-gray-800" title={a.grade ? `Original GPA: ${a.grade}` : ''}>
                         {formatGpaDisplay(a.grade || a.overall_gpa || a.gpa, a.school)}
                       </td>
-                      {renderPointsCell(a)}
                       <td className="px-3 py-2 text-xs">
                         <div className="font-bold text-[#800020] leading-tight">{a.school}</div>
                         <div className="text-[10px] text-gray-500">{a.course || 'No Course'}</div>
