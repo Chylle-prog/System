@@ -4862,6 +4862,14 @@ def get_my_applications():
                     ast.scholarship_no,
                     s.req_no,
                     s.deadline,
+                    s.slots,
+                    s.is_removed,
+                    COALESCE((
+                        SELECT COUNT(*)
+                        FROM applicant_status sub_ast
+                        WHERE sub_ast.scholarship_no = ast.scholarship_no
+                        AND sub_ast.is_accepted IN ('Accepted', 'Approved')
+                    ), 0) AS accepted_count,
                     s.pro_no,
                     sp.provider_name,
                     CASE
@@ -4899,6 +4907,7 @@ def get_my_applications():
                 """,
                 (request.user_no,),
             )
+
             rows = cur.fetchall()
 
             # Batch fetch merit proofs for these applications

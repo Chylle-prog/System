@@ -3912,7 +3912,20 @@ const Portal = () => {
                           {displayStatus === 'Cancelled' && !hasAnyAccepted && (() => {
                             const reason = app.cancellation_reason || app.cancellationReason || '';
                             const canReapply = reason === 'Cancelled by User' || reason === 'Accepted into another scholarship';
-                            return canReapply ? (
+                            if (!canReapply) return null;
+
+                            // Hide if the scholarship is removed/deleted
+                            if (app.is_removed) return null;
+
+                            // Hide if the deadline has already passed
+                            if (app.deadline && new Date(app.deadline) < new Date()) return null;
+
+                            // Hide if all slots are filled
+                            const slots = app.slots != null ? Number(app.slots) : null;
+                            const acceptedCount = app.accepted_count != null ? Number(app.accepted_count) : 0;
+                            if (slots !== null && slots > 0 && acceptedCount >= slots) return null;
+
+                            return (
                               <button
                                 className="edit-btn"
                                 style={{ backgroundColor: '#2563eb', color: '#fff', borderColor: '#2563eb' }}
@@ -3921,8 +3934,9 @@ const Portal = () => {
                               >
                                 <i className="fas fa-redo"></i> Re-apply
                               </button>
-                            ) : null;
+                            );
                           })()}
+
                           {isSubmitted && (
                             <button className="cancel-btn" onClick={() => cancelApplication(app.scholarship_no || app.req_no, app.name)}>
                               <i className="fas fa-times-circle"></i> Cancel
