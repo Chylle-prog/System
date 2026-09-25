@@ -2857,6 +2857,7 @@ export function merit_matches_text(detectedText, meritTitle) {
 const StudentInfo = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const isEditMode = searchParams.get('edit') === 'true';
   const localVideoBlobsRef = useRef({});
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
@@ -4382,6 +4383,14 @@ const StudentInfo = () => {
     };
 
     await saveDraftToStorage(key, draftObj);
+
+    // Sync draft with Supabase application_drafts table (Option B)
+    const activeReqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id') || scholarshipDetails?.req_no || scholarshipDetails?.reqNo || scholarshipDetails?.id;
+    if (activeReqNo && activeReqNo !== 'general') {
+      applicationAPI.saveDraft(parseInt(activeReqNo), nextStep, draftObj).catch(err => {
+        console.warn('[SUPABASE DRAFT SYNC ERROR]:', err);
+      });
+    }
   };
 
   const clearDraft = async (user = currentUser) => {
@@ -4391,6 +4400,13 @@ const StudentInfo = () => {
 
     const key = buildDraftStorageKey(user, searchParams, scholarshipName);
     await removeDraftFromStorage(key);
+
+    const activeReqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id') || scholarshipDetails?.req_no || scholarshipDetails?.reqNo || scholarshipDetails?.id;
+    if (activeReqNo && activeReqNo !== 'general') {
+      applicationAPI.deleteDraft(parseInt(activeReqNo)).catch(err => {
+        console.warn('[SUPABASE DRAFT DELETE ERROR]:', err);
+      });
+    }
   };
 
   const analyzeSignatureComplexity = (canvas) => {
@@ -6450,7 +6466,43 @@ const StudentInfo = () => {
 
 
     const loadProfile = async () => {
-      const savedDraft = await loadDraftFromStorage(draftKey);
+      let savedDraft = null;
+      const targetReqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
+
+      if (isEditMode && targetReqNo) {
+        setLoadingMessage({ title: 'Loading Application for Edit', message: 'Retrieving your submitted application data...' });
+        setIsInitialLoading(true);
+        try {
+          const editRes = await applicationAPI.initEdit(parseInt(targetReqNo));
+          if (editRes && editRes.success && editRes.draft_data) {
+            savedDraft = editRes.draft_data;
+          } else if (editRes && !editRes.success) {
+            showPromptMessage(editRes.message || 'Cannot edit this application.');
+            setTimeout(() => navigate('/portal'), 2500);
+            setIsInitialLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.warn('[EDIT INIT ERROR]:', err);
+          showPromptMessage(err?.message || 'Unable to open application for editing.');
+          setTimeout(() => navigate('/portal'), 2500);
+          setIsInitialLoading(false);
+          return;
+        }
+      } else if (targetReqNo) {
+        try {
+          const draftRes = await applicationAPI.getDraft(parseInt(targetReqNo));
+          if (draftRes && draftRes.hasDraft && draftRes.draft_data) {
+            savedDraft = draftRes.draft_data;
+          }
+        } catch (dErr) {
+          console.warn('[DRAFT FETCH WARNING]:', dErr);
+        }
+      }
+
+      if (!savedDraft) {
+        savedDraft = await loadDraftFromStorage(draftKey);
+      }
       let targetFirstName = '';
       let targetMiddleName = '';
       let targetLastName = '';
@@ -8991,14 +9043,33 @@ const StudentInfo = () => {
       <div className="form-container">
         {/* Back to FindScholarship Button */}
         <div style={{ marginBottom: '1.5rem', marginTop: '1rem' }}>
-          <Link to="/findscholarship" className="back-button" style={{ textDecoration: 'none', border: '1.5px solid var(--gray-2)', padding: '0.5rem 1.5rem', borderRadius: '40px', fontWeight: 600, color: 'var(--text-soft)', display: 'inline-block', marginTop: 0 }}>
-            <i className="fas fa-arrow-left" style={{ marginRight: '8px' }}></i> Back to Find Scholarships
+          <Link to={isEditMode ? "/portal" : "/findscholarship"} className="back-button" style={{ textDecoration: 'none', border: '1.5px solid var(--gray-2)', padding: '0.5rem 1.5rem', borderRadius: '40px', fontWeight: 600, color: 'var(--text-soft)', display: 'inline-block', marginTop: 0 }}>
+            <i className="fas fa-arrow-left" style={{ marginRight: '8px' }}></i> {isEditMode ? "Back to Ongoing Applications" : "Back to Find Scholarships"}
           </Link>
         </div>
         <div className="form-card">
           <div className="section-header">
             <img src="/iskologo.png" alt="Logo" style={{ height: '50px', marginBottom: '1rem', filter: 'grayscale(1) contrast(1.2)' }} />
-            <h2>{scholarshipName}</h2>
+            <h2>
+              {scholarshipName}
+              {isEditMode && (
+                <span style={{
+                  display: 'inline-block',
+                  background: '#eff6ff',
+                  color: '#1d4ed8',
+                  border: '1px solid #bfdbfe',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  padding: '0.25rem 0.75rem',
+                  borderRadius: '20px',
+                  marginLeft: '10px',
+                  verticalAlign: 'middle',
+                  letterSpacing: '0.02em'
+                }}>
+                  <i className="fas fa-edit" style={{ marginRight: '5px' }}></i> Editing Application
+                </span>
+              )}
+            </h2>
             <p>Step {currentStep} of 4: {
               currentStep === 1 ? 'Personal Information' :
                 currentStep === 2 ? 'Family Background' :
@@ -10961,9 +11032,9 @@ const StudentInfo = () => {
                     style={{ width: 'auto', padding: '0.8rem 3.5rem', borderRadius: '40px', background: 'var(--success)', border: 'none' }}
                   >
                     {isSubmitting ? (
-                      <><i className="fas fa-spinner fa-spin" style={{ marginRight: '10px' }}></i>Submitting...</>
+                      <><i className="fas fa-spinner fa-spin" style={{ marginRight: '10px' }}></i>{isEditMode ? 'Saving Changes...' : 'Submitting...'}</>
                     ) : (
-                      <><i className="fas fa-paper-plane" style={{ marginRight: '10px' }}></i>Submit Application</>
+                      <><i className="fas fa-paper-plane" style={{ marginRight: '10px' }}></i>{isEditMode ? 'Save & Re-submit Application' : 'Submit Application'}</>
                     )}
                   </button>
                 </div>
@@ -10983,8 +11054,12 @@ const StudentInfo = () => {
           <div className="success-icon-wrapper">
             <i className="fas fa-check"></i>
           </div>
-          <h2>Application submitted!</h2>
-          <p>Your application for <strong>{scholarshipName}</strong> has been received. Please wait for an email regarding your status.</p>
+          <h2>{isEditMode ? 'Application Updated!' : 'Application submitted!'}</h2>
+          <p>
+            {isEditMode
+              ? <>Your updated application for <strong>{scholarshipName}</strong> has been saved and re-submitted to the administrators.</>
+              : <>Your application for <strong>{scholarshipName}</strong> has been received. Please wait for an email regarding your status.</>}
+          </p>
           <div className="redirect-status">
             Redirecting to portal...
             <div className="loader-dots">

@@ -1422,6 +1422,58 @@ export const applicationAPI = {
   },
 
   /**
+   * Save in-progress step draft to Supabase (Option B)
+   * @param {number} scholarshipNo 
+   * @param {number} currentStep 
+   * @param {object} draftData 
+   * @returns {Promise}
+   */
+  saveDraft: async (scholarshipNo, currentStep, draftData) => {
+    return makeRequest('/student/applications/draft/save', {
+      method: 'POST',
+      body: JSON.stringify({
+        scholarship_no: scholarshipNo,
+        current_step: currentStep,
+        draft_data: draftData
+      })
+    });
+  },
+
+  /**
+   * Fetch stored draft for a scholarship from Supabase
+   * @param {number} scholarshipNo 
+   * @returns {Promise}
+   */
+  getDraft: async (scholarshipNo) => {
+    return makeRequest(`/student/applications/draft/${scholarshipNo}`, {
+      method: 'GET'
+    });
+  },
+
+  /**
+   * Delete stored draft from Supabase
+   * @param {number} scholarshipNo 
+   * @returns {Promise}
+   */
+  deleteDraft: async (scholarshipNo) => {
+    return makeRequest(`/student/applications/draft/${scholarshipNo}`, {
+      method: 'DELETE'
+    });
+  },
+
+  /**
+   * Initialize editing an existing submitted application
+   * Only allowed when application status is 'Submitted'
+   * @param {number} scholarshipNo 
+   * @returns {Promise}
+   */
+  initEdit: async (scholarshipNo) => {
+    return makeRequest(`/student/applications/draft/init-edit/${scholarshipNo}`, {
+      method: 'POST'
+    });
+  },
+
+  /**
    * Update application status (for admin)
    * @param {number} applicationId - Application ID
    * @param {string} status - New status

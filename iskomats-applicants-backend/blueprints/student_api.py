@@ -3549,6 +3549,22 @@ def submit_application():
                 except (ValueError, TypeError):
                     pass
 
+            # Enforce edit restriction: 'Submitted' and 'Approved' applications can be modified
+            target_submission_status = 'Submitted'
+            cur.execute(
+                "SELECT is_accepted FROM applicant_status WHERE scholarship_no = %s AND applicant_no = %s",
+                (scholarship_id, current_user_id)
+            )
+            existing_app_status = cur.fetchone()
+            if existing_app_status:
+                raw_stat = existing_app_status.get('is_accepted')
+                norm_stat = 'Submitted' if raw_stat in ('Submitted', 'Pending', None) else ('Approved' if raw_stat in ('Approved', 'Accepted') else raw_stat)
+                if norm_stat not in ('Submitted', 'Approved'):
+                    return jsonify({
+                        'message': f"Cannot edit this application. Current status is '{norm_stat}'."
+                    }), 403
+                target_submission_status = norm_stat
+
             preliminary_identity = build_restriction_identity_from_applicant(applicant, source_data=request_payload)
             if preliminary_identity:
                 cur.execute(
@@ -3898,13 +3914,22 @@ def submit_application():
             # ── CREATE/UPDATE STATUS ──────────────────────────────────────────────
             cur.execute(
                 """
-                INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, app_doc_no, created_at)
-                VALUES (%s, %s, 'Pending', %s, NOW())
+                INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, app_doc_no, created_at, status_updated)
+                VALUES (%s, %s, %s, %s, NOW(), CURRENT_DATE)
                 ON CONFLICT (scholarship_no, applicant_no) 
-                DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = 'Pending', app_doc_no = EXCLUDED.app_doc_no
+                DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = EXCLUDED.is_accepted, app_doc_no = EXCLUDED.app_doc_no, status_updated = CURRENT_DATE
                 """,
-                (scholarship_id, current_user_id, application_doc_no),
+                (scholarship_id, current_user_id, target_submission_status, application_doc_no),
             )
+
+            # ── DELETE DRAFT FROM APPLICATION_DRAFTS ──────────────────────────────
+            try:
+                cur.execute(
+                    "DELETE FROM application_drafts WHERE applicant_no = %s AND scholarship_no = %s",
+                    (current_user_id, scholarship_id)
+                )
+            except Exception as draft_del_err:
+                print(f"[SUBMIT] Warning deleting application_drafts: {draft_del_err}", flush=True)
 
             # Ensure the initial system message is created so the chat room immediately exists in DB
             # and appears in both applicant and admin dashboards.
@@ -3931,9 +3956,9 @@ def submit_application():
                     'applicant_no': current_user_id,
                     'applicantId': current_user_id,
                     'scholarship_no': scholarship_id,
-                    'status': 'Pending',
-                    'newStatus': 'Pending',
-                    'is_accepted': None,
+                    'status': target_submission_status,
+                    'newStatus': target_submission_status,
+                    'is_accepted': target_submission_status,
                     'action': 'apply',
                     'pro_no': pro_no,
                     'program': pro_name
@@ -4122,7 +4147,7 @@ def ocr_check():
 @student_api_bp.route('/applications/<int:scholarship_no>', methods=['DELETE'])
 @token_required
 def cancel_application(scholarship_no):
-    """Cancel (delete) the current user's application for a given scholarship."""
+    """Cancel the current user's application for a given scholarship. Only allowed if status is 'Submitted'."""
     try:
         with get_db() as conn:
             cur = conn.cursor()
@@ -4130,13 +4155,19 @@ def cancel_application(scholarship_no):
             # Verify the application exists and belongs to this applicant
             cur.execute(
                 """
-                SELECT 1 FROM applicant_status
+                SELECT is_accepted FROM applicant_status
                 WHERE scholarship_no = %s AND applicant_no = %s
                 """,
                 (scholarship_no, request.user_no),
             )
-            if not cur.fetchone():
+            app_row = cur.fetchone()
+            if not app_row:
                 return jsonify({'message': 'Application not found or does not belong to you'}), 404
+
+            raw_stat = app_row.get('is_accepted')
+            norm_stat = 'Submitted' if raw_stat in ('Submitted', 'Pending', None) else ('Approved' if raw_stat in ('Approved', 'Accepted') else raw_stat)
+            if norm_stat != 'Submitted':
+                return jsonify({'message': f"Cannot cancel application. Current status is '{norm_stat}'."}), 400
 
             # Mark the application as Cancelled
             cur.execute(
@@ -4147,9 +4178,15 @@ def cancel_application(scholarship_no):
                 """,
                 (scholarship_no, request.user_no),
             )
-            
-            # We NO LONGER delete associated messages between applicant and provider 
-            # so that the cancellation notice can be read by the admin.
+
+            # Clear any in-progress draft
+            try:
+                cur.execute(
+                    "DELETE FROM application_drafts WHERE scholarship_no = %s AND applicant_no = %s",
+                    (scholarship_no, request.user_no),
+                )
+            except Exception:
+                pass
             
             conn.commit()
 
@@ -4157,6 +4194,302 @@ def cancel_application(scholarship_no):
     except Exception as exc:
         traceback.print_exc()
         return jsonify({'message': f'Error cancelling application: {str(exc)}'}), 500
+
+
+# ─── APPLICATION DRAFT ENDPOINTS (OPTION B) ───────────────────────────────────
+
+@student_api_bp.route('/applications/draft/<int:scholarship_no>', methods=['GET'])
+@token_required
+def get_application_draft(scholarship_no):
+    """Fetch stored multi-step draft for a scholarship from Supabase."""
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT current_step, draft_data, updated_at 
+                FROM application_drafts 
+                WHERE applicant_no = %s AND scholarship_no = %s
+                """,
+                (request.user_no, scholarship_no)
+            )
+            row = cur.fetchone()
+            if not row:
+                return jsonify({'success': True, 'hasDraft': False})
+
+            draft_data = row.get('draft_data')
+            if isinstance(draft_data, str):
+                try:
+                    draft_data = json.loads(draft_data)
+                except Exception:
+                    pass
+
+            return jsonify({
+                'success': True,
+                'hasDraft': True,
+                'current_step': row.get('current_step') or 1,
+                'draft_data': draft_data or {},
+                'updated_at': str(row.get('updated_at')) if row.get('updated_at') else None
+            })
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(exc)}), 500
+
+
+@student_api_bp.route('/applications/draft/save', methods=['POST'])
+@token_required
+def save_application_draft():
+    """Save in-progress step data to application_drafts table in Supabase."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        scholarship_no = payload.get('scholarship_no') or payload.get('req_no')
+        if not scholarship_no:
+            return jsonify({'success': False, 'message': 'scholarship_no is required'}), 400
+        scholarship_no = int(scholarship_no)
+
+        current_step = int(payload.get('current_step') or 1)
+        draft_data = payload.get('draft_data') or {}
+
+        with get_db() as conn:
+            cur = conn.cursor()
+
+            # Verify: if an existing submitted application exists, only allow edits if status is 'Submitted'
+            cur.execute(
+                "SELECT is_accepted FROM applicant_status WHERE scholarship_no = %s AND applicant_no = %s",
+                (scholarship_no, request.user_no)
+            )
+            existing_stat = cur.fetchone()
+            if existing_stat:
+                raw_stat = existing_stat.get('is_accepted')
+                norm_stat = 'Submitted' if raw_stat in ('Submitted', 'Pending', None) else ('Approved' if raw_stat in ('Approved', 'Accepted') else raw_stat)
+                if norm_stat not in ('Submitted', 'Approved'):
+                    return jsonify({'success': False, 'message': f"Cannot edit application with status '{norm_stat}'"}), 403
+
+            json_val = json.dumps(draft_data) if isinstance(draft_data, dict) else str(draft_data)
+            cur.execute(
+                """
+                INSERT INTO application_drafts (applicant_no, scholarship_no, current_step, draft_data, updated_at)
+                VALUES (%s, %s, %s, %s, NOW())
+                ON CONFLICT (applicant_no, scholarship_no)
+                DO UPDATE SET 
+                    current_step = EXCLUDED.current_step,
+                    draft_data = EXCLUDED.draft_data,
+                    updated_at = NOW()
+                """,
+                (request.user_no, scholarship_no, current_step, json_val)
+            )
+            conn.commit()
+            return jsonify({'success': True, 'message': 'Draft saved successfully'})
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(exc)}), 500
+
+
+@student_api_bp.route('/applications/draft/<int:scholarship_no>', methods=['DELETE'])
+@token_required
+def delete_application_draft(scholarship_no):
+    """Delete draft from application_drafts table in Supabase."""
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "DELETE FROM application_drafts WHERE applicant_no = %s AND scholarship_no = %s",
+                (request.user_no, scholarship_no)
+            )
+            conn.commit()
+            return jsonify({'success': True, 'message': 'Draft deleted successfully'})
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(exc)}), 500
+
+
+@student_api_bp.route('/applications/draft/init-edit/<int:scholarship_no>', methods=['POST'])
+@token_required
+def init_edit_application(scholarship_no):
+    """
+    Initialize editing an existing application.
+    Enforces rule: 'Submitted' and 'Approved' applications can be edited!
+    Loads current submitted application documents & profile into application_drafts.
+    """
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT ast.is_accepted, ast.app_doc_no, ast.created_at, s.scholarship_name, s.deadline, s.is_removed
+                FROM applicant_status ast
+                JOIN scholarships s ON ast.scholarship_no = s.req_no
+                WHERE ast.applicant_no = %s AND ast.scholarship_no = %s
+                """,
+                (request.user_no, scholarship_no)
+            )
+            app_row = cur.fetchone()
+            if not app_row:
+                return jsonify({'success': False, 'message': 'Application not found'}), 404
+
+            raw_stat = app_row.get('is_accepted')
+            norm_stat = 'Submitted' if raw_stat in ('Submitted', 'Pending', None) else ('Approved' if raw_stat in ('Approved', 'Accepted') else raw_stat)
+            if norm_stat not in ('Submitted', 'Approved'):
+                return jsonify({
+                    'success': False,
+                    'message': f"This application has already been marked as '{norm_stat}' and cannot be edited."
+                }), 403
+
+            # Check if there is already an in-progress draft for this edit session
+            cur.execute(
+                "SELECT current_step, draft_data, updated_at FROM application_drafts WHERE applicant_no = %s AND scholarship_no = %s",
+                (request.user_no, scholarship_no)
+            )
+            existing_draft = cur.fetchone()
+            if existing_draft and existing_draft.get('draft_data'):
+                dd = existing_draft.get('draft_data')
+                if isinstance(dd, str):
+                    try:
+                        dd = json.loads(dd)
+                    except Exception:
+                        pass
+                return jsonify({
+                    'success': True,
+                    'hasDraft': True,
+                    'current_step': existing_draft.get('current_step') or 1,
+                    'draft_data': dd or {},
+                    'status': norm_stat,
+                    'message': 'Loaded existing in-progress edit draft'
+                })
+
+            # Otherwise, build draft_data from the submitted application snapshot!
+            cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
+            applicant = cur.fetchone() or {}
+
+            app_doc_no = app_row.get('app_doc_no')
+            doc_row = {}
+            if app_doc_no:
+                cur.execute("SELECT * FROM applicant_documents WHERE app_doc_no = %s", (app_doc_no,))
+                doc_row = cur.fetchone() or {}
+
+            merits = []
+            if app_doc_no:
+                cur.execute(
+                    "SELECT merit_id, merit_document, merit_title FROM merit_proofs WHERE app_doc_no = %s ORDER BY merit_id ASC",
+                    (app_doc_no,)
+                )
+                for m in cur.fetchall():
+                    merits.append({
+                        'id': m.get('merit_id'),
+                        'title': m.get('merit_title'),
+                        'photo': m.get('merit_document'),
+                        'verified': True,
+                        'status': 'Verified'
+                    })
+
+            form_data = {
+                'lastName': applicant.get('last_name') or '',
+                'firstName': applicant.get('first_name') or '',
+                'middleName': applicant.get('middle_name') or '',
+                'maidenName': applicant.get('maiden_name') or '',
+                'dateOfBirth': str(applicant.get('birthdate')) if applicant.get('birthdate') else '',
+                'placeOfBirth': applicant.get('birth_place') or '',
+                'barangay': applicant.get('street_brgy') or '',
+                'streetBarangay': applicant.get('street_brgy') or '',
+                'townCity': applicant.get('town_city_municipality') or 'Lipa City',
+                'townCityMunicipality': applicant.get('town_city_municipality') or 'Lipa City',
+                'province': applicant.get('province') or 'Batangas',
+                'zipCode': str(applicant.get('zip_code') or '4217'),
+                'sex': 'Male' if applicant.get('sex') == 'M' else ('Female' if applicant.get('sex') == 'F' else (applicant.get('sex') or '')),
+                'citizenship': applicant.get('citizenship') or '',
+                'schoolIdNumber': applicant.get('school_id_no') or '',
+                'schoolName': applicant.get('school') or '',
+                'schoolAddress': applicant.get('school_address') or '',
+                'schoolSector': applicant.get('school_sector') or '',
+                'mobileNumber': applicant.get('mobile_no') or '',
+                'yearLevel': applicant.get('year_lvl') or '',
+                'semester': '1st Semester',
+                'gpa': str(applicant.get('overall_gpa') or ''),
+                'meritsAwardsReceived': applicant.get('merits_awards_received') or '',
+                'fatherStatus': 'Living' if applicant.get('father_status') is True else ('Deceased' if applicant.get('father_status') is False else ''),
+                'fatherName': applicant.get('father_name') or '',
+                'fatherOccupation': applicant.get('father_occupation') or '',
+                'fatherPhoneNumber': applicant.get('father_phone_no') or '',
+                'motherStatus': 'Living' if applicant.get('mother_status') is True else ('Deceased' if applicant.get('mother_status') is False else ''),
+                'motherName': applicant.get('mother_name') or '',
+                'motherOccupation': applicant.get('mother_occupation') or '',
+                'motherPhoneNumber': applicant.get('mother_phone_no') or '',
+                'parentsGrossIncome': str(applicant.get('financial_income_of_parents') or ''),
+                'numberOfSiblings': str(applicant.get('sibling_no') or ''),
+                'course': applicant.get('course') or '',
+                'profile_picture': applicant.get('profile_picture') or None,
+                'mayorCOE_photo': doc_row.get('enrollment_certificate_doc') or None,
+                'enrollment_certificate_doc': doc_row.get('enrollment_certificate_doc') or None,
+                'mayorGrades_photo': doc_row.get('grades_doc') or None,
+                'grades_doc': doc_row.get('grades_doc') or None,
+                'mayorIndigency_photo': doc_row.get('indigency_doc') or None,
+                'indigency_doc': doc_row.get('indigency_doc') or None,
+                'mayorValidID_photo': doc_row.get('id_pic') or None,
+                'schoolIdFront': doc_row.get('id_img_front') or None,
+                'id_front': doc_row.get('id_img_front') or None,
+                'schoolIdBack': doc_row.get('id_img_back') or None,
+                'id_back': doc_row.get('id_img_back') or None,
+                'face_photo': doc_row.get('id_pic') or None,
+                'applicantSignatureName': f"{applicant.get('first_name', '')} {applicant.get('last_name', '')}".strip(),
+                'dataCertifyConsent': True
+            }
+
+            photos = {
+                'mayorCOE_photo': doc_row.get('enrollment_certificate_doc') or None,
+                'mayorGrades_photo': doc_row.get('grades_doc') or None,
+                'mayorIndigency_photo': doc_row.get('indigency_doc') or None,
+                'profile_picture': applicant.get('profile_picture') or None,
+                'face_photo': doc_row.get('id_pic') or None
+            }
+
+            school_id_photos = {
+                'front': doc_row.get('id_img_front') or None,
+                'back': doc_row.get('id_img_back') or None
+            }
+
+            draft_obj = {
+                'currentStep': 1,
+                'formData': form_data,
+                'photos': photos,
+                'schoolIdPhotos': school_id_photos,
+                'signaturePreview': doc_row.get('signature_image_data') or None,
+                'drawnSignature': doc_row.get('signature_image_data') or None,
+                'idPicturePreview': applicant.get('profile_picture') or None,
+                'meritList': merits if merits else [{'id': 1, 'title': '', 'photo': None, 'verified': None, 'status': ''}],
+                'verificationStates': {
+                    'ocrVerified': 'success' if doc_row.get('id_img_front') else None,
+                    'coeVerified': 'success' if doc_row.get('enrollment_certificate_doc') else None,
+                    'gradesVerified': 'success' if doc_row.get('grades_doc') else None,
+                    'idVerified': 'success' if doc_row.get('id_img_front') else None,
+                    'meritScanVerified': 'success' if merits else None,
+                    'faceVerified': 'success' if doc_row.get('id_pic') else None,
+                    'signatureVerified': 'success' if doc_row.get('signature_image_data') else None
+                }
+            }
+
+            # Persist snapshot into application_drafts
+            cur.execute(
+                """
+                INSERT INTO application_drafts (applicant_no, scholarship_no, current_step, draft_data, updated_at)
+                VALUES (%s, %s, 1, %s, NOW())
+                ON CONFLICT (applicant_no, scholarship_no)
+                DO UPDATE SET draft_data = EXCLUDED.draft_data, updated_at = NOW()
+                """,
+                (request.user_no, scholarship_no, json.dumps(draft_obj))
+            )
+            conn.commit()
+
+            return jsonify({
+                'success': True,
+                'hasDraft': True,
+                'current_step': 1,
+                'draft_data': draft_obj,
+                'status': norm_stat,
+                'message': 'Edit initialized successfully'
+            })
+    except Exception as exc:
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(exc)}), 500
 
 
 @student_api_bp.route('/applications/my-applications', methods=['GET'])
@@ -4184,10 +4517,10 @@ def get_my_applications():
                     s.pro_no,
                     sp.provider_name,
                     CASE
-                        WHEN ast.is_accepted = 'Accepted' THEN 'Accepted'
+                        WHEN ast.is_accepted IN ('Approved', 'Accepted') THEN 'Approved'
                         WHEN ast.is_accepted = 'Rejected' THEN 'Rejected'
                         WHEN ast.is_accepted = 'Cancelled' THEN 'Cancelled'
-                        ELSE 'Pending'
+                        ELSE 'Submitted'
                     END as status,
                     ast.status_updated,
                     ast.app_doc_no,
@@ -4318,6 +4651,7 @@ def get_my_applications():
                 for m in app_merits:
                     submitted_docs.append(f"Merit: {m.get('merit_title') or 'Certificate'}")
                 r['submitted_documents'] = submitted_docs
+                r['can_edit'] = (r.get('status') in ('Submitted', 'Approved'))
 
                 result.append(r)
             return jsonify(result)

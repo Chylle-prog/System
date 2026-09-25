@@ -1100,6 +1100,11 @@ const Portal = () => {
     setShowViewModal(true);
   };
 
+  const handleEditApplication = (app) => {
+    const schId = app.scholarship_no || app.req_no;
+    navigate(`/studentinfo?scholarship=${encodeURIComponent(app.name)}&reqNo=${schId}&edit=true`);
+  };
+
   const closeViewModal = () => {
     setShowViewModal(false);
     setSelectedAppForView(null);
@@ -2483,19 +2488,29 @@ const Portal = () => {
           align-items: center;
         }
 
-        .status-pending {
-          background: var(--warning-bg);
-          color: var(--warning);
+        .status-pending,
+        .status-submitted {
+          background: #fff8e6;
+          color: #b7791f;
+          border: 1px solid #f6e05e;
         }
 
         .status-approved {
           background: var(--success-bg);
           color: var(--success);
+          border: 1px solid rgba(46, 204, 113, 0.3);
         }
 
         .status-rejected {
           background: var(--danger-bg);
           color: var(--danger);
+          border: 1px solid rgba(231, 76, 60, 0.3);
+        }
+
+        .status-cancelled {
+          background: #f1f5f9;
+          color: #64748b;
+          border: 1px solid #cbd5e1;
         }
 
         .view-btn {
@@ -2520,6 +2535,30 @@ const Portal = () => {
           background: #3d0a00;
           transform: translateY(-1px);
           box-shadow: 0 4px 10px rgba(79, 13, 0, 0.25);
+        }
+
+        .edit-btn {
+          background: #eff6ff;
+          border: 1.5px solid #3b82f6;
+          color: #1d4ed8;
+          padding: 0.3rem 0.75rem;
+          border-radius: 20px;
+          font-size: clamp(0.72rem, 1.5vw, 0.8rem);
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          white-space: nowrap;
+          width: auto !important;
+        }
+
+        .edit-btn:hover {
+          background: #3b82f6;
+          color: white;
+          box-shadow: 0 4px 8px rgba(59, 130, 246, 0.25);
+          transform: translateY(-1px);
         }
 
         .cancel-btn {
@@ -3815,11 +3854,19 @@ const Portal = () => {
                   </div>
                 ) : (
                   [...applications].reverse().map((app, index) => {
-                    const badgeClass = app.status === 'Approved' ? 'status-approved' :
-                      app.status === 'Rejected' ? 'status-rejected' : 'status-pending';
+                    const isSubmitted = app.status === 'Submitted' || app.status === 'Pending';
+                    const isApproved = app.status === 'Approved' || app.status === 'Accepted';
+                    const canEdit = isSubmitted || isApproved || Boolean(app.can_edit);
+                    const displayStatus = isApproved ? 'Approved' :
+                      isSubmitted ? 'Submitted' :
+                      app.status;
+
+                    const badgeClass = displayStatus === 'Approved' ? 'status-approved' :
+                      displayStatus === 'Rejected' ? 'status-rejected' :
+                      displayStatus === 'Cancelled' ? 'status-cancelled' : 'status-submitted';
 
                     return (
-                      <div key={app.scholarship_no} className="application-item">
+                      <div key={app.scholarship_no || app.req_no || index} className="application-item">
                         <div className="application-info">
                           <h4>{app.name}</h4>
                           <p style={{ color: '#a0b0c0' }}>
@@ -3827,12 +3874,17 @@ const Portal = () => {
                           </p>
                         </div>
                         <div className="application-actions">
-                          <span className={`status-badge ${badgeClass}`}>{app.status}</span>
+                          <span className={`status-badge ${badgeClass}`}>{displayStatus}</span>
                           <button className="view-btn" onClick={() => handleViewApplication(app)}>
                             <i className="fas fa-eye"></i> View
                           </button>
-                          {app.status === 'Pending' && (
-                            <button className="cancel-btn" onClick={() => cancelApplication(app.scholarship_no, app.name)}>
+                          {canEdit && (
+                            <button className="edit-btn" onClick={() => handleEditApplication(app)} title="Edit your application">
+                              <i className="fas fa-edit"></i> Edit
+                            </button>
+                          )}
+                          {isSubmitted && (
+                            <button className="cancel-btn" onClick={() => cancelApplication(app.scholarship_no || app.req_no, app.name)}>
                               <i className="fas fa-times-circle"></i> Cancel
                             </button>
                           )}
