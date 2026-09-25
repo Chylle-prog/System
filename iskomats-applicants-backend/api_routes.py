@@ -4208,6 +4208,8 @@ def get_applicants(current_user_id, pro_no, role, program):
                         COALESCE(s.created_at, s.status_updated, a.verification_timestamp) as "dateApplied",
                         s.created_at as "status_created_at",
                         s.status_updated as "status_updated",
+                        s.cancellation_reason as "cancellationReason",
+                        s.cancellation_reason as "cancellation_reason",
                         ({applicant_document_expr(cursor, 'indigency_doc', 'a', 'ad')} IS NOT NULL) as "has_indigency_doc",
                         ({applicant_document_expr(cursor, 'enrollment_certificate_doc', 'a', 'ad')} IS NOT NULL) as "has_enrollment_certificate_doc",
                         ({applicant_document_expr(cursor, 'grades_doc', 'a', 'ad')} IS NOT NULL) as "has_grades_doc",
@@ -4640,10 +4642,11 @@ def decline_applicant(current_user_id, pro_no, role, applicant_no):
 @api_bp.route('/applicants/<int:applicant_no>/cancel', methods=['POST'])
 @token_required
 def cancel_applicant(current_user_id, pro_no, role, applicant_no):
-    """Cancel applicant status (revert to pending/NULL)"""
+    """Cancel applicant status with reason, create notification and send chat message"""
     try:
         data = request.get_json(silent=True) or {}
         scholarship_no = data.get('scholarshipNo')
+        reason = (data.get('reason') or data.get('cancellationReason') or 'Cancelled by Administrator').strip()
         if scholarship_no is None:
             return jsonify({'success': False, 'message': 'scholarshipNo is required'}), 400
 
@@ -4651,9 +4654,10 @@ def cancel_applicant(current_user_id, pro_no, role, applicant_no):
             cursor = conn.cursor()
 
             cursor.execute(
-                '''SELECT s.pro_no
+                '''SELECT s.pro_no, s.scholarship_name, sp.provider_name
                    FROM applicant_status ast
                    INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
+                   LEFT JOIN scholarship_providers sp ON s.pro_no = sp.pro_no
                    WHERE ast.applicant_no = %s AND ast.scholarship_no = %s''',
                 (applicant_no, scholarship_no)
             )
@@ -4664,18 +4668,92 @@ def cancel_applicant(current_user_id, pro_no, role, applicant_no):
             if role != 'Admin' and status_row['pro_no'] != pro_no:
                 return jsonify({'success': False, 'message': 'Unauthorized'}), 403
         
-            # Update applicant status back to NULL (pending review)
+            # Update applicant status to Cancelled and store cancellation reason
             cursor.execute(
                 '''UPDATE applicant_status 
-                   SET is_accepted = 'Pending', status_updated = CURRENT_DATE
+                   SET is_accepted = 'Cancelled', status_updated = CURRENT_DATE, cancellation_reason = %s
                    WHERE applicant_no = %s AND scholarship_no = %s''',
-                (applicant_no, scholarship_no)
+                (reason, applicant_no, scholarship_no)
             )
+
+            # Clear any drafts for this application
+            try:
+                cursor.execute(
+                    "DELETE FROM application_drafts WHERE scholarship_no = %s AND applicant_no = %s",
+                    (scholarship_no, applicant_no),
+                )
+            except Exception:
+                pass
+
             conn.commit()
+
+            sch_name = status_row.get('scholarship_name') or 'Scholarship'
+            sch_pro_no = status_row.get('pro_no')
+            provider_name = status_row.get('provider_name') or 'Scholarship Office'
+
+            # 1. Create notification for the student
+            try:
+                create_notification(
+                    user_no=applicant_no,
+                    title='Application Cancelled',
+                    message=f"Your accepted application for {sch_name} has been cancelled. Reason: {reason}",
+                    notif_type='result',
+                    db_conn=conn
+                )
+                conn.commit()
+            except Exception as notif_err:
+                print(f"[NOTIF ERROR] Failed to notify cancelled applicant {applicant_no}: {notif_err}", flush=True)
+
+            # 2. Insert chat message into message table and emit
+            try:
+                room = f"{applicant_no}+{sch_pro_no}" if sch_pro_no else None
+                if room:
+                    msg_text = f"Notice: Your application for {sch_name} has been cancelled.\nReason: {reason}"
+                    cursor.execute("""
+                        INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender)
+                        VALUES (%s, %s, %s, %s, %s, NOW(), %s, %s)
+                        RETURNING m_id, timestamp
+                    """, (applicant_no, sch_pro_no, room, provider_name, msg_text, current_user_id, False))
+                    msg_row = cursor.fetchone()
+                    conn.commit()
+
+                    if msg_row:
+                        msg_payload = {
+                            'm_id': msg_row['m_id'],
+                            'username': provider_name,
+                            'sender_id': current_user_id,
+                            'is_student_sender': False,
+                            'message': msg_text,
+                            'room': room,
+                            'timestamp': msg_row['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(msg_row['timestamp'], 'strftime') else str(msg_row['timestamp']),
+                            'student_status': 'Cancelled'
+                        }
+                        safe_emit('message', msg_payload, room=room)
+                        safe_emit('receive_message', msg_payload, room=room)
+            except Exception as msg_err:
+                print(f"[CHAT MSG ERROR] Failed to send cancel chat message to applicant {applicant_no}: {msg_err}", flush=True)
+
+            # 3. Emit real-time status update to student portal and admin dashboard
+            try:
+                safe_emit('applicant_status_update', {
+                    'applicant_no': applicant_no,
+                    'status': 'Cancelled',
+                    'scholarship_no': scholarship_no,
+                    'cancellation_reason': reason
+                }, room=f"applicant_{applicant_no}")
+                safe_emit('applicant_status_update', {
+                    'applicant_no': applicant_no,
+                    'status': 'Cancelled',
+                    'scholarship_no': scholarship_no,
+                    'cancellation_reason': reason
+                }, broadcast=True)
+            except Exception as emit_err:
+                print(f"[SOCKET ERROR] Failed to emit cancel status update: {emit_err}", flush=True)
             
-            return jsonify({'success': True, 'message': 'Applicant status cancelled'}), 200
+            return jsonify({'success': True, 'message': 'Applicant cancelled successfully', 'cancellation_reason': reason}), 200
     
     except Exception as e:
+        traceback.print_exc()
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
 @api_bp.route('/applicants/<program>', methods=['POST'])

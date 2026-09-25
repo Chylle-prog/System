@@ -42,7 +42,8 @@ import {
   FaIdCard,
   FaCamera,
   FaUserSlash,
-  FaInfoCircle
+  FaInfoCircle,
+  FaBan
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { adminAPI, scholarshipAPI, announcementService, messagingAPI } from '../../services/api';
@@ -1020,6 +1021,13 @@ export default function ScholarshipDashboard({
   const [activeDropdown, setActiveDropdown] = useState(null);
   const [showTrackAdvancedSearch, setShowTrackAdvancedSearch] = useState(false);
   const [trackAdvancedSearch, setTrackAdvancedSearch] = useState({ ...EMPTY_ADVANCED_SEARCH });
+  const [cancelPromptModal, setCancelPromptModal] = useState({
+    isOpen: false,
+    applicant: null,
+    reason: '',
+    isSubmitting: false,
+    error: '',
+  });
 
   const trackActiveFilterCount = useMemo(() => {
     return Object.values(trackAdvancedSearch).filter((value) => String(value ?? '').trim() !== '').length;
@@ -3786,6 +3794,81 @@ export default function ScholarshipDashboard({
     });
   };
 
+  const handleCancelAcceptedApplicant = (applicant) => {
+    if (!applicant) return;
+    setCancelPromptModal({
+      isOpen: true,
+      applicant,
+      reason: '',
+      isSubmitting: false,
+      error: '',
+    });
+  };
+
+  const handleConfirmCancelAccepted = async () => {
+    if (!cancelPromptModal.applicant) return;
+    const trimmedReason = cancelPromptModal.reason.trim();
+    if (!trimmedReason) {
+      setCancelPromptModal(prev => ({ ...prev, error: 'Please provide a reason for cancellation.' }));
+      return;
+    }
+
+    const applicant = cancelPromptModal.applicant;
+    const applicantId = applicant?.id || applicant?.applicant_no || applicant?.applicantNo;
+    const scholarshipNo = applicant?.scholarshipNo || applicant?.scholarship_no || applicant?.req_no;
+
+    if (!applicantId || !scholarshipNo) {
+      setCancelPromptModal(prev => ({ ...prev, error: 'Incomplete applicant or scholarship information.' }));
+      return;
+    }
+
+    setCancelPromptModal(prev => ({ ...prev, isSubmitting: true, error: '' }));
+
+    try {
+      await scholarshipAPI.cancelApplicant(applicantId, scholarshipNo, trimmedReason);
+
+      const applicantKey = getApplicantIdentityKey(applicant);
+
+      setData(prev => {
+        const updatedAccepted = (prev.accepted || []).filter(a => getApplicantIdentityKey(a) !== applicantKey);
+        const updatedApplicants = (prev.applicants || []).filter(a => getApplicantIdentityKey(a) !== applicantKey);
+        const updatedDeclined = (prev.declined || []).filter(a => getApplicantIdentityKey(a) !== applicantKey);
+        const updatedRejected = (prev.rejected || []).filter(a => getApplicantIdentityKey(a) !== applicantKey);
+        const cancelledItem = {
+          ...applicant,
+          status: 'Cancelled',
+          cancellation_reason: trimmedReason,
+          cancellationReason: trimmedReason,
+        };
+        return {
+          ...prev,
+          accepted: updatedAccepted,
+          applicants: updatedApplicants,
+          declined: updatedDeclined,
+          rejected: updatedRejected,
+          cancelled: [...(prev.cancelled || []).filter(a => getApplicantIdentityKey(a) !== applicantKey), cancelledItem],
+        };
+      });
+
+      if (viewApplicant) {
+        setViewApplicant(null);
+        setSection('track');
+      }
+
+      setCancelPromptModal({
+        isOpen: false,
+        applicant: null,
+        reason: '',
+        isSubmitting: false,
+        error: '',
+      });
+    } catch (err) {
+      console.error('Error cancelling applicant:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Failed to cancel application.';
+      setCancelPromptModal(prev => ({ ...prev, isSubmitting: false, error: msg }));
+    }
+  };
+
   const getStudentStatus = (id, name, currentStatus, email = null) => {
     if (currentStatus && currentStatus !== 'Unknown') return currentStatus;
     const inList = (list) => (list || []).some((a) => {
@@ -5400,9 +5483,31 @@ export default function ScholarshipDashboard({
                             </button>
                           </div>
                         ) : listType === 'accepted' ? (
-                          <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-green-50 text-green-700 border border-green-200 inline-flex items-center gap-1">
-                            <FaCheckCircle className="text-[10px] text-green-600" /> Accepted
-                          </span>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-green-50 text-green-700 border border-green-200 inline-flex items-center gap-1">
+                              <FaCheckCircle className="text-[10px] text-green-600" /> Accepted
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleCancelAcceptedApplicant(a)}
+                              disabled={Boolean(processingState)}
+                              className="px-2 py-1 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-all flex items-center gap-1 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Cancel Accepted Scholarship"
+                            >
+                              <FaBan className="text-[10px]" /> Cancel
+                            </button>
+                          </div>
+                        ) : listType === 'cancelled' ? (
+                          <div className="flex flex-col items-center">
+                            <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-gray-100 text-gray-700 border border-gray-200">
+                              Cancelled
+                            </span>
+                            {(a.cancellationReason || a.cancellation_reason) && (
+                              <span className="text-[10px] text-gray-500 italic mt-0.5 max-w-[130px] truncate" title={a.cancellationReason || a.cancellation_reason}>
+                                {a.cancellationReason || a.cancellation_reason}
+                              </span>
+                            )}
+                          </div>
                         ) : listType === 'rejected' || listType === 'declined' ? (
                           <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-red-50 text-red-700 border border-red-200 inline-flex items-center gap-1">
                             <FaTimesCircle className="text-[10px] text-red-600" /> Declined
@@ -6872,6 +6977,15 @@ export default function ScholarshipDashboard({
                   </button>
                 </>
               )}
+              {listType === 'accepted' && (
+                <button
+                  type="button"
+                  onClick={() => handleCancelAcceptedApplicant(a)}
+                  className="px-5 py-2.5 rounded-xl bg-amber-600 text-white font-bold text-xs uppercase tracking-wider hover:bg-amber-700 shadow-md shadow-amber-100 transition-all flex items-center gap-1.5"
+                >
+                  <FaBan /> Cancel Scholarship
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => { setViewApplicant(null); setSection('track'); }}
@@ -7557,6 +7671,15 @@ export default function ScholarshipDashboard({
               </button>
             </>
           )}
+          {listType === 'accepted' && (
+            <button
+              type="button"
+              onClick={() => handleCancelAcceptedApplicant(a)}
+              className="w-full sm:w-auto px-6 py-2.5 sm:px-8 sm:py-3 rounded-xl bg-amber-600 text-white font-black uppercase tracking-widest text-xs hover:bg-amber-700 shadow-lg shadow-amber-100 transition-all flex items-center justify-center gap-2"
+            >
+              <FaBan /> Cancel Scholarship
+            </button>
+          )}
           <button
             type="button"
             onClick={() => { setViewApplicant(null); setSection('track'); }}
@@ -8100,8 +8223,22 @@ export default function ScholarshipDashboard({
                                   </button>
                                 </>
                               ) : rawStatus === 'accepted' ? (
-                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-50 text-green-700 border border-green-200">
-                                  Accepted
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-50 text-green-700 border border-green-200">
+                                    Accepted
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCancelAcceptedApplicant(s)}
+                                    className="px-3 py-1 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all shadow-xs flex items-center gap-1"
+                                    title="Cancel Accepted Scholarship"
+                                  >
+                                    <FaBan className="text-[10px]" /> Cancel
+                                  </button>
+                                </div>
+                              ) : rawStatus === 'cancelled' ? (
+                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700 border border-gray-200" title={s.cancellationReason || s.cancellation_reason || ''}>
+                                  Cancelled
                                 </span>
                               ) : (
                                 <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-200">
@@ -8293,6 +8430,72 @@ export default function ScholarshipDashboard({
                 className="px-6 py-3 rounded-xl bg-red-600 text-white font-semibold transition-all hover:bg-red-700 hover:shadow-lg hover:shadow-red-600/20 active:scale-95"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cancelPromptModal.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200 border border-gray-100">
+            <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-5 text-amber-600">
+              <FaBan className="text-3xl" />
+            </div>
+
+            <h3 className="text-xl font-black text-gray-900 text-center mb-1">
+              Cancel Accepted Application
+            </h3>
+            <p className="text-xs text-gray-500 text-center mb-4">
+              Cancelling scholarship for <span className="font-bold text-gray-800">{cancelPromptModal.applicant?.name || cancelPromptModal.applicant?.firstName || 'Student'}</span>
+            </p>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 mb-4 leading-relaxed">
+              <p className="font-semibold mb-1">Notification &amp; Message Notice:</p>
+              <p>This will set the student's status to <strong>Cancelled</strong>. An official notification and direct chat message containing your cancellation reason will be sent to the student immediately.</p>
+            </div>
+
+            <div className="mb-5">
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                Reason for Cancellation <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                rows={3}
+                value={cancelPromptModal.reason}
+                onChange={(e) => setCancelPromptModal(prev => ({ ...prev, reason: e.target.value, error: '' }))}
+                placeholder="Please enter the reason for cancellation (e.g., student withdrew, duplicate scholarship, eligibility criteria not met)..."
+                className="w-full text-xs p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent resize-none"
+                disabled={cancelPromptModal.isSubmitting}
+              />
+              {cancelPromptModal.error && (
+                <p className="text-xs text-red-600 font-semibold mt-1.5">{cancelPromptModal.error}</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setCancelPromptModal({ isOpen: false, applicant: null, reason: '', isSubmitting: false, error: '' })}
+                disabled={cancelPromptModal.isSubmitting}
+                className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-xs uppercase tracking-wider transition-all hover:bg-gray-50 active:scale-95 disabled:opacity-50"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCancelAccepted}
+                disabled={cancelPromptModal.isSubmitting || !cancelPromptModal.reason.trim()}
+                className="px-4 py-2.5 rounded-xl bg-amber-600 text-white font-bold text-xs uppercase tracking-wider transition-all hover:bg-amber-700 shadow-md shadow-amber-600/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+              >
+                {cancelPromptModal.isSubmitting ? (
+                  <>
+                    <FaSpinner className="animate-spin text-xs" /> Cancelling...
+                  </>
+                ) : (
+                  <>
+                    <FaBan className="text-xs" /> Confirm Cancel
+                  </>
+                )}
               </button>
             </div>
           </div>

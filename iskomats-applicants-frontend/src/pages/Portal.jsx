@@ -3872,6 +3872,24 @@ const Portal = () => {
                           <p style={{ color: '#a0b0c0' }}>
                             Deadline: {app.deadline ? new Date(app.deadline).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
                           </p>
+                          {displayStatus === 'Cancelled' && (
+                            <div style={{
+                              marginTop: '0.4rem',
+                              padding: '0.35rem 0.65rem',
+                              background: '#fff5f5',
+                              border: '1px solid #fed7d7',
+                              borderRadius: '8px',
+                              color: '#c53030',
+                              fontSize: '0.8rem',
+                              fontWeight: '500',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.4rem'
+                            }}>
+                              <i className="fas fa-ban" style={{ fontSize: '0.75rem' }}></i>
+                              <span>Reason: <strong>{app.cancellation_reason || app.cancellationReason || 'Cancelled by User'}</strong></span>
+                            </div>
+                          )}
                         </div>
                         <div className="application-actions">
                           <span className={`status-badge ${badgeClass}`}>{displayStatus}</span>
@@ -4529,6 +4547,33 @@ const Portal = () => {
                       <span style={{ fontWeight: 700, color: 'var(--text-dark)' }}>{selectedAppForView.deadline || 'N/A'}</span>
                     </div>
                   </div>
+
+                  {(selectedAppForView.status === 'Cancelled' || selectedAppForView.cancellation_reason || selectedAppForView.cancellationReason) && (
+                    <div style={{
+                      marginBottom: '1.5rem',
+                      background: '#fff5f5',
+                      padding: '1.2rem',
+                      borderRadius: '16px',
+                      borderLeft: '4px solid #e53e3e',
+                      border: '1px solid #fed7d7'
+                    }}>
+                      <h4 style={{
+                        color: '#c53030',
+                        fontSize: '0.95rem',
+                        fontWeight: 800,
+                        marginBottom: '0.4rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        <i className="fas fa-ban"></i>
+                        Cancellation Details
+                      </h4>
+                      <p style={{ fontSize: '0.9rem', color: '#742a2a', lineHeight: '1.6', margin: 0 }}>
+                        Reason: <strong>{selectedAppForView.cancellation_reason || selectedAppForView.cancellationReason || 'Cancelled by User'}</strong>
+                      </p>
+                    </div>
+                  )}
 
                   {selectedAppForView.remarks && (
                     <div style={{

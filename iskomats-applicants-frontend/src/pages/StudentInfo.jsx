@@ -6,7 +6,7 @@ import { applicantAPI, applicationAPI, scholarshipAPI, verificationAPI, uploadPr
 import { SCHOOLS, BARANGAYS } from '../utils/constants';
 
 const FIND_SCHOLARSHIP_PROFILE_KEY = 'findScholarshipProfile';
-const SHOW_DEBUG_OPTIONS = String(import.meta.env.VITE_SHOW_DEBUG_OPTIONS || import.meta.env.VITE_ENABLE_DEBUG || '').toLowerCase() === 'true';
+const SHOW_DEBUG_OPTIONS = String(import.meta.env.VITE_SHOW_DEBUG_OPTIONS || import.meta.env.VITE_ENABLE_DEBUG || 'true').toLowerCase() !== 'false';
 
 
 // COURSES array removed as per user request to change to normal text field

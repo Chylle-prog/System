@@ -4173,7 +4173,7 @@ def cancel_application(scholarship_no):
             cur.execute(
                 """
                 UPDATE applicant_status
-                SET is_accepted = 'Cancelled', status_updated = CURRENT_DATE
+                SET is_accepted = 'Cancelled', status_updated = CURRENT_DATE, cancellation_reason = 'Cancelled by User'
                 WHERE scholarship_no = %s AND applicant_no = %s
                 """,
                 (scholarship_no, request.user_no),
@@ -4523,6 +4523,7 @@ def get_my_applications():
                         ELSE 'Submitted'
                     END as status,
                     ast.status_updated,
+                    ast.cancellation_reason,
                     ast.app_doc_no,
                     ast.created_at as applied_date,
                     ad.id_img_front,
