@@ -3909,16 +3909,20 @@ const Portal = () => {
                               <i className="fas fa-edit"></i> Edit
                             </button>
                           )}
-                          {displayStatus === 'Cancelled' && !hasAnyAccepted && (app.cancellation_reason === 'Cancelled by User' || app.cancellationReason === 'Cancelled by User') && (
-                            <button
-                              className="edit-btn"
-                              style={{ backgroundColor: '#2563eb', color: '#fff', borderColor: '#2563eb' }}
-                              onClick={() => navigate(`/studentinfo?scholarship=${encodeURIComponent(app.name)}&reqNo=${app.scholarship_no || app.req_no}`)}
-                              title="Re-apply for this scholarship"
-                            >
-                              <i className="fas fa-redo"></i> Re-apply
-                            </button>
-                          )}
+                          {displayStatus === 'Cancelled' && !hasAnyAccepted && (() => {
+                            const reason = app.cancellation_reason || app.cancellationReason || '';
+                            const canReapply = reason === 'Cancelled by User' || reason === 'Accepted into another scholarship';
+                            return canReapply ? (
+                              <button
+                                className="edit-btn"
+                                style={{ backgroundColor: '#2563eb', color: '#fff', borderColor: '#2563eb' }}
+                                onClick={() => navigate(`/studentinfo?scholarship=${encodeURIComponent(app.name)}&reqNo=${app.scholarship_no || app.req_no}`)}
+                                title="Re-apply for this scholarship"
+                              >
+                                <i className="fas fa-redo"></i> Re-apply
+                              </button>
+                            ) : null;
+                          })()}
                           {isSubmitted && (
                             <button className="cancel-btn" onClick={() => cancelApplication(app.scholarship_no || app.req_no, app.name)}>
                               <i className="fas fa-times-circle"></i> Cancel

@@ -3625,7 +3625,7 @@ def submit_application():
                     pass
 
             # Enforce edit restriction: 'Submitted' and 'Approved' applications can be modified.
-            # 'Cancelled' applications are only allowed to reapply if cancelled by the user themselves.
+            # 'Cancelled' applications are only allowed to reapply under specific conditions.
             target_submission_status = 'Submitted'
             if existing_app_status:
                 raw_stat = existing_app_status.get('is_accepted')
@@ -3636,7 +3636,25 @@ def submit_application():
                     }), 403
                 if norm_stat == 'Cancelled':
                     cancel_reason = (existing_app_status.get('cancellation_reason') or '').strip()
-                    if cancel_reason != 'Cancelled by User':
+                    if cancel_reason == 'Cancelled by User':
+                        pass  # Always allowed to reapply
+                    elif cancel_reason == 'Accepted into another scholarship':
+                        # Allow reapplication only if the user has NO currently active accepted/approved application
+                        cur.execute(
+                            """
+                            SELECT 1 FROM applicant_status
+                            WHERE applicant_no = %s
+                            AND is_accepted IN ('Accepted', 'Approved')
+                            LIMIT 1
+                            """,
+                            (current_user_id,)
+                        )
+                        if cur.fetchone():
+                            return jsonify({
+                                'message': "Cannot reapply: You currently have an active accepted scholarship."
+                            }), 403
+                        # No active accepted scholarship (e.g. it was suspended) — allow reapplication
+                    else:
                         return jsonify({
                             'message': "Cannot reapply: This application was cancelled by an administrator and cannot be resubmitted."
                         }), 403
@@ -3649,6 +3667,7 @@ def submit_application():
                         'message': f"Cannot edit or submit this application. Current status is '{norm_stat}'."
                     }), 403
                 target_submission_status = 'Submitted'
+
 
             preliminary_identity = build_restriction_identity_from_applicant(applicant, source_data=request_payload)
             if preliminary_identity:
