@@ -6684,76 +6684,141 @@ const StudentInfo = () => {
             setPhotos(prev => {
               const updated = { ...prev };
               Object.entries(savedDraft.photos).forEach(([k, v]) => {
-                if (k !== 'face_photo' && v && !(typeof v === 'string' && v.startsWith('blob:'))) {
-                  updated[k] = v;
+                if (v && !(typeof v === 'string' && v.startsWith('blob:'))) {
+                  if (k !== 'face_photo' || isEditMode) {
+                    updated[k] = v;
+                  }
                 }
               });
-              updated.face_photo = null; // Strictly left empty on reload to force taking a fresh live photo
+              if (!isEditMode) updated.face_photo = null;
               return updated;
             });
             setFormData(prev => {
               const updated = { ...prev };
               Object.entries(savedDraft.photos).forEach(([k, v]) => {
-                if (k !== 'face_photo' && v && !(typeof v === 'string' && v.startsWith('blob:'))) {
-                  updated[k] = v;
+                if (v && !(typeof v === 'string' && v.startsWith('blob:'))) {
+                  if (k !== 'face_photo' || isEditMode) {
+                    updated[k] = v;
+                  }
                 }
               });
-              updated.face_photo = null; // Strictly left empty on reload to force taking a fresh live photo
+              if (!isEditMode) updated.face_photo = null;
               return updated;
+            });
+
+            // Asynchronously resolve/decrypt all document photos so that <img> tags render decrypted bytes
+            Object.entries(savedDraft.photos).forEach(([k, v]) => {
+              if (v && typeof v === 'string' && v.startsWith('http')) {
+                applicantAPI.resolveDocument(k, v).then(resolved => {
+                  if (resolved) {
+                    setPhotos(prev => ({ ...prev, [k]: resolved }));
+                    setFormData(prev => ({ ...prev, [k]: resolved }));
+                  }
+                }).catch(err => console.warn('[RESOLVE PHOTO ERR]:', k, err));
+              }
             });
           }
 
           if (savedDraft.schoolIdPhotos && (savedDraft.schoolIdPhotos.front || savedDraft.schoolIdPhotos.back)) {
-            setSchoolIdPhotos(prev => {
-              const nextFront = savedDraft.schoolIdPhotos.front;
-              const nextBack = savedDraft.schoolIdPhotos.back;
-              return {
-                front: (nextFront && !(typeof nextFront === 'string' && nextFront.startsWith('blob:'))) ? nextFront : prev.front,
-                back: (nextBack && !(typeof nextBack === 'string' && nextBack.startsWith('blob:'))) ? nextBack : prev.back
-              };
-            });
-            setFormData(prev => {
-              const nextFront = savedDraft.schoolIdPhotos.front;
-              const nextBack = savedDraft.schoolIdPhotos.back;
-              return {
-                ...prev,
-                schoolIdFront: (nextFront && !(typeof nextFront === 'string' && nextFront.startsWith('blob:'))) ? nextFront : prev.schoolIdFront,
-                schoolIdBack: (nextBack && !(typeof nextBack === 'string' && nextBack.startsWith('blob:'))) ? nextBack : prev.schoolIdBack
-              };
-            });
+            const nextFront = savedDraft.schoolIdPhotos.front;
+            const nextBack = savedDraft.schoolIdPhotos.back;
+            setSchoolIdPhotos(prev => ({
+              front: (nextFront && !(typeof nextFront === 'string' && nextFront.startsWith('blob:'))) ? nextFront : prev.front,
+              back: (nextBack && !(typeof nextBack === 'string' && nextBack.startsWith('blob:'))) ? nextBack : prev.back
+            }));
+            setFormData(prev => ({
+              ...prev,
+              schoolIdFront: (nextFront && !(typeof nextFront === 'string' && nextFront.startsWith('blob:'))) ? nextFront : prev.schoolIdFront,
+              schoolIdBack: (nextBack && !(typeof nextBack === 'string' && nextBack.startsWith('blob:'))) ? nextBack : prev.schoolIdBack
+            }));
+
+            // Asynchronously resolve/decrypt School ID photos
+            if (nextFront && typeof nextFront === 'string' && nextFront.startsWith('http')) {
+              applicantAPI.resolveDocument('id_front', nextFront).then(resolved => {
+                if (resolved) {
+                  setSchoolIdPhotos(prev => ({ ...prev, front: resolved }));
+                  setFormData(prev => ({ ...prev, schoolIdFront: resolved }));
+                }
+              }).catch(err => console.warn('[RESOLVE ID FRONT ERR]:', err));
+            }
+            if (nextBack && typeof nextBack === 'string' && nextBack.startsWith('http')) {
+              applicantAPI.resolveDocument('id_back', nextBack).then(resolved => {
+                if (resolved) {
+                  setSchoolIdPhotos(prev => ({ ...prev, back: resolved }));
+                  setFormData(prev => ({ ...prev, schoolIdBack: resolved }));
+                }
+              }).catch(err => console.warn('[RESOLVE ID BACK ERR]:', err));
+            }
           }
 
           if (savedDraft.documentVideos && Object.keys(savedDraft.documentVideos).length > 0) {
             setDocumentVideos(prev => {
               const updated = { ...prev };
               Object.entries(savedDraft.documentVideos).forEach(([k, v]) => {
-                if (k !== 'face_video' && v && !(typeof v === 'string' && v.startsWith('blob:'))) {
-                  updated[k] = v;
+                if (v && !(typeof v === 'string' && v.startsWith('blob:'))) {
+                  if (k !== 'face_video' || isEditMode) {
+                    updated[k] = v;
+                  }
                 }
               });
-              updated.face_video = null; // Strictly left empty on reload to force taking a fresh live photo/video
+              if (!isEditMode) updated.face_video = null;
               return updated;
             });
             setFormData(prev => {
               const updated = { ...prev };
               Object.entries(savedDraft.documentVideos).forEach(([k, v]) => {
-                if (k !== 'face_video' && v && !(typeof v === 'string' && v.startsWith('blob:'))) {
-                  updated[k] = v;
+                if (v && !(typeof v === 'string' && v.startsWith('blob:'))) {
+                  if (k !== 'face_video' || isEditMode) {
+                    updated[k] = v;
+                  }
                 }
               });
-              updated.face_video = null; // Strictly left empty on reload to force taking a fresh live photo/video
+              if (!isEditMode) updated.face_video = null;
               return updated;
             });
           }
 
           if (savedDraft.drawnSignature) {
-            setDrawnSignature(savedDraft.drawnSignature);
+            if (typeof savedDraft.drawnSignature === 'string' && savedDraft.drawnSignature.startsWith('http')) {
+              applicantAPI.resolveDocument('signature_image_data', savedDraft.drawnSignature).then(resolved => {
+                if (resolved) setDrawnSignature(resolved);
+              }).catch(() => setDrawnSignature(savedDraft.drawnSignature));
+            } else {
+              setDrawnSignature(savedDraft.drawnSignature);
+            }
           }
           if (savedDraft.signaturePreview) {
-            setSignaturePreview(savedDraft.signaturePreview);
+            if (typeof savedDraft.signaturePreview === 'string' && savedDraft.signaturePreview.startsWith('http')) {
+              applicantAPI.resolveDocument('signature_image_data', savedDraft.signaturePreview).then(resolved => {
+                if (resolved) {
+                  setSignaturePreview(resolved);
+                  setDrawnSignature(prev => prev || resolved);
+                }
+              }).catch(() => setSignaturePreview(savedDraft.signaturePreview));
+            } else {
+              setSignaturePreview(savedDraft.signaturePreview);
+            }
           }
           if (savedDraft.idPicturePreview) {
-            setIdPicturePreview(savedDraft.idPicturePreview);
+            if (typeof savedDraft.idPicturePreview === 'string' && savedDraft.idPicturePreview.startsWith('http')) {
+              applicantAPI.resolveDocument('profile_picture', savedDraft.idPicturePreview).then(resolved => {
+                if (resolved) setIdPicturePreview(resolved);
+              }).catch(() => setIdPicturePreview(savedDraft.idPicturePreview));
+            } else {
+              setIdPicturePreview(savedDraft.idPicturePreview);
+            }
+          }
+
+          if (savedDraft.meritList && Array.isArray(savedDraft.meritList) && savedDraft.meritList.length > 0) {
+            savedDraft.meritList.forEach((m, idx) => {
+              if (m && m.photo && typeof m.photo === 'string' && m.photo.startsWith('http')) {
+                applicantAPI.resolveDocument(`merit_doc_${m.id || idx}`, m.photo).then(resolved => {
+                  if (resolved) {
+                    setMeritList(prev => prev.map((item, i) => i === idx ? { ...item, photo: resolved } : item));
+                  }
+                }).catch(() => {});
+              }
+            });
           }
 
           const vs = savedDraft.verificationStates || {};
@@ -6767,9 +6832,13 @@ const StudentInfo = () => {
           if (safeCoeVerified !== undefined && safeCoeVerified !== null) setCoeVerified(safeCoeVerified);
           if (safeGradesVerified !== undefined && safeGradesVerified !== null) setGradesVerified(safeGradesVerified);
           if (safeIdVerified !== undefined && safeIdVerified !== null) setIdVerified(safeIdVerified);
-          // Face verification is strictly left empty on reload to force taking a fresh live photo
-          setFaceVerified(null);
-          setFaceMatchResult(null);
+          
+          if (!isEditMode) {
+            setFaceVerified(null);
+            setFaceMatchResult(null);
+          } else if (vs.faceVerified) {
+            setFaceVerified(vs.faceVerified);
+          }
           if (safeSigVerified !== undefined && safeSigVerified !== null) setSignatureVerified(safeSigVerified);
 
           const sanitizeStatusStr = (s) => (s && (s.includes('Initializing') || s.includes('Scanning')) ? '' : s);
