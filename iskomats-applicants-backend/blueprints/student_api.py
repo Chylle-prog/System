@@ -3509,36 +3509,85 @@ def submit_application():
             ensure_applicant_status_app_doc_no_schema(cur)
             conn.commit()
         
+            # In this system, req_no (passed from frontend) is the primary scholarship identifier
+            scholarship_id = req_no
+
+            # Check if there is an existing application record and app_doc_no for this scholarship
+            cur.execute(
+                "SELECT is_accepted, app_doc_no, cancellation_reason FROM applicant_status WHERE scholarship_no = %s AND applicant_no = %s",
+                (scholarship_id, current_user_id)
+            )
+            existing_app_status = cur.fetchone()
+            existing_doc_no = (
+                existing_app_status.get('app_doc_no')
+                if existing_app_status and existing_app_status.get('app_doc_no')
+                else None
+            )
+
+            # Also check if app_doc_no was explicitly passed in payload/query or via backend proxy URLs
+            if not existing_doc_no:
+                for candidate in [
+                    request_payload.get('app_doc_no'),
+                    form_data.get('app_doc_no'),
+                    request.args.get('app_doc_no')
+                ]:
+                    if candidate and str(candidate).strip().isdigit():
+                        existing_doc_no = int(str(candidate).strip())
+                        break
+
+            if not existing_doc_no:
+                for k in ('mayorCOE_photo', 'mayorGrades_photo', 'mayorIndigency_photo', 'id_front', 'schoolIdFront', 'signature_data', 'face_photo'):
+                    val = request_payload.get(k) or form_data.get(k)
+                    if isinstance(val, str) and '/applicant/document/raw/' in val and 'app_doc_no=' in val:
+                        try:
+                            from urllib.parse import urlparse, parse_qs
+                            qs = parse_qs(urlparse(val).query)
+                            if 'app_doc_no' in qs and qs['app_doc_no'][0].isdigit():
+                                existing_doc_no = int(qs['app_doc_no'][0])
+                                break
+                        except Exception:
+                            pass
+
             # Get applicant data
             cur.execute('SELECT * FROM applicants WHERE applicant_no = %s', (current_user_id,))
             applicant = cur.fetchone()
             if not applicant:
                 return jsonify({'message': 'Applicant profile not found'}), 404
-            document_values = fetch_applicant_document_values(
-                cur,
-                current_user_id,
-                [
-                    'signature_image_data',
-                    'id_img_front',
-                    'id_img_back',
-                    'schoolID_photo',
-                    'enrollment_certificate_doc',
-                    'grades_doc',
-                    'indigency_doc',
-                    'id_pic',
-                    'id_vid_url',
-                    'indigency_vid_url',
-                    'grades_vid_url',
-                    'enrollment_certificate_vid_url',
-                    'schoolid_front_vid_url',
-                    'schoolid_back_vid_url',
-                ],
-            )
+
+            if existing_doc_no:
+                # Editing existing application: strictly fetch only this specific application's documents
+                document_values = fetch_applicant_document_values(
+                    cur,
+                    current_user_id,
+                    [
+                        'signature_image_data',
+                        'id_img_front',
+                        'id_img_back',
+                        'schoolID_photo',
+                        'enrollment_certificate_doc',
+                        'grades_doc',
+                        'indigency_doc',
+                        'id_pic',
+                        'id_vid_url',
+                        'indigency_vid_url',
+                        'grades_vid_url',
+                        'enrollment_certificate_vid_url',
+                        'schoolid_front_vid_url',
+                        'schoolid_back_vid_url',
+                    ],
+                    app_doc_no=existing_doc_no
+                )
+            else:
+                # Fresh new application: Isolate snapshots.
+                # NEVER inherit document verifications from a different scholarship application!
+                document_values = {}
+                if applicant.get('profile_picture'):
+                    document_values['profile_picture'] = applicant['profile_picture']
+                if applicant.get('signature_image_data'):
+                    document_values['signature_image_data'] = applicant['signature_image_data']
+
             if document_values:
                 applicant.update(document_values)
-        
-            # In this system, req_no (passed from frontend) is the primary scholarship identifier
-            scholarship_id = req_no
         
             # Verify the scholarship exists and check GPA requirement
             cur.execute(
@@ -3576,13 +3625,8 @@ def submit_application():
                     pass
 
             # Enforce edit restriction: 'Submitted' and 'Approved' applications can be modified.
-            # 'Cancelled' applications are allowed to submit a new application (re-apply).
+            # 'Cancelled' applications are only allowed to reapply if cancelled by the user themselves.
             target_submission_status = 'Submitted'
-            cur.execute(
-                "SELECT is_accepted FROM applicant_status WHERE scholarship_no = %s AND applicant_no = %s",
-                (scholarship_id, current_user_id)
-            )
-            existing_app_status = cur.fetchone()
             if existing_app_status:
                 raw_stat = existing_app_status.get('is_accepted')
                 norm_stat = 'Submitted' if raw_stat in ('Submitted', 'Pending', None) else ('Approved' if raw_stat in ('Approved', 'Accepted') else raw_stat)
@@ -3590,7 +3634,13 @@ def submit_application():
                     return jsonify({
                         'message': "Cannot edit this application because it has already been accepted/approved."
                     }), 403
-                if norm_stat not in ('Submitted', 'Cancelled'):
+                if norm_stat == 'Cancelled':
+                    cancel_reason = (existing_app_status.get('cancellation_reason') or '').strip()
+                    if cancel_reason != 'Cancelled by User':
+                        return jsonify({
+                            'message': "Cannot reapply: This application was cancelled by an administrator and cannot be resubmitted."
+                        }), 403
+                elif norm_stat not in ('Submitted',):
                     if norm_stat == 'Suspended':
                         return jsonify({
                             'message': "Cannot apply: Your application for this scholarship was suspended by an administrator."
@@ -3843,6 +3893,17 @@ def submit_application():
                             continue
                         if ('/applicant/document/raw/' in s_val or 'onrender.com' in s_val or 'localhost' in s_val):
                             print(f"[SUBMIT APPLICATION] Field {form_key} is a backend proxy URL. Skipping update.", flush=True)
+                            if db_col not in document_values:
+                                try:
+                                    from urllib.parse import urlparse, parse_qs
+                                    qs = parse_qs(urlparse(s_val).query)
+                                    target_p_doc_no = int(qs['app_doc_no'][0]) if 'app_doc_no' in qs and qs['app_doc_no'][0].isdigit() else existing_doc_no
+                                    if target_p_doc_no:
+                                        fetched = fetch_applicant_document_values(cur, current_user_id, [db_col], app_doc_no=target_p_doc_no)
+                                        if fetched and fetched.get(db_col):
+                                            document_values[db_col] = fetched[db_col]
+                                except Exception:
+                                    pass
                             continue
                     document_updates[db_col] = val
 
@@ -3943,9 +4004,13 @@ def submit_application():
                                     if url:
                                         merit_entries_to_save.append({'title': m_title, 'document': url})
 
-            # Create a dedicated separate document snapshot for this scholarship application
+            # Create or update dedicated separate document snapshot for this scholarship application
             all_submitted_docs = {**(document_values or {}), **(document_updates or {})}
-            application_doc_no = create_applicant_document_record(cur, current_user_id, all_submitted_docs)
+            if existing_doc_no:
+                application_doc_no = existing_doc_no
+                persist_applicant_document_values(cur, current_user_id, all_submitted_docs, app_doc_no=existing_doc_no)
+            else:
+                application_doc_no = create_applicant_document_record(cur, current_user_id, all_submitted_docs)
 
             if merit_entries_to_save is not None:
                 save_merit_proofs(cur, current_user_id, merit_entries_to_save, scholarship_no=scholarship_id, app_doc_no=application_doc_no)
@@ -3956,7 +4021,12 @@ def submit_application():
                 INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, app_doc_no, created_at, status_updated, cancellation_reason)
                 VALUES (%s, %s, %s, %s, NOW(), CURRENT_DATE, NULL)
                 ON CONFLICT (scholarship_no, applicant_no) 
-                DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = EXCLUDED.is_accepted, app_doc_no = EXCLUDED.app_doc_no, status_updated = CURRENT_DATE, cancellation_reason = NULL
+                DO UPDATE SET 
+                    created_at = COALESCE(applicant_status.created_at, EXCLUDED.created_at),
+                    is_accepted = EXCLUDED.is_accepted, 
+                    app_doc_no = EXCLUDED.app_doc_no, 
+                    status_updated = CURRENT_DATE, 
+                    cancellation_reason = NULL
                 """,
                 (scholarship_id, current_user_id, target_submission_status, application_doc_no),
             )
@@ -4386,13 +4456,44 @@ def init_edit_application(scholarship_no):
 
             app_doc_no = app_row.get('app_doc_no')
             if not app_doc_no:
+                # Check if an applicant_documents record has documents stored under scholarship_{scholarship_no}
                 cur.execute(
-                    "SELECT app_doc_no FROM applicant_documents WHERE applicant_no = %s ORDER BY app_doc_no DESC LIMIT 1",
-                    (request.user_no,)
+                    """
+                    SELECT app_doc_no FROM applicant_documents 
+                    WHERE applicant_no = %s 
+                      AND (
+                          indigency_doc LIKE %s OR 
+                          enrollment_certificate_doc LIKE %s OR 
+                          grades_doc LIKE %s OR 
+                          id_img_front LIKE %s
+                      )
+                    ORDER BY app_doc_no DESC LIMIT 1
+                    """,
+                    (
+                        request.user_no,
+                        f'%scholarship_{scholarship_no}%',
+                        f'%scholarship_{scholarship_no}%',
+                        f'%scholarship_{scholarship_no}%',
+                        f'%scholarship_{scholarship_no}%',
+                    )
                 )
-                ad_row = cur.fetchone()
-                if ad_row:
-                    app_doc_no = ad_row.get('app_doc_no') if isinstance(ad_row, dict) else ad_row[0]
+                spec_ad = cur.fetchone()
+                if spec_ad:
+                    app_doc_no = spec_ad.get('app_doc_no') if isinstance(spec_ad, dict) else spec_ad[0]
+                    cur.execute(
+                        "UPDATE applicant_status SET app_doc_no = %s WHERE applicant_no = %s AND scholarship_no = %s",
+                        (app_doc_no, request.user_no, scholarship_no)
+                    )
+                    conn.commit()
+
+            if not app_doc_no:
+                # Strictly isolate snapshots: create fresh document snapshot record for this application
+                app_doc_no = create_applicant_document_record(cur, request.user_no, {})
+                cur.execute(
+                    "UPDATE applicant_status SET app_doc_no = %s WHERE applicant_no = %s AND scholarship_no = %s",
+                    (app_doc_no, request.user_no, scholarship_no)
+                )
+                conn.commit()
 
             def make_stream_url(field_name, db_val):
                 if not db_val:
@@ -4557,6 +4658,7 @@ def init_edit_application(scholarship_no):
                     'hasDraft': True,
                     'current_step': existing_draft.get('current_step') or 1,
                     'draft_data': dd or {},
+                    'app_doc_no': app_doc_no,
                     'status': norm_stat,
                     'message': 'Loaded existing in-progress edit draft'
                 })
@@ -4692,6 +4794,8 @@ def init_edit_application(scholarship_no):
             }
 
             # Persist snapshot into application_drafts
+            draft_obj['app_doc_no'] = app_doc_no
+
             cur.execute(
                 """
                 INSERT INTO application_drafts (applicant_no, scholarship_no, current_step, draft_data, updated_at)
@@ -4708,6 +4812,7 @@ def init_edit_application(scholarship_no):
                 'hasDraft': True,
                 'current_step': 1,
                 'draft_data': draft_obj,
+                'app_doc_no': app_doc_no,
                 'status': norm_stat,
                 'message': 'Edit initialized successfully'
             })
@@ -4943,6 +5048,7 @@ def update_application_status(req_no):
                     UPDATE applicant_status
                     SET is_accepted = 'Cancelled', status_updated = CURRENT_DATE, cancellation_reason = 'Accepted into another scholarship'
                     WHERE applicant_no = %s AND scholarship_no != %s
+                    AND (is_accepted IN ('Pending', 'Submitted') OR is_accepted IS NULL)
                     """,
                     (applicant_no, req_no),
                 )

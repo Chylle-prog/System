@@ -3909,7 +3909,7 @@ const Portal = () => {
                               <i className="fas fa-edit"></i> Edit
                             </button>
                           )}
-                          {displayStatus === 'Cancelled' && !hasAnyAccepted && (
+                          {displayStatus === 'Cancelled' && !hasAnyAccepted && (app.cancellation_reason === 'Cancelled by User' || app.cancellationReason === 'Cancelled by User') && (
                             <button
                               className="edit-btn"
                               style={{ backgroundColor: '#2563eb', color: '#fff', borderColor: '#2563eb' }}

@@ -2858,6 +2858,7 @@ const StudentInfo = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isEditMode = searchParams.get('edit') === 'true';
+  const [applicationDocNo, setApplicationDocNo] = useState(null);
   const localVideoBlobsRef = useRef({});
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
@@ -6476,6 +6477,9 @@ const StudentInfo = () => {
           const editRes = await applicationAPI.initEdit(parseInt(targetReqNo));
           if (editRes && editRes.success && editRes.draft_data) {
             savedDraft = editRes.draft_data;
+            if (editRes.app_doc_no || editRes.draft_data?.app_doc_no) {
+              setApplicationDocNo(editRes.app_doc_no || editRes.draft_data.app_doc_no);
+            }
           } else if (editRes && !editRes.success) {
             showPromptMessage(editRes.message || 'Cannot edit this application.');
             setTimeout(() => navigate('/portal'), 2500);
@@ -8000,6 +8004,10 @@ const StudentInfo = () => {
         }
         submissionData.append(`merit_title_${idx + 1}`, m.title.trim());
       });
+
+      if (applicationDocNo) {
+        submissionData.append('app_doc_no', applicationDocNo);
+      }
 
       const result = await applicationAPI.submit(numericReqNo, submissionData, skipVerification);
       console.log('Submission result:', result);

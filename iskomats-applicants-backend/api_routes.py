@@ -4551,6 +4551,7 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
                 UPDATE applicant_status
                 SET is_accepted = 'Cancelled', status_updated = CURRENT_DATE, cancellation_reason = 'Accepted into another scholarship'
                 WHERE applicant_no = %s AND scholarship_no != %s
+                AND (is_accepted IN ('Pending', 'Submitted') OR is_accepted IS NULL)
                 """,
                 (applicant_no, scholarship_no),
             )
