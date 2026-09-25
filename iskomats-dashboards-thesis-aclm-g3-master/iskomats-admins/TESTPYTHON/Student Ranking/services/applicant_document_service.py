@@ -283,6 +283,9 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names, app_doc_
         except Exception as e:
             print(f"[DOC SERVICE] Error querying exact app_doc_no {app_doc_no}: {e}", flush=True)
 
+    join_param = None
+    joins = applicant_document_join_sql(cursor, 'a', 'ad')
+
     select_parts = []
     for column_name in requested_columns:
         if column_name == 'applicant_no':
