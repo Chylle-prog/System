@@ -1111,11 +1111,13 @@ def get_scholarship_restriction(scope, scholarship_no):
         row for row in applications
         if (try_int(row.get('scholarship_no')) == target_sch_no or row.get('scholarship_no') == scholarship_no)
         and (try_int(row.get('applicant_no')) in current_applicant_ids or row.get('applicant_no') in current_applicant_ids)
+        and str(row.get('is_accepted') or '').strip().title() != 'Cancelled'
     ]
     active_accepted_rows = [
         row for row in applications
         if (try_int(row.get('applicant_no')) in current_applicant_ids or row.get('applicant_no') in current_applicant_ids)
-        and str(row.get('is_accepted')).strip().title() == 'Accepted'
+        and (try_int(row.get('scholarship_no')) != target_sch_no and row.get('scholarship_no') != scholarship_no)
+        and str(row.get('is_accepted')).strip().title() in ('Accepted', 'Approved')
         and scholarship_is_active_record(row, today=today)
     ]
     subject = describe_identity_subject(scope)
@@ -1125,6 +1127,7 @@ def get_scholarship_restriction(scope, scholarship_no):
         if (try_int(row.get('scholarship_no')) == target_sch_no or row.get('scholarship_no') == scholarship_no)
         and try_int(row.get('applicant_no')) not in current_applicant_ids
         and row.get('applicant_no') not in current_applicant_ids
+        and str(row.get('is_accepted') or '').strip().title() not in ('Cancelled', 'Suspended')
     ]
     if family_other_rows:
         prior_row = min(
@@ -1133,10 +1136,10 @@ def get_scholarship_restriction(scope, scholarship_no):
         )
         status_label = 'applied for'
         reason = 'family-existing-same-scholarship'
-        if str(prior_row.get('is_accepted')).strip().title() == 'Accepted':
+        if str(prior_row.get('is_accepted')).strip().title() in ('Accepted', 'Approved'):
             status_label = 'already has an accepted application for'
             reason = 'family-accepted-same-scholarship'
-        elif str(prior_row.get('is_accepted')).strip().title() in ('Pending', 'None') or prior_row.get('is_accepted') is None:
+        elif str(prior_row.get('is_accepted')).strip().title() in ('Pending', 'None', 'Submitted') or prior_row.get('is_accepted') is None:
             status_label = 'has already applied for'
             reason = 'family-pending-same-scholarship'
 
@@ -1155,7 +1158,7 @@ def get_scholarship_restriction(scope, scholarship_no):
     app_noun = 'your application' if is_self else 'the application'
     your_noun = 'your' if is_self else 'the'
 
-    same_scholarship_row = next((row for row in self_related_rows if str(row.get('is_accepted')).strip().title() == 'Accepted'), None)
+    same_scholarship_row = next((row for row in self_related_rows if str(row.get('is_accepted')).strip().title() in ('Accepted', 'Approved')), None)
     if same_scholarship_row:
         return {
             'already_applied': True,
@@ -1166,7 +1169,7 @@ def get_scholarship_restriction(scope, scholarship_no):
             'blocking_application': same_scholarship_row,
         }
 
-    same_scholarship_row = next((row for row in self_related_rows if str(row.get('is_accepted')).strip().title() in ('Pending', 'None') or row.get('is_accepted') is None), None)
+    same_scholarship_row = next((row for row in self_related_rows if str(row.get('is_accepted')).strip().title() in ('Pending', 'None', 'Submitted') or row.get('is_accepted') is None), None)
     if same_scholarship_row:
         return {
             'already_applied': True,
@@ -1189,6 +1192,20 @@ def get_scholarship_restriction(scope, scholarship_no):
             'reason': 'identity-rejected-same-scholarship',
             'auto_reject': False,
             'blocking_application': same_scholarship_rejected_row,
+        }
+
+    same_scholarship_suspended_row = next(
+        (row for row in self_related_rows if str(row.get('is_accepted')).strip().title() == 'Suspended'),
+        None
+    )
+    if same_scholarship_suspended_row:
+        return {
+            'already_applied': True,
+            'blocked': True,
+            'message': f"{subject} {was_verb} suspended from this scholarship and cannot re-apply.",
+            'reason': 'identity-suspended-same-scholarship',
+            'auto_reject': False,
+            'blocking_application': same_scholarship_suspended_row,
         }
 
     active_accepted_row = next((row for row in active_accepted_rows), None)
@@ -3549,7 +3566,8 @@ def submit_application():
                 except (ValueError, TypeError):
                     pass
 
-            # Enforce edit restriction: 'Submitted' and 'Approved' applications can be modified
+            # Enforce edit restriction: 'Submitted' and 'Approved' applications can be modified.
+            # 'Cancelled' applications are allowed to submit a new application (re-apply).
             target_submission_status = 'Submitted'
             cur.execute(
                 "SELECT is_accepted FROM applicant_status WHERE scholarship_no = %s AND applicant_no = %s",
@@ -3559,11 +3577,15 @@ def submit_application():
             if existing_app_status:
                 raw_stat = existing_app_status.get('is_accepted')
                 norm_stat = 'Submitted' if raw_stat in ('Submitted', 'Pending', None) else ('Approved' if raw_stat in ('Approved', 'Accepted') else raw_stat)
-                if norm_stat not in ('Submitted', 'Approved'):
+                if norm_stat not in ('Submitted', 'Approved', 'Cancelled'):
+                    if norm_stat == 'Suspended':
+                        return jsonify({
+                            'message': "Cannot apply: Your application for this scholarship was suspended by an administrator."
+                        }), 403
                     return jsonify({
-                        'message': f"Cannot edit this application. Current status is '{norm_stat}'."
+                        'message': f"Cannot edit or submit this application. Current status is '{norm_stat}'."
                     }), 403
-                target_submission_status = norm_stat
+                target_submission_status = 'Submitted' if norm_stat in ('Submitted', 'Cancelled') else norm_stat
 
             preliminary_identity = build_restriction_identity_from_applicant(applicant, source_data=request_payload)
             if preliminary_identity:
@@ -3575,24 +3597,28 @@ def submit_application():
             restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=request_payload)
             restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
             if restriction['blocked'] and not is_skip_alternate_check_active(cur):
-                if restriction['auto_reject']:
-                    cur.execute(
-                        """
-                        INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, created_at)
-                        VALUES (%s, %s, 'Rejected', NOW())
-                        ON CONFLICT (scholarship_no, applicant_no)
-                        DO UPDATE SET is_accepted = 'Rejected', created_at = applicant_status.created_at
-                        """,
-                        (scholarship_id, current_user_id),
-                    )
-                    conn.commit()
-                response_payload = {
-                    'message': restriction['message'],
-                    'restriction_reason': restriction['reason'],
-                }
-                if restriction['auto_reject']:
-                    response_payload['status'] = 'Rejected'
-                return jsonify(response_payload), 409
+                # When editing an already submitted or approved application for this same scholarship,
+                # do not self-block on same-scholarship status.
+                is_self_edit = existing_app_status and norm_stat in ('Submitted', 'Approved') and restriction['reason'] in ('identity-pending-same-scholarship', 'identity-accepted-same-scholarship')
+                if not is_self_edit:
+                    if restriction['auto_reject']:
+                        cur.execute(
+                            """
+                            INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, created_at)
+                            VALUES (%s, %s, 'Rejected', NOW())
+                            ON CONFLICT (scholarship_no, applicant_no)
+                            DO UPDATE SET is_accepted = 'Rejected', created_at = applicant_status.created_at
+                            """,
+                            (scholarship_id, current_user_id),
+                        )
+                        conn.commit()
+                    response_payload = {
+                        'message': restriction['message'],
+                        'restriction_reason': restriction['reason'],
+                    }
+                    if restriction['auto_reject']:
+                        response_payload['status'] = 'Rejected'
+                    return jsonify(response_payload), 409
 
             # ── Data Preparation ──────────────────────────────────────────────────
             def get_doc_bytes(key, db_field):
@@ -3914,10 +3940,10 @@ def submit_application():
             # ── CREATE/UPDATE STATUS ──────────────────────────────────────────────
             cur.execute(
                 """
-                INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, app_doc_no, created_at, status_updated)
-                VALUES (%s, %s, %s, %s, NOW(), CURRENT_DATE)
+                INSERT INTO applicant_status (scholarship_no, applicant_no, is_accepted, app_doc_no, created_at, status_updated, cancellation_reason)
+                VALUES (%s, %s, %s, %s, NOW(), CURRENT_DATE, NULL)
                 ON CONFLICT (scholarship_no, applicant_no) 
-                DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = EXCLUDED.is_accepted, app_doc_no = EXCLUDED.app_doc_no, status_updated = CURRENT_DATE
+                DO UPDATE SET created_at = EXCLUDED.created_at, is_accepted = EXCLUDED.is_accepted, app_doc_no = EXCLUDED.app_doc_no, status_updated = CURRENT_DATE, cancellation_reason = NULL
                 """,
                 (scholarship_id, current_user_id, target_submission_status, application_doc_no),
             )
@@ -4599,6 +4625,7 @@ def get_my_applications():
                         WHEN ast.is_accepted IN ('Approved', 'Accepted') THEN 'Approved'
                         WHEN ast.is_accepted = 'Rejected' THEN 'Rejected'
                         WHEN ast.is_accepted = 'Cancelled' THEN 'Cancelled'
+                        WHEN ast.is_accepted = 'Suspended' THEN 'Suspended'
                         ELSE 'Submitted'
                     END as status,
                     ast.status_updated,
@@ -4786,7 +4813,7 @@ def update_application_status(req_no):
                     JOIN scholarship_providers sp ON s.pro_no = sp.pro_no
                     WHERE ast.applicant_no = %s 
                     AND ast.scholarship_no != %s 
-                    AND (ast.is_accepted = 'Pending' OR ast.is_accepted IS NULL OR ast.is_accepted = 'Accepted')
+                    AND (ast.is_accepted IN ('Pending', 'Submitted', 'Accepted', 'Approved') OR ast.is_accepted IS NULL)
                     """,
                     (applicant_no, req_no)
                 )
@@ -4795,7 +4822,7 @@ def update_application_status(req_no):
                 cur.execute(
                     """
                     UPDATE applicant_status
-                    SET is_accepted = 'Cancelled'
+                    SET is_accepted = 'Cancelled', status_updated = CURRENT_DATE, cancellation_reason = 'Accepted into another scholarship'
                     WHERE applicant_no = %s AND scholarship_no != %s
                     """,
                     (applicant_no, req_no),

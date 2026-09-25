@@ -875,6 +875,7 @@ const initialDashboardData = {
   rejected: [],
   declined: [],
   cancelled: [],
+  suspended: [],
   inbox: [], // Add later (Missing Schema)
   scholarshipPosts: [], // Add later (Missing Schema)
   announcements: [],
@@ -1543,6 +1544,7 @@ export default function ScholarshipDashboard({
         rejected: sortedByLatest.filter(a => a.status === 'Rejected'),
         declined: sortedByLatest.filter(a => a.status === 'Declined' || a.status === 'Rejected'),
         cancelled: sortedByLatest.filter(a => a.status === 'Cancelled'),
+        suspended: sortedByLatest.filter(a => a.status === 'Suspended'),
         historicalData
       }));
     } catch (error) {
@@ -1556,6 +1558,7 @@ export default function ScholarshipDashboard({
         rejected: [],
         declined: [],
         cancelled: [],
+        suspended: [],
         historicalData
       }));
     }
@@ -3794,7 +3797,7 @@ export default function ScholarshipDashboard({
     });
   };
 
-  const handleCancelAcceptedApplicant = (applicant) => {
+  const handleSuspendAcceptedApplicant = (applicant) => {
     if (!applicant) return;
     setCancelPromptModal({
       isOpen: true,
@@ -3804,12 +3807,13 @@ export default function ScholarshipDashboard({
       error: '',
     });
   };
+  const handleCancelAcceptedApplicant = handleSuspendAcceptedApplicant;
 
-  const handleConfirmCancelAccepted = async () => {
+  const handleConfirmSuspendAccepted = async () => {
     if (!cancelPromptModal.applicant) return;
     const trimmedReason = cancelPromptModal.reason.trim();
     if (!trimmedReason) {
-      setCancelPromptModal(prev => ({ ...prev, error: 'Please provide a reason for cancellation.' }));
+      setCancelPromptModal(prev => ({ ...prev, error: 'Please provide a reason for suspension.' }));
       return;
     }
 
@@ -3825,7 +3829,7 @@ export default function ScholarshipDashboard({
     setCancelPromptModal(prev => ({ ...prev, isSubmitting: true, error: '' }));
 
     try {
-      await scholarshipAPI.cancelApplicant(applicantId, scholarshipNo, trimmedReason);
+      await scholarshipAPI.suspendApplicant(applicantId, scholarshipNo, trimmedReason);
 
       const applicantKey = getApplicantIdentityKey(applicant);
 
@@ -3834,9 +3838,9 @@ export default function ScholarshipDashboard({
         const updatedApplicants = (prev.applicants || []).filter(a => getApplicantIdentityKey(a) !== applicantKey);
         const updatedDeclined = (prev.declined || []).filter(a => getApplicantIdentityKey(a) !== applicantKey);
         const updatedRejected = (prev.rejected || []).filter(a => getApplicantIdentityKey(a) !== applicantKey);
-        const cancelledItem = {
+        const suspendedItem = {
           ...applicant,
-          status: 'Cancelled',
+          status: 'Suspended',
           cancellation_reason: trimmedReason,
           cancellationReason: trimmedReason,
         };
@@ -3846,7 +3850,7 @@ export default function ScholarshipDashboard({
           applicants: updatedApplicants,
           declined: updatedDeclined,
           rejected: updatedRejected,
-          cancelled: [...(prev.cancelled || []).filter(a => getApplicantIdentityKey(a) !== applicantKey), cancelledItem],
+          suspended: [...(prev.suspended || []).filter(a => getApplicantIdentityKey(a) !== applicantKey), suspendedItem],
         };
       });
 
@@ -3863,11 +3867,12 @@ export default function ScholarshipDashboard({
         error: '',
       });
     } catch (err) {
-      console.error('Error cancelling applicant:', err);
-      const msg = err?.response?.data?.message || err?.message || 'Failed to cancel application.';
+      console.error('Error suspending applicant:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Failed to suspend application.';
       setCancelPromptModal(prev => ({ ...prev, isSubmitting: false, error: msg }));
     }
   };
+  const handleConfirmCancelAccepted = handleConfirmSuspendAccepted;
 
   const getStudentStatus = (id, name, currentStatus, email = null) => {
     if (currentStatus && currentStatus !== 'Unknown') return currentStatus;
@@ -4230,8 +4235,9 @@ export default function ScholarshipDashboard({
     ...(data.accepted || []),
     ...(data.rejected || []),
     ...(data.declined || []),
-    ...(data.cancelled || [])
-  ], [data.applicants, data.accepted, data.rejected, data.declined, data.cancelled]);
+    ...(data.cancelled || []),
+    ...(data.suspended || [])
+  ], [data.applicants, data.accepted, data.rejected, data.declined, data.cancelled, data.suspended]);
 
   const allMessages = data.inbox || [];
   const unreadCount = allMessages.filter((m) => !m.read).length;
@@ -5247,10 +5253,14 @@ export default function ScholarshipDashboard({
     const cancelledTaggedRaw = filterList(data.cancelled).map((a, i) => ({ ...a, _listType: 'cancelled', _listIdx: data.cancelled.indexOf(a) }));
     const cancelledTagged = sortApplicants(cancelledTaggedRaw);
 
-    const allList = sortApplicants([...pendingTaggedRaw, ...acceptedTaggedRaw, ...rejectedTaggedRaw, ...cancelledTaggedRaw]);
+    const suspendedTaggedRaw = filterList(data.suspended || []).map((a, i) => ({ ...a, _listType: 'suspended', _listIdx: (data.suspended || []).indexOf(a) }));
+    const suspendedTagged = sortApplicants(suspendedTaggedRaw);
+
+    const allList = sortApplicants([...pendingTaggedRaw, ...acceptedTaggedRaw, ...rejectedTaggedRaw, ...cancelledTaggedRaw, ...suspendedTaggedRaw]);
     const acceptedList = acceptedTagged;
     const rejectedList = rejectedTagged;
     const cancelledList = cancelledTagged;
+    const suspendedList = suspendedTagged;
 
     const currentTrackList = trackTab === 'pending'
       ? pendingTagged
@@ -5260,7 +5270,9 @@ export default function ScholarshipDashboard({
           ? rejectedList
           : trackTab === 'cancelled'
             ? cancelledList
-            : allList;
+            : trackTab === 'suspended'
+              ? suspendedList
+              : allList;
 
     const APPLICANT_PAGE_SIZE = 20;
     const totalTrackItems = currentTrackList.length;
@@ -5282,7 +5294,7 @@ export default function ScholarshipDashboard({
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             {/* Tabs — horizontally scrollable */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1 flex-1">
-              {['all', 'pending', 'accepted', 'rejected', 'cancelled'].map((t) => (
+              {['all', 'pending', 'accepted', 'rejected', 'cancelled', 'suspended'].map((t) => (
                 <button
                   key={t}
                   type="button"
@@ -5295,6 +5307,7 @@ export default function ScholarshipDashboard({
                   {t === 'accepted' && <FaCheckCircle className="text-[10px] sm:text-xs" />}
                   {t === 'rejected' && <FaTimesCircle className="text-[10px] sm:text-xs" />}
                   {t === 'cancelled' && <FaTrashAlt className="text-[10px] sm:text-xs" />}
+                  {t === 'suspended' && <FaBan className="text-[10px] sm:text-xs" />}
                   {t === 'pending' ? 'Pending' : t === 'all' ? 'All' : t.charAt(0).toUpperCase() + t.slice(1)}
                 </button>
               ))}
@@ -5423,6 +5436,7 @@ export default function ScholarshipDashboard({
                     accepted: 'bg-green-100 text-green-700',
                     rejected: 'bg-red-100 text-red-700',
                     cancelled: 'bg-gray-100 text-gray-700',
+                    suspended: 'bg-amber-100 text-amber-800',
                     declined: 'bg-red-100 text-red-700'
                   };
                   const statusLabels = {
@@ -5430,6 +5444,7 @@ export default function ScholarshipDashboard({
                     accepted: 'Accepted',
                     rejected: 'Rejected',
                     cancelled: 'Cancelled',
+                    suspended: 'Suspended',
                     declined: 'Declined'
                   };
 
@@ -5489,13 +5504,24 @@ export default function ScholarshipDashboard({
                             </span>
                             <button
                               type="button"
-                              onClick={() => handleCancelAcceptedApplicant(a)}
+                              onClick={() => handleSuspendAcceptedApplicant(a)}
                               disabled={Boolean(processingState)}
                               className="px-2 py-1 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition-all flex items-center gap-1 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                              title="Cancel Accepted Scholarship"
+                              title="Suspend Accepted Scholarship"
                             >
-                              <FaBan className="text-[10px]" /> Cancel
+                              <FaBan className="text-[10px]" /> Suspend
                             </button>
+                          </div>
+                        ) : listType === 'suspended' ? (
+                          <div className="flex flex-col items-center">
+                            <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                              Suspended
+                            </span>
+                            {(a.cancellationReason || a.cancellation_reason) && (
+                              <span className="text-[10px] text-amber-700 italic mt-0.5 max-w-[130px] truncate" title={a.cancellationReason || a.cancellation_reason}>
+                                {a.cancellationReason || a.cancellation_reason}
+                              </span>
+                            )}
                           </div>
                         ) : listType === 'cancelled' ? (
                           <div className="flex flex-col items-center">
@@ -6980,10 +7006,10 @@ export default function ScholarshipDashboard({
               {listType === 'accepted' && (
                 <button
                   type="button"
-                  onClick={() => handleCancelAcceptedApplicant(a)}
+                  onClick={() => handleSuspendAcceptedApplicant(a)}
                   className="px-5 py-2.5 rounded-xl bg-amber-600 text-white font-bold text-xs uppercase tracking-wider hover:bg-amber-700 shadow-md shadow-amber-100 transition-all flex items-center gap-1.5"
                 >
-                  <FaBan /> Cancel Scholarship
+                  <FaBan /> Suspend Scholarship
                 </button>
               )}
               <button
@@ -7674,10 +7700,10 @@ export default function ScholarshipDashboard({
           {listType === 'accepted' && (
             <button
               type="button"
-              onClick={() => handleCancelAcceptedApplicant(a)}
+              onClick={() => handleSuspendAcceptedApplicant(a)}
               className="w-full sm:w-auto px-6 py-2.5 sm:px-8 sm:py-3 rounded-xl bg-amber-600 text-white font-black uppercase tracking-widest text-xs hover:bg-amber-700 shadow-lg shadow-amber-100 transition-all flex items-center justify-center gap-2"
             >
-              <FaBan /> Cancel Scholarship
+              <FaBan /> Suspend Scholarship
             </button>
           )}
           <button
@@ -8444,26 +8470,26 @@ export default function ScholarshipDashboard({
             </div>
 
             <h3 className="text-xl font-black text-gray-900 text-center mb-1">
-              Cancel Accepted Application
+              Suspend Accepted Application
             </h3>
             <p className="text-xs text-gray-500 text-center mb-4">
-              Cancelling scholarship for <span className="font-bold text-gray-800">{cancelPromptModal.applicant?.name || cancelPromptModal.applicant?.firstName || 'Student'}</span>
+              Suspending scholarship for <span className="font-bold text-gray-800">{cancelPromptModal.applicant?.name || cancelPromptModal.applicant?.firstName || 'Student'}</span>
             </p>
 
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 mb-4 leading-relaxed">
               <p className="font-semibold mb-1">Notification &amp; Message Notice:</p>
-              <p>This will set the student's status to <strong>Cancelled</strong>. An official notification and direct chat message containing your cancellation reason will be sent to the student immediately.</p>
+              <p>This will set the student's status to <strong>Suspended</strong>. The student will be barred from re-applying to this scholarship. An official notification and direct chat message containing your suspension reason will be sent to the student immediately.</p>
             </div>
 
             <div className="mb-5">
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
-                Reason for Cancellation <span className="text-red-500">*</span>
+                Reason for Suspension <span className="text-red-500">*</span>
               </label>
               <textarea
                 rows={3}
                 value={cancelPromptModal.reason}
                 onChange={(e) => setCancelPromptModal(prev => ({ ...prev, reason: e.target.value, error: '' }))}
-                placeholder="Please enter the reason for cancellation (e.g., student withdrew, duplicate scholarship, eligibility criteria not met)..."
+                placeholder="Please enter the reason for suspension (e.g., student withdrew, eligibility criteria not met, policy violation)..."
                 className="w-full text-xs p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent resize-none"
                 disabled={cancelPromptModal.isSubmitting}
               />
@@ -8483,17 +8509,17 @@ export default function ScholarshipDashboard({
               </button>
               <button
                 type="button"
-                onClick={handleConfirmCancelAccepted}
+                onClick={handleConfirmSuspendAccepted}
                 disabled={cancelPromptModal.isSubmitting || !cancelPromptModal.reason.trim()}
                 className="px-4 py-2.5 rounded-xl bg-amber-600 text-white font-bold text-xs uppercase tracking-wider transition-all hover:bg-amber-700 shadow-md shadow-amber-600/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
               >
                 {cancelPromptModal.isSubmitting ? (
                   <>
-                    <FaSpinner className="animate-spin text-xs" /> Cancelling...
+                    <FaSpinner className="animate-spin text-xs" /> Suspending...
                   </>
                 ) : (
                   <>
-                    <FaBan className="text-xs" /> Confirm Cancel
+                    <FaBan className="text-xs" /> Confirm Suspend
                   </>
                 )}
               </button>

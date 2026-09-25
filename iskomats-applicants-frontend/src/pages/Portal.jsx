@@ -2513,6 +2513,12 @@ const Portal = () => {
           border: 1px solid #cbd5e1;
         }
 
+        .status-suspended {
+          background: #fef3c7;
+          color: #b45309;
+          border: 1px solid #fde68a;
+        }
+
         .view-btn {
           background: var(--primary);
           color: white;
@@ -3857,12 +3863,14 @@ const Portal = () => {
                     const isSubmitted = app.status === 'Submitted' || app.status === 'Pending';
                     const isApproved = app.status === 'Approved' || app.status === 'Accepted';
                     const canEdit = isSubmitted || isApproved || Boolean(app.can_edit);
+                    const hasAnyAccepted = applications.some(a => a.status === 'Approved' || a.status === 'Accepted');
                     const displayStatus = isApproved ? 'Approved' :
                       isSubmitted ? 'Submitted' :
                       app.status;
 
                     const badgeClass = displayStatus === 'Approved' ? 'status-approved' :
                       displayStatus === 'Rejected' ? 'status-rejected' :
+                      displayStatus === 'Suspended' ? 'status-suspended' :
                       displayStatus === 'Cancelled' ? 'status-cancelled' : 'status-submitted';
 
                     return (
@@ -3872,14 +3880,14 @@ const Portal = () => {
                           <p style={{ color: '#a0b0c0' }}>
                             Deadline: {app.deadline ? new Date(app.deadline).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
                           </p>
-                          {displayStatus === 'Cancelled' && (
+                          {(displayStatus === 'Cancelled' || displayStatus === 'Suspended') && (
                             <div style={{
                               marginTop: '0.4rem',
                               padding: '0.35rem 0.65rem',
-                              background: '#fff5f5',
-                              border: '1px solid #fed7d7',
+                              background: displayStatus === 'Suspended' ? '#fffbeb' : '#fff5f5',
+                              border: displayStatus === 'Suspended' ? '1px solid #fef3c7' : '1px solid #fed7d7',
                               borderRadius: '8px',
-                              color: '#c53030',
+                              color: displayStatus === 'Suspended' ? '#b45309' : '#c53030',
                               fontSize: '0.8rem',
                               fontWeight: '500',
                               display: 'inline-flex',
@@ -3887,7 +3895,7 @@ const Portal = () => {
                               gap: '0.4rem'
                             }}>
                               <i className="fas fa-ban" style={{ fontSize: '0.75rem' }}></i>
-                              <span>Reason: <strong>{app.cancellation_reason || app.cancellationReason || 'Cancelled by User'}</strong></span>
+                              <span>Reason: <strong>{app.cancellation_reason || app.cancellationReason || (displayStatus === 'Suspended' ? 'Suspended by Administrator' : 'Cancelled by User')}</strong></span>
                             </div>
                           )}
                         </div>
@@ -3899,6 +3907,16 @@ const Portal = () => {
                           {canEdit && (
                             <button className="edit-btn" onClick={() => handleEditApplication(app)} title="Edit your application">
                               <i className="fas fa-edit"></i> Edit
+                            </button>
+                          )}
+                          {displayStatus === 'Cancelled' && !hasAnyAccepted && (
+                            <button
+                              className="edit-btn"
+                              style={{ backgroundColor: '#2563eb', color: '#fff', borderColor: '#2563eb' }}
+                              onClick={() => navigate(`/studentinfo?scholarship=${encodeURIComponent(app.name)}&reqNo=${app.scholarship_no || app.req_no}`)}
+                              title="Re-apply for this scholarship"
+                            >
+                              <i className="fas fa-redo"></i> Re-apply
                             </button>
                           )}
                           {isSubmitted && (
@@ -4548,17 +4566,17 @@ const Portal = () => {
                     </div>
                   </div>
 
-                  {(selectedAppForView.status === 'Cancelled' || selectedAppForView.cancellation_reason || selectedAppForView.cancellationReason) && (
+                  {(selectedAppForView.status === 'Cancelled' || selectedAppForView.status === 'Suspended' || selectedAppForView.cancellation_reason || selectedAppForView.cancellationReason) && (
                     <div style={{
                       marginBottom: '1.5rem',
-                      background: '#fff5f5',
+                      background: selectedAppForView.status === 'Suspended' ? '#fffbeb' : '#fff5f5',
                       padding: '1.2rem',
                       borderRadius: '16px',
-                      borderLeft: '4px solid #e53e3e',
-                      border: '1px solid #fed7d7'
+                      borderLeft: selectedAppForView.status === 'Suspended' ? '4px solid #d97706' : '4px solid #e53e3e',
+                      border: selectedAppForView.status === 'Suspended' ? '1px solid #fde68a' : '1px solid #fed7d7'
                     }}>
                       <h4 style={{
-                        color: '#c53030',
+                        color: selectedAppForView.status === 'Suspended' ? '#b45309' : '#c53030',
                         fontSize: '0.95rem',
                         fontWeight: 800,
                         marginBottom: '0.4rem',
@@ -4567,10 +4585,10 @@ const Portal = () => {
                         gap: '6px'
                       }}>
                         <i className="fas fa-ban"></i>
-                        Cancellation Details
+                        {selectedAppForView.status === 'Suspended' ? 'Suspension Details' : 'Cancellation Details'}
                       </h4>
-                      <p style={{ fontSize: '0.9rem', color: '#742a2a', lineHeight: '1.6', margin: 0 }}>
-                        Reason: <strong>{selectedAppForView.cancellation_reason || selectedAppForView.cancellationReason || 'Cancelled by User'}</strong>
+                      <p style={{ fontSize: '0.9rem', color: selectedAppForView.status === 'Suspended' ? '#78350f' : '#742a2a', lineHeight: '1.6', margin: 0 }}>
+                        Reason: <strong>{selectedAppForView.cancellation_reason || selectedAppForView.cancellationReason || (selectedAppForView.status === 'Suspended' ? 'Suspended by Administrator' : 'Cancelled by User')}</strong>
                       </p>
                     </div>
                   )}

@@ -1341,9 +1341,11 @@ const FindScholarship = () => {
                   >
                     {match.restrictionReason === 'identity-rejected-same-scholarship'
                       ? 'Application Rejected'
-                      : match.alreadyApplied
-                        ? 'Already Applied'
-                        : 'Not Eligible to Apply'}
+                      : match.restrictionReason === 'identity-suspended-same-scholarship'
+                        ? 'Application Suspended'
+                        : match.alreadyApplied
+                          ? 'Already Applied'
+                          : 'Not Eligible to Apply'}
                   </button>
                 </div>
               ))

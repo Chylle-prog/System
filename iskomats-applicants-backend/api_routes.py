@@ -2441,6 +2441,7 @@ def init_socketio(socketio):
                             WHEN is_accepted = 'Accepted' THEN 'Accepted'
                             WHEN is_accepted = 'Rejected' THEN 'Rejected'
                             WHEN is_accepted = 'Cancelled' THEN 'Cancelled'
+                            WHEN is_accepted = 'Suspended' THEN 'Suspended'
                             ELSE 'Pending'
                         END as student_status
                         FROM applicant_status 
@@ -3136,6 +3137,7 @@ def get_accounts(current_user_id, pro_no, role):
                             WHEN ast.is_accepted = 'Accepted' THEN 'Accepted'
                             WHEN ast.is_accepted = 'Rejected' THEN 'Rejected'
                             WHEN ast.is_accepted = 'Cancelled' THEN 'Cancelled'
+                            WHEN ast.is_accepted = 'Suspended' THEN 'Suspended'
                             ELSE 'Pending'
                         END AS status,
                         {joined_expr} AS joined,
@@ -4201,6 +4203,7 @@ def get_applicants(current_user_id, pro_no, role, program):
                            WHEN s.is_accepted = 'Accepted' THEN 'Accepted'
                            WHEN s.is_accepted = 'Rejected' THEN 'Rejected'
                            WHEN s.is_accepted = 'Cancelled' THEN 'Cancelled'
+                           WHEN s.is_accepted = 'Suspended' THEN 'Suspended'
                            ELSE 'Pending'
                        END as status,
                        esc.scholarship_name as "scholarshipName",
@@ -4262,6 +4265,8 @@ def get_applicants(current_user_id, pro_no, role, program):
                     query += " AND s.is_accepted IN ('Declined', 'Rejected')"
                 elif sf == 'cancelled':
                     query += " AND s.is_accepted = 'Cancelled'"
+                elif sf == 'suspended':
+                    query += " AND s.is_accepted = 'Suspended'"
 
             # Add Pagination if requested
             total_count = None
@@ -4536,7 +4541,7 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
 
             # Auto-decline other applications for the same applicant
             cursor.execute(
-                "SELECT s.scholarship_name, s.req_no FROM applicant_status ast JOIN scholarships s ON ast.scholarship_no = s.req_no WHERE ast.applicant_no = %s AND ast.scholarship_no != %s AND (ast.is_accepted = 'Pending' OR ast.is_accepted IS NULL OR ast.is_accepted = 'Accepted')",
+                "SELECT s.scholarship_name, s.req_no FROM applicant_status ast JOIN scholarships s ON ast.scholarship_no = s.req_no WHERE ast.applicant_no = %s AND ast.scholarship_no != %s AND (ast.is_accepted IN ('Pending', 'Submitted', 'Accepted', 'Approved') OR ast.is_accepted IS NULL)",
                 (applicant_no, scholarship_no)
             )
             declined_scholarships = cursor.fetchall()
@@ -4544,7 +4549,7 @@ def accept_applicant(current_user_id, pro_no, role, applicant_no):
             cursor.execute(
                 """
                 UPDATE applicant_status
-                SET is_accepted = 'Cancelled'
+                SET is_accepted = 'Cancelled', status_updated = CURRENT_DATE, cancellation_reason = 'Accepted into another scholarship'
                 WHERE applicant_no = %s AND scholarship_no != %s
                 """,
                 (applicant_no, scholarship_no),
@@ -4751,6 +4756,123 @@ def cancel_applicant(current_user_id, pro_no, role, applicant_no):
                 print(f"[SOCKET ERROR] Failed to emit cancel status update: {emit_err}", flush=True)
             
             return jsonify({'success': True, 'message': 'Applicant cancelled successfully', 'cancellation_reason': reason}), 200
+    
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
+@api_bp.route('/applicants/<int:applicant_no>/suspend', methods=['POST'])
+@token_required
+def suspend_applicant(current_user_id, pro_no, role, applicant_no):
+    """Suspend applicant status with reason, create notification and send chat message"""
+    try:
+        data = request.get_json(silent=True) or {}
+        scholarship_no = data.get('scholarshipNo')
+        reason = (data.get('reason') or data.get('cancellationReason') or 'Suspended by Administrator').strip()
+        if scholarship_no is None:
+            return jsonify({'success': False, 'message': 'scholarshipNo is required'}), 400
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                '''SELECT s.pro_no, s.scholarship_name, sp.provider_name
+                   FROM applicant_status ast
+                   INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
+                   LEFT JOIN scholarship_providers sp ON s.pro_no = sp.pro_no
+                   WHERE ast.applicant_no = %s AND ast.scholarship_no = %s''',
+                (applicant_no, scholarship_no)
+            )
+            status_row = cursor.fetchone()
+            if not status_row:
+                return jsonify({'success': False, 'message': 'Application not found'}), 404
+
+            if role != 'Admin' and status_row['pro_no'] != pro_no:
+                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+        
+            # Update applicant status to Suspended and store reason
+            cursor.execute(
+                '''UPDATE applicant_status 
+                   SET is_accepted = 'Suspended', status_updated = CURRENT_DATE, cancellation_reason = %s
+                   WHERE applicant_no = %s AND scholarship_no = %s''',
+                (reason, applicant_no, scholarship_no)
+            )
+
+            # Clear any drafts for this application
+            try:
+                cursor.execute(
+                    "DELETE FROM application_drafts WHERE scholarship_no = %s AND applicant_no = %s",
+                    (scholarship_no, applicant_no),
+                )
+            except Exception:
+                pass
+
+            conn.commit()
+
+            sch_name = status_row.get('scholarship_name') or 'Scholarship'
+            sch_pro_no = status_row.get('pro_no')
+            provider_name = status_row.get('provider_name') or 'Scholarship Office'
+
+            # 1. Create notification for the student
+            try:
+                create_notification(
+                    user_no=applicant_no,
+                    title='Application Suspended',
+                    message=f"Your application for {sch_name} has been suspended. Reason: {reason}",
+                    notif_type='result',
+                    db_conn=conn
+                )
+                conn.commit()
+            except Exception as notif_err:
+                print(f"[NOTIF ERROR] Failed to notify suspended applicant {applicant_no}: {notif_err}", flush=True)
+
+            # 2. Insert chat message into message table and emit
+            try:
+                room = f"{applicant_no}+{sch_pro_no}" if sch_pro_no else None
+                if room:
+                    msg_text = f"Notice: Your application for {sch_name} has been suspended.\nReason: {reason}"
+                    cursor.execute("""
+                        INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender)
+                        VALUES (%s, %s, %s, %s, %s, NOW(), %s, %s)
+                        RETURNING m_id, timestamp
+                    """, (applicant_no, sch_pro_no, room, provider_name, msg_text, current_user_id, False))
+                    msg_row = cursor.fetchone()
+                    conn.commit()
+
+                    if msg_row:
+                        msg_payload = {
+                            'm_id': msg_row['m_id'],
+                            'username': provider_name,
+                            'sender_id': current_user_id,
+                            'is_student_sender': False,
+                            'message': msg_text,
+                            'room': room,
+                            'timestamp': msg_row['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(msg_row['timestamp'], 'strftime') else str(msg_row['timestamp']),
+                            'student_status': 'Suspended'
+                        }
+                        safe_emit('message', msg_payload, room=room)
+                        safe_emit('receive_message', msg_payload, room=room)
+            except Exception as msg_err:
+                print(f"[CHAT MSG ERROR] Failed to send suspend chat message to applicant {applicant_no}: {msg_err}", flush=True)
+
+            # 3. Emit real-time status update to student portal and admin dashboard
+            try:
+                safe_emit('applicant_status_update', {
+                    'applicant_no': applicant_no,
+                    'status': 'Suspended',
+                    'scholarship_no': scholarship_no,
+                    'cancellation_reason': reason
+                }, room=f"applicant_{applicant_no}")
+                safe_emit('applicant_status_update', {
+                    'applicant_no': applicant_no,
+                    'status': 'Suspended',
+                    'scholarship_no': scholarship_no,
+                    'cancellation_reason': reason
+                }, broadcast=True)
+            except Exception as emit_err:
+                print(f"[SOCKET ERROR] Failed to emit suspend status update: {emit_err}", flush=True)
+            
+            return jsonify({'success': True, 'message': 'Applicant suspended successfully', 'cancellation_reason': reason}), 200
     
     except Exception as e:
         traceback.print_exc()
