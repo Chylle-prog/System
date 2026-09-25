@@ -6595,8 +6595,16 @@ const StudentInfo = () => {
         if (savedDraft?.schoolIdPhotos) {
           setSchoolIdPhotos(savedDraft.schoolIdPhotos);
         }
-        if (savedDraft?.documentVideos) {
-          setDocumentVideos(savedDraft.documentVideos);
+        const initialDocVids = savedDraft?.documentVideos ? { ...savedDraft.documentVideos } : {};
+        if (savedDraft?.formData) {
+          ['mayorIndigency_video', 'mayorCOE_video', 'mayorGrades_video', 'schoolIdFront_video', 'schoolIdBack_video', 'face_video'].forEach(vf => {
+            if (!initialDocVids[vf] && savedDraft.formData[vf]) {
+              initialDocVids[vf] = savedDraft.formData[vf];
+            }
+          });
+        }
+        if (Object.keys(initialDocVids).length > 0) {
+          setDocumentVideos(initialDocVids);
         }
         if (savedDraft?.verificationStates) {
           if (savedDraft.verificationStates.ocrVerified) setOcrVerified(savedDraft.verificationStates.ocrVerified);
@@ -6751,10 +6759,19 @@ const StudentInfo = () => {
             }
           }
 
-          if (savedDraft.documentVideos && Object.keys(savedDraft.documentVideos).length > 0) {
+          const sourceVideos = savedDraft.documentVideos ? { ...savedDraft.documentVideos } : {};
+          if (savedDraft.formData) {
+            ['mayorIndigency_video', 'mayorCOE_video', 'mayorGrades_video', 'schoolIdFront_video', 'schoolIdBack_video', 'face_video'].forEach(vf => {
+              if (!sourceVideos[vf] && savedDraft.formData[vf]) {
+                sourceVideos[vf] = savedDraft.formData[vf];
+              }
+            });
+          }
+
+          if (Object.keys(sourceVideos).length > 0) {
             setDocumentVideos(prev => {
               const updated = { ...prev };
-              Object.entries(savedDraft.documentVideos).forEach(([k, v]) => {
+              Object.entries(sourceVideos).forEach(([k, v]) => {
                 if (v && !(typeof v === 'string' && v.startsWith('blob:'))) {
                   if (k !== 'face_video' || isEditMode) {
                     updated[k] = v;
@@ -6766,7 +6783,7 @@ const StudentInfo = () => {
             });
             setFormData(prev => {
               const updated = { ...prev };
-              Object.entries(savedDraft.documentVideos).forEach(([k, v]) => {
+              Object.entries(sourceVideos).forEach(([k, v]) => {
                 if (v && !(typeof v === 'string' && v.startsWith('blob:'))) {
                   if (k !== 'face_video' || isEditMode) {
                     updated[k] = v;

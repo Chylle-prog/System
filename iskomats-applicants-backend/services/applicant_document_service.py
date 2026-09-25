@@ -268,6 +268,17 @@ def fetch_applicant_document_values(cursor, applicant_no, column_names, app_doc_
                     if val is None and col in alias_map:
                         val = doc_row_dict.get(alias_map[col])
                     res_dict[col] = val
+
+                # Check applicants table as fallback for any requested columns still None
+                if any(v is None for v in res_dict.values()):
+                    cursor.execute('SELECT * FROM applicants WHERE applicant_no = %s LIMIT 1', (applicant_no,))
+                    app_res = cursor.fetchone()
+                    if app_res:
+                        app_dict = dict(app_res) if hasattr(app_res, 'keys') else dict(zip([d[0] for d in cursor.description], app_res))
+                        for col in requested_columns:
+                            if res_dict.get(col) is None:
+                                actual_k = alias_map.get(col, col)
+                                res_dict[col] = app_dict.get(actual_k) or app_dict.get(col)
                 return res_dict
         except Exception as e:
             print(f"[DOC SERVICE] Error querying exact app_doc_no {app_doc_no}: {e}", flush=True)

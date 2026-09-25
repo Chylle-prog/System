@@ -22,7 +22,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
     if (initialVideoUrl) {
       setVideoError(null);
       setFileName('Saved video proof');
-      if (typeof initialVideoUrl === 'string' && (initialVideoUrl.startsWith('http://') || initialVideoUrl.startsWith('https://'))) {
+      if (typeof initialVideoUrl === 'string' && (initialVideoUrl.startsWith('http://') || initialVideoUrl.startsWith('https://') || initialVideoUrl.startsWith('/'))) {
         import('../services/CryptoService').then(({ decryptUrl }) => {
           decryptUrl(initialVideoUrl, 'video/mp4').then(resolved => {
             if (isMounted && resolved) {
@@ -35,6 +35,8 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
       } else {
         setPreviewUrl(initialVideoUrl);
       }
+    } else {
+      setPreviewUrl(null);
     }
     return () => { isMounted = false; };
   }, [initialVideoUrl]);
@@ -204,6 +206,8 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
               <video 
                 src={previewUrl} 
                 controls 
+                preload="metadata"
+                playsInline
                 onError={() => setVideoError('Video preview failed')}
                 style={{ 
                   width: '100%', 

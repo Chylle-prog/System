@@ -2930,6 +2930,15 @@ def get_applicant_document_raw(field_name):
                         row = fetch_applicant_document_values(cur, request.user_no, ['id_img_front'], app_doc_no=app_doc_no)
                         db_field = 'id_img_front'
                 if not row or not row.get(db_field):
+                    cur.execute("SELECT * FROM applicants WHERE applicant_no = %s LIMIT 1", (request.user_no,))
+                    app_row = cur.fetchone()
+                    if app_row:
+                        app_dict = dict(app_row) if hasattr(app_row, 'keys') else dict(zip([d[0] for d in cur.description], app_row))
+                        if app_dict.get(db_field):
+                            row = app_dict
+                        elif field_name in field_mapping and app_dict.get(field_mapping[field_name]):
+                            row = {db_field: app_dict.get(field_mapping[field_name])}
+                if not row or not row.get(db_field):
                     return "Not found", 404
                 value = row[db_field]
             if field_name == 'signature_image_data':
@@ -4367,6 +4376,14 @@ def init_edit_application(scholarship_no):
                 token_str = auth_header[7:] if auth_header.startswith('Bearer ') else auth_header
 
             app_doc_no = app_row.get('app_doc_no')
+            if not app_doc_no:
+                cur.execute(
+                    "SELECT app_doc_no FROM applicant_documents WHERE applicant_no = %s ORDER BY app_doc_no DESC LIMIT 1",
+                    (request.user_no,)
+                )
+                ad_row = cur.fetchone()
+                if ad_row:
+                    app_doc_no = ad_row.get('app_doc_no') if isinstance(ad_row, dict) else ad_row[0]
 
             def make_stream_url(field_name, db_val):
                 if not db_val:
@@ -4379,6 +4396,33 @@ def init_edit_application(scholarship_no):
                 if token_str:
                     params['token'] = token_str
                 return url_for('student_api.get_applicant_document_raw', **params)
+
+            # Query applicant and submitted document rows upfront for snapshots and draft repairs
+            cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
+            applicant = cur.fetchone() or {}
+
+            doc_row = {}
+            if app_doc_no:
+                cur.execute("SELECT * FROM applicant_documents WHERE app_doc_no = %s", (app_doc_no,))
+                doc_row = cur.fetchone() or {}
+
+            # Generate authenticated decrypted streaming URLs for all documents
+            doc_url_coe = make_stream_url('enrollment_certificate_doc', doc_row.get('enrollment_certificate_doc') or applicant.get('enrollment_certificate_doc'))
+            doc_url_grades = make_stream_url('grades_doc', doc_row.get('grades_doc') or applicant.get('grades_doc'))
+            doc_url_indigency = make_stream_url('indigency_doc', doc_row.get('indigency_doc') or applicant.get('indigency_doc'))
+            doc_url_front = make_stream_url('id_img_front', doc_row.get('id_img_front') or applicant.get('id_img_front'))
+            doc_url_back = make_stream_url('id_img_back', doc_row.get('id_img_back') or applicant.get('id_img_back'))
+            doc_url_face = make_stream_url('id_pic', doc_row.get('id_pic') or applicant.get('id_pic'))
+            doc_url_profile = make_stream_url('profile_picture', applicant.get('profile_picture') or doc_row.get('id_pic') or applicant.get('id_pic'))
+            doc_url_signature = make_stream_url('signature_image_data', doc_row.get('signature_image_data') or applicant.get('signature_image_data'))
+
+            # Streaming URLs for verification videos
+            doc_url_coe_vid = make_stream_url('mayorCOE_video', doc_row.get('enrollment_certificate_vid_url') or applicant.get('enrollment_certificate_vid_url'))
+            doc_url_grades_vid = make_stream_url('mayorGrades_video', doc_row.get('grades_vid_url') or applicant.get('grades_vid_url'))
+            doc_url_indigency_vid = make_stream_url('mayorIndigency_video', doc_row.get('indigency_vid_url') or applicant.get('indigency_vid_url'))
+            doc_url_front_vid = make_stream_url('schoolIdFront_video', doc_row.get('schoolid_front_vid_url') or applicant.get('schoolid_front_vid_url'))
+            doc_url_back_vid = make_stream_url('schoolIdBack_video', doc_row.get('schoolid_back_vid_url') or applicant.get('schoolid_back_vid_url'))
+            doc_url_face_vid = make_stream_url('face_video', doc_row.get('id_vid_url') or applicant.get('id_vid_url'))
 
             # Check if there is already an in-progress draft for this edit session
             cur.execute(
@@ -4394,26 +4438,64 @@ def init_edit_application(scholarship_no):
                     except Exception:
                         pass
                 if isinstance(dd, dict):
-                    # Upgrade any raw encrypted Supabase storage URLs to decrypted streaming endpoints
+                    # Upgrade any raw encrypted Supabase storage URLs to decrypted streaming endpoints and backfill missing photos
                     p = dd.get('photos') or {}
-                    for k, f_name in [('mayorCOE_photo', 'enrollment_certificate_doc'), ('mayorGrades_photo', 'grades_doc'), ('mayorIndigency_photo', 'indigency_doc'), ('profile_picture', 'profile_picture'), ('face_photo', 'id_pic')]:
+                    for k, f_name, fallback_val in [
+                        ('mayorCOE_photo', 'enrollment_certificate_doc', doc_url_coe),
+                        ('mayorGrades_photo', 'grades_doc', doc_url_grades),
+                        ('mayorIndigency_photo', 'indigency_doc', doc_url_indigency),
+                        ('profile_picture', 'profile_picture', doc_url_profile),
+                        ('face_photo', 'id_pic', doc_url_face)
+                    ]:
                         if p.get(k) and 'supabase.co' in str(p[k]):
                             p[k] = make_stream_url(f_name, p[k]) or p[k]
+                        elif not p.get(k) and fallback_val:
+                            p[k] = fallback_val
                     dd['photos'] = p
 
                     sid = dd.get('schoolIdPhotos') or {}
                     if sid.get('front') and 'supabase.co' in str(sid['front']):
                         sid['front'] = make_stream_url('id_img_front', sid['front']) or sid['front']
+                    elif not sid.get('front') and doc_url_front:
+                        sid['front'] = doc_url_front
+
                     if sid.get('back') and 'supabase.co' in str(sid['back']):
                         sid['back'] = make_stream_url('id_img_back', sid['back']) or sid['back']
+                    elif not sid.get('back') and doc_url_back:
+                        sid['back'] = doc_url_back
                     dd['schoolIdPhotos'] = sid
 
                     if dd.get('signaturePreview') and 'supabase.co' in str(dd['signaturePreview']):
                         dd['signaturePreview'] = make_stream_url('signature_image_data', dd['signaturePreview']) or dd['signaturePreview']
+                    elif not dd.get('signaturePreview') and doc_url_signature:
+                        dd['signaturePreview'] = doc_url_signature
+
                     if dd.get('drawnSignature') and 'supabase.co' in str(dd['drawnSignature']):
                         dd['drawnSignature'] = make_stream_url('signature_image_data', dd['drawnSignature']) or dd['drawnSignature']
+                    elif not dd.get('drawnSignature') and doc_url_signature:
+                        dd['drawnSignature'] = doc_url_signature
+
                     if dd.get('idPicturePreview') and 'supabase.co' in str(dd['idPicturePreview']):
                         dd['idPicturePreview'] = make_stream_url('profile_picture', dd['idPicturePreview']) or dd['idPicturePreview']
+                    elif not dd.get('idPicturePreview') and doc_url_profile:
+                        dd['idPicturePreview'] = doc_url_profile
+
+                    # Upgrade & backfill documentVideos for editing!
+                    d_vids = dd.get('documentVideos') or {}
+                    video_specs = [
+                        ('mayorCOE_video', 'enrollment_certificate_vid_url', doc_url_coe_vid),
+                        ('mayorGrades_video', 'grades_vid_url', doc_url_grades_vid),
+                        ('mayorIndigency_video', 'indigency_vid_url', doc_url_indigency_vid),
+                        ('schoolIdFront_video', 'schoolid_front_vid_url', doc_url_front_vid),
+                        ('schoolIdBack_video', 'schoolid_back_vid_url', doc_url_back_vid),
+                        ('face_video', 'id_vid_url', doc_url_face_vid)
+                    ]
+                    for vk, f_name, fallback_url in video_specs:
+                        if d_vids.get(vk) and 'supabase.co' in str(d_vids[vk]):
+                            d_vids[vk] = make_stream_url(vk, d_vids[vk]) or d_vids[vk]
+                        elif not d_vids.get(vk) and fallback_url:
+                            d_vids[vk] = fallback_url
+                    dd['documentVideos'] = d_vids
 
                     fd = dd.get('formData') or {}
                     for k, f_name in [
@@ -4422,11 +4504,35 @@ def init_edit_application(scholarship_no):
                         ('mayorIndigency_photo', 'indigency_doc'), ('indigency_doc', 'indigency_doc'),
                         ('profile_picture', 'profile_picture'), ('face_photo', 'id_pic'), ('mayorValidID_photo', 'id_pic'),
                         ('schoolIdFront', 'id_img_front'), ('id_front', 'id_img_front'),
-                        ('schoolIdBack', 'id_img_back'), ('id_back', 'id_img_back')
+                        ('schoolIdBack', 'id_img_back'), ('id_back', 'id_img_back'),
+                        ('mayorCOE_video', 'enrollment_certificate_vid_url'), ('enrollment_certificate_vid_url', 'enrollment_certificate_vid_url'),
+                        ('mayorGrades_video', 'grades_vid_url'), ('grades_vid_url', 'grades_vid_url'),
+                        ('mayorIndigency_video', 'indigency_vid_url'), ('indigency_vid_url', 'indigency_vid_url'),
+                        ('schoolIdFront_video', 'schoolid_front_vid_url'), ('schoolid_front_vid_url', 'schoolid_front_vid_url'),
+                        ('schoolIdBack_video', 'schoolid_back_vid_url'), ('schoolid_back_vid_url', 'schoolid_back_vid_url'),
+                        ('face_video', 'id_vid_url'), ('id_vid_url', 'id_vid_url')
                     ]:
                         if fd.get(k) and 'supabase.co' in str(fd[k]):
                             fd[k] = make_stream_url(f_name, fd[k]) or fd[k]
+
+                    for vk, f_name, fallback_url in video_specs:
+                        if not fd.get(vk) and d_vids.get(vk):
+                            fd[vk] = d_vids[vk]
+                        if not fd.get(f_name) and d_vids.get(vk):
+                            fd[f_name] = d_vids[vk]
                     dd['formData'] = fd
+
+                    # Verification states: mark successful if documents/videos are already present
+                    v_states = dd.get('verificationStates') or {}
+                    if (d_vids.get('mayorIndigency_video') or p.get('mayorIndigency_photo')) and not v_states.get('ocrVerified'):
+                        v_states['ocrVerified'] = 'success'
+                    if (d_vids.get('mayorCOE_video') or p.get('mayorCOE_photo')) and not v_states.get('coeVerified'):
+                        v_states['coeVerified'] = 'success'
+                    if (d_vids.get('mayorGrades_video') or p.get('mayorGrades_photo')) and not v_states.get('gradesVerified'):
+                        v_states['gradesVerified'] = 'success'
+                    if (d_vids.get('schoolIdFront_video') or sid.get('front')) and not v_states.get('idVerified'):
+                        v_states['idVerified'] = 'success'
+                    dd['verificationStates'] = v_states
 
                     try:
                         cur.execute(
@@ -4447,24 +4553,6 @@ def init_edit_application(scholarship_no):
                 })
 
             # Otherwise, build draft_data from the submitted application snapshot!
-            cur.execute("SELECT * FROM applicants WHERE applicant_no = %s", (request.user_no,))
-            applicant = cur.fetchone() or {}
-
-            doc_row = {}
-            if app_doc_no:
-                cur.execute("SELECT * FROM applicant_documents WHERE app_doc_no = %s", (app_doc_no,))
-                doc_row = cur.fetchone() or {}
-
-            # Generate authenticated decrypted streaming URLs for all documents
-            doc_url_coe = make_stream_url('enrollment_certificate_doc', doc_row.get('enrollment_certificate_doc'))
-            doc_url_grades = make_stream_url('grades_doc', doc_row.get('grades_doc'))
-            doc_url_indigency = make_stream_url('indigency_doc', doc_row.get('indigency_doc'))
-            doc_url_front = make_stream_url('id_img_front', doc_row.get('id_img_front'))
-            doc_url_back = make_stream_url('id_img_back', doc_row.get('id_img_back'))
-            doc_url_face = make_stream_url('id_pic', doc_row.get('id_pic'))
-            doc_url_profile = make_stream_url('profile_picture', applicant.get('profile_picture') or doc_row.get('id_pic'))
-            doc_url_signature = make_stream_url('signature_image_data', doc_row.get('signature_image_data'))
-
             merits = []
             if app_doc_no:
                 cur.execute(
@@ -4535,6 +4623,18 @@ def init_edit_application(scholarship_no):
                 'schoolIdBack': doc_url_back,
                 'id_back': doc_url_back,
                 'face_photo': doc_url_face,
+                'mayorCOE_video': doc_url_coe_vid,
+                'enrollment_certificate_vid_url': doc_url_coe_vid,
+                'mayorGrades_video': doc_url_grades_vid,
+                'grades_vid_url': doc_url_grades_vid,
+                'mayorIndigency_video': doc_url_indigency_vid,
+                'indigency_vid_url': doc_url_indigency_vid,
+                'schoolIdFront_video': doc_url_front_vid,
+                'schoolid_front_vid_url': doc_url_front_vid,
+                'schoolIdBack_video': doc_url_back_vid,
+                'schoolid_back_vid_url': doc_url_back_vid,
+                'face_video': doc_url_face_vid,
+                'id_vid_url': doc_url_face_vid,
                 'applicantSignatureName': f"{applicant.get('first_name', '')} {applicant.get('last_name', '')}".strip(),
                 'dataCertifyConsent': True
             }
@@ -4552,17 +4652,27 @@ def init_edit_application(scholarship_no):
                 'back': doc_url_back
             }
 
+            document_videos = {
+                'mayorCOE_video': doc_url_coe_vid,
+                'mayorGrades_video': doc_url_grades_vid,
+                'mayorIndigency_video': doc_url_indigency_vid,
+                'schoolIdFront_video': doc_url_front_vid,
+                'schoolIdBack_video': doc_url_back_vid,
+                'face_video': doc_url_face_vid
+            }
+
             draft_obj = {
                 'currentStep': 1,
                 'formData': form_data,
                 'photos': photos,
                 'schoolIdPhotos': school_id_photos,
+                'documentVideos': document_videos,
                 'signaturePreview': doc_url_signature,
                 'drawnSignature': doc_url_signature,
                 'idPicturePreview': doc_url_profile,
                 'meritList': merits if merits else [{'id': 1, 'title': '', 'photo': None, 'verified': None, 'status': ''}],
                 'verificationStates': {
-                    'ocrVerified': 'success' if doc_url_front else None,
+                    'ocrVerified': 'success' if doc_url_front or doc_url_indigency else None,
                     'coeVerified': 'success' if doc_url_coe else None,
                     'gradesVerified': 'success' if doc_url_grades else None,
                     'idVerified': 'success' if doc_url_front else None,
