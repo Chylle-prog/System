@@ -3862,7 +3862,7 @@ const Portal = () => {
                   [...applications].reverse().map((app, index) => {
                     const isSubmitted = app.status === 'Submitted' || app.status === 'Pending';
                     const isApproved = app.status === 'Approved' || app.status === 'Accepted';
-                    const canEdit = isSubmitted || isApproved || Boolean(app.can_edit);
+                    const canEdit = isSubmitted && !isApproved && Boolean(app.can_edit ?? true);
                     const hasAnyAccepted = applications.some(a => a.status === 'Approved' || a.status === 'Accepted');
                     const displayStatus = isApproved ? 'Approved' :
                       isSubmitted ? 'Submitted' :

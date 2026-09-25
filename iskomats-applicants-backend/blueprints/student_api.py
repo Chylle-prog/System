@@ -3586,7 +3586,11 @@ def submit_application():
             if existing_app_status:
                 raw_stat = existing_app_status.get('is_accepted')
                 norm_stat = 'Submitted' if raw_stat in ('Submitted', 'Pending', None) else ('Approved' if raw_stat in ('Approved', 'Accepted') else raw_stat)
-                if norm_stat not in ('Submitted', 'Approved', 'Cancelled'):
+                if norm_stat in ('Approved', 'Accepted'):
+                    return jsonify({
+                        'message': "Cannot edit this application because it has already been accepted/approved."
+                    }), 403
+                if norm_stat not in ('Submitted', 'Cancelled'):
                     if norm_stat == 'Suspended':
                         return jsonify({
                             'message': "Cannot apply: Your application for this scholarship was suspended by an administrator."
@@ -3594,7 +3598,7 @@ def submit_application():
                     return jsonify({
                         'message': f"Cannot edit or submit this application. Current status is '{norm_stat}'."
                     }), 403
-                target_submission_status = 'Submitted' if norm_stat in ('Submitted', 'Cancelled') else norm_stat
+                target_submission_status = 'Submitted'
 
             preliminary_identity = build_restriction_identity_from_applicant(applicant, source_data=request_payload)
             if preliminary_identity:
@@ -3606,9 +3610,9 @@ def submit_application():
             restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=request_payload)
             restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
             if restriction['blocked'] and not is_skip_alternate_check_active(cur):
-                # When editing an already submitted or approved application for this same scholarship,
+                # When editing an already submitted application for this same scholarship,
                 # do not self-block on same-scholarship status.
-                is_self_edit = existing_app_status and norm_stat in ('Submitted', 'Approved') and restriction['reason'] in ('identity-pending-same-scholarship', 'identity-accepted-same-scholarship')
+                is_self_edit = existing_app_status and norm_stat == 'Submitted' and restriction['reason'] == 'identity-pending-same-scholarship'
                 if not is_self_edit:
                     if restriction['auto_reject']:
                         cur.execute(
@@ -4364,7 +4368,12 @@ def init_edit_application(scholarship_no):
 
             raw_stat = app_row.get('is_accepted')
             norm_stat = 'Submitted' if raw_stat in ('Submitted', 'Pending', None) else ('Approved' if raw_stat in ('Approved', 'Accepted') else raw_stat)
-            if norm_stat not in ('Submitted', 'Approved'):
+            if norm_stat in ('Approved', 'Accepted'):
+                return jsonify({
+                    'success': False,
+                    'message': "This application has already been accepted and cannot be edited."
+                }), 403
+            if norm_stat != 'Submitted':
                 return jsonify({
                     'success': False,
                     'message': f"This application has already been marked as '{norm_stat}' and cannot be edited."
@@ -4868,7 +4877,7 @@ def get_my_applications():
                 for m in app_merits:
                     submitted_docs.append(f"Merit: {m.get('merit_title') or 'Certificate'}")
                 r['submitted_documents'] = submitted_docs
-                r['can_edit'] = (r.get('status') in ('Submitted', 'Approved'))
+                r['can_edit'] = (r.get('status') in ('Submitted', 'Pending'))
 
                 result.append(r)
             return jsonify(result)
