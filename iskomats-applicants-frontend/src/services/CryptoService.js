@@ -123,6 +123,29 @@ export const decryptDocument = async (blob, originalType = 'image/jpeg') => {
   }
 };
 
+export const resolveProxiedMediaUrl = (url) => {
+  if (!url || typeof url !== 'string') return url;
+  const trimmed = url.trim();
+  if (
+    trimmed.includes('.supabase.co/storage/v1/object/') ||
+    trimmed.includes('/storage/v1/object/')
+  ) {
+    let origin = '';
+    try {
+      if (typeof window !== 'undefined' && window.__API_ORIGIN__) {
+        origin = window.__API_ORIGIN__;
+      }
+    } catch (e) {}
+    if (!origin) {
+      origin = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'https://iskomats-backend.onrender.com')
+        .replace(/\/+$/, '')
+        .replace(/\/api\/?$/, '');
+    }
+    return `${origin}/api/storage/proxy?url=${encodeURIComponent(trimmed)}`;
+  }
+  return trimmed;
+};
+
 /**
  * Helper to decrypt a URL (fetches, decrypts, and returns a local object URL with persistent caching)
  */
@@ -145,9 +168,11 @@ export const decryptUrl = (url, type = 'image/jpeg') => {
     url.toLowerCase().includes('schoolidback_video')
   );
 
-  // All video streams play immediately via native browser HTML5 player (zero blocking blob downloads)
+  const proxiedUrl = resolveProxiedMediaUrl(url);
+
+  // All video streams play immediately via native browser HTML5 player through proxy/direct stream
   if (isVideo || url.includes('/applicant/document/raw/')) {
-    return Promise.resolve(url);
+    return Promise.resolve(proxiedUrl);
   }
 
   if (urlCache.has(url)) {
@@ -158,15 +183,15 @@ export const decryptUrl = (url, type = 'image/jpeg') => {
     try {
       const headers = {};
       const token = localStorage.getItem('authToken');
-      if (token && !url.includes('supabase.co')) {
+      if (token && !proxiedUrl.includes('supabase.co')) {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
       let response = null;
       try {
-        response = await fetch(url, { headers, cache: 'default' });
+        response = await fetch(proxiedUrl, { headers, cache: 'default' });
       } catch (e) {
-        response = await fetch(url).catch(() => null);
+        response = await fetch(proxiedUrl).catch(() => null);
       }
 
       if (!response || !response.ok) return url;

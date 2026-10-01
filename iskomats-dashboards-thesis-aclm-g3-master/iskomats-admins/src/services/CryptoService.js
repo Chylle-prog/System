@@ -85,6 +85,21 @@ export const decryptDocument = async (blob, originalType = 'image/jpeg') => {
   }
 };
 
+export const resolveProxiedMediaUrl = (url) => {
+  if (!url || typeof url !== 'string') return url;
+  const trimmed = url.trim();
+  if (
+    trimmed.includes('.supabase.co/storage/v1/object/') ||
+    trimmed.includes('/storage/v1/object/')
+  ) {
+    const origin = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'https://iskomats-backend.onrender.com')
+      .replace(/\/+$/, '')
+      .replace(/\/api\/?$/, '');
+    return `${origin}/api/storage/proxy?url=${encodeURIComponent(trimmed)}`;
+  }
+  return trimmed;
+};
+
 export const decryptUrl = (url, type = 'image/jpeg') => {
   if (!url || typeof url !== 'string' || !url.startsWith('http')) return Promise.resolve(url);
 
@@ -98,9 +113,11 @@ export const decryptUrl = (url, type = 'image/jpeg') => {
     url.toLowerCase().includes('_vid_url')
   );
 
-  // Instant zero-blocking playback for all videos: browser native HTML5 player streams HTTP 206 chunks directly
+  const proxiedUrl = resolveProxiedMediaUrl(url);
+
+  // Instant zero-blocking playback for all videos: browser native HTML5 player streams HTTP 206 chunks directly from proxy
   if (isVideo) {
-    return Promise.resolve(url);
+    return Promise.resolve(proxiedUrl);
   }
 
   if (urlCache.has(url)) {
@@ -109,7 +126,7 @@ export const decryptUrl = (url, type = 'image/jpeg') => {
 
   const decryptPromise = (async () => {
     try {
-      const response = await fetch(url, { cache: 'force-cache' });
+      const response = await fetch(proxiedUrl, { cache: 'force-cache' });
       if (!response.ok) {
         return url;
       }

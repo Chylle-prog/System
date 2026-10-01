@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 
 import jwt
-from flask import Blueprint, jsonify, request, url_for
+from flask import Blueprint, jsonify, request, url_for, Response
 
 from flask_bcrypt import Bcrypt
 from werkzeug.security import check_password_hash as werkzeug_check_password_hash
@@ -2848,15 +2848,91 @@ def get_applicant_document(field_name):
                 return jsonify({'message': 'Error processing document data'}), 500
     except Exception as e:
         print(f"[DOCUMENT] Error fetching {field_name}: {e}", flush=True)
-def fetch_video_bytes_from_url(url):
-    try:
-        import requests
-        resp = requests.get(url, timeout=30)
-        if resp.status_code == 200:
-            return resp.content, None
-        return None, f"HTTP {resp.status_code}"
-    except Exception as e:
-        return None, str(e)
+
+@student_api_bp.route('/storage/proxy', methods=['GET'])
+@student_api_bp.route('/storage-proxy/<string:bucket_name>/<path:file_path>', methods=['GET'])
+@student_api_bp.route('/storage/<string:bucket_name>/<path:file_path>', methods=['GET'])
+def student_proxy_storage_file(bucket_name=None, file_path=None):
+    """Proxy files from private Supabase buckets (document_images, document_videos, etc.) for student portal."""
+    target_url = request.args.get('url')
+    data = None
+    if not bucket_name and target_url:
+        target_url = target_url.strip()
+        data, _ = fetch_video_bytes_from_url(target_url)
+    elif bucket_name and file_path:
+        from project_config import get_supabase_client, SUPABASE_URL
+        try:
+            supa = get_supabase_client()
+            if supa:
+                res = supa.storage.from_(bucket_name).download(file_path)
+                data = res if res else None
+        except Exception:
+            data = None
+
+        if not data and SUPABASE_URL:
+            direct_url = f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/authenticated/{bucket_name}/{file_path}"
+            data, _ = fetch_video_bytes_from_url(direct_url)
+    elif target_url:
+        data, _ = fetch_video_bytes_from_url(target_url)
+    else:
+        return jsonify({'message': 'Missing URL or bucket/file_path parameter'}), 400
+
+    if not data:
+        return jsonify({'message': 'File not found or access denied'}), 404
+
+    mime_type = 'image/jpeg'
+    if (file_path and file_path.endswith('.png')) or (target_url and '.png' in target_url) or data.startswith(b'\x89PNG'):
+        mime_type = 'image/png'
+    elif (file_path and file_path.endswith('.pdf')) or (target_url and '.pdf' in target_url) or data.startswith(b'%PDF'):
+        mime_type = 'application/pdf'
+    elif (file_path and file_path.endswith('.webm')) or (target_url and '.webm' in target_url) or data.startswith(b'\x1a\x45\xdf\xa3'):
+        mime_type = 'video/webm'
+    elif (file_path and file_path.endswith('.mp4')) or (target_url and '.mp4' in target_url) or data.startswith(b'ftyp') or data.startswith(b'\x00\x00\x00\x18ftyp'):
+        mime_type = 'video/mp4'
+
+    sample = data[:512] if len(data) > 512 else data
+    import hashlib
+    etag = f'"{hashlib.md5(sample + str(len(data)).encode()).hexdigest()[:16]}"'
+
+    if_none_match = request.headers.get('If-None-Match')
+    if if_none_match and if_none_match.strip() == etag.strip():
+        return Response(status=304)
+
+    if mime_type.startswith('video/'):
+        range_header = request.headers.get('Range', None)
+        total_len = len(data)
+        if range_header and range_header.startswith('bytes='):
+            try:
+                byte_ranges = range_header.replace('bytes=', '').split('-')
+                start = int(byte_ranges[0]) if byte_ranges[0] else 0
+                end = int(byte_ranges[1]) if len(byte_ranges) > 1 and byte_ranges[1] else total_len - 1
+            except ValueError:
+                start = 0
+                end = total_len - 1
+            if end >= total_len: end = total_len - 1
+            if start > end: start = end
+            
+            chunk = data[start:end+1]
+            response = Response(chunk, status=206, mimetype=mime_type)
+            response.headers.set('Accept-Ranges', 'bytes')
+            response.headers.set('Content-Range', f'bytes {start}-{end}/{total_len}')
+            response.headers.set('Content-Length', str(len(chunk)))
+            response.headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600')
+            response.headers.set('ETag', etag)
+            return response
+        else:
+            response = Response(data, mimetype=mime_type)
+            response.headers.set('Accept-Ranges', 'bytes')
+            response.headers.set('Content-Length', str(total_len))
+            response.headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600')
+            response.headers.set('ETag', etag)
+            return response
+
+    response = Response(data, mimetype=mime_type)
+    response.headers.set('Content-Disposition', 'inline')
+    response.headers.set('Cache-Control', 'public, max-age=86400, immutable')
+    response.headers.set('ETag', etag)
+    return response
 
 @student_api_bp.route('/applicant/document/raw/<string:field_name>', methods=['GET'])
 @token_required

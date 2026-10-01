@@ -5232,6 +5232,81 @@ def get_applicant_image(applicant_no, column_name):
         print(f"[APPLICANT IMAGE] Error: {str(e)}")
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
+@api_bp.route('/storage/proxy', methods=['GET'])
+@api_bp.route('/storage-proxy/<string:bucket_name>/<path:file_path>', methods=['GET'])
+@api_bp.route('/storage/<string:bucket_name>/<path:file_path>', methods=['GET'])
+def proxy_storage_file(bucket_name=None, file_path=None):
+    """Proxy files from private Supabase buckets using Service Role Key."""
+    target_url = request.args.get('url')
+    data = None
+    if not bucket_name and target_url:
+        target_url = target_url.strip()
+        data = fetch_cloud_media_bytes(target_url)
+    elif bucket_name and file_path:
+        from project_config import get_supabase_client, SUPABASE_URL
+        try:
+            supa = get_supabase_client()
+            if supa:
+                res = supa.storage.from_(bucket_name).download(file_path)
+                data = res if res else None
+        except Exception:
+            data = None
+
+        if not data and SUPABASE_URL:
+            direct_url = f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/authenticated/{bucket_name}/{file_path}"
+            data = fetch_cloud_media_bytes(direct_url)
+    elif target_url:
+        data = fetch_cloud_media_bytes(target_url)
+    else:
+        return jsonify({'message': 'Missing URL or bucket/file_path parameter'}), 400
+
+    if not data:
+        return jsonify({'message': 'File not found or access denied'}), 404
+
+    mime_type = get_mime_type(data)
+    if (file_path and file_path.endswith('.mp4')) or (target_url and '.mp4' in target_url):
+        mime_type = 'video/mp4'
+    elif (file_path and file_path.endswith('.webm')) or (target_url and '.webm' in target_url):
+        mime_type = 'video/webm'
+    elif (file_path and file_path.endswith('.pdf')) or (target_url and '.pdf' in target_url):
+        mime_type = 'application/pdf'
+
+    if mime_type.startswith('video/'):
+        range_header = request.headers.get('Range', None)
+        total_len = len(data)
+        if range_header and range_header.startswith('bytes='):
+            try:
+                byte_ranges = range_header.replace('bytes=', '').split('-')
+                start = int(byte_ranges[0]) if byte_ranges[0] else 0
+                end = int(byte_ranges[1]) if len(byte_ranges) > 1 and byte_ranges[1] else total_len - 1
+            except ValueError:
+                start = 0
+                end = total_len - 1
+            if end >= total_len: end = total_len - 1
+            if start > end: start = end
+            
+            chunk = data[start:end+1]
+            response = Response(chunk, status=206, mimetype=mime_type)
+            response.headers['Accept-Ranges'] = 'bytes'
+            response.headers['Content-Range'] = f'bytes {start}-{end}/{total_len}'
+            response.headers['Content-Length'] = str(len(chunk))
+            response.headers['Cache-Control'] = 'public, max-age=86400, stale-while-revalidate=3600'
+            return response
+        else:
+            response = Response(data, mimetype=mime_type)
+            response.headers['Accept-Ranges'] = 'bytes'
+            response.headers['Content-Length'] = str(total_len)
+            response.headers['Cache-Control'] = 'public, max-age=86400, stale-while-revalidate=3600'
+            return response
+
+    return send_file(
+        BytesIO(data),
+        mimetype=mime_type,
+        as_attachment=False,
+        download_name=(file_path.split('/')[-1] if file_path else "file"),
+        max_age=86400
+    )
+
 # ===== UTILITY ENDPOINTS =====
 
 @api_bp.route('/auth/me', methods=['GET'])

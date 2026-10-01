@@ -19,7 +19,7 @@ from functools import wraps
 
 import jwt
 from cryptography.fernet import Fernet
-from flask import Blueprint, jsonify, request, url_for
+from flask import Blueprint, jsonify, request, url_for, Response
 from flask_bcrypt import Bcrypt
 from werkzeug.security import check_password_hash as werkzeug_check_password_hash
 
@@ -2556,6 +2556,83 @@ def get_applicant_document(field_name):
         print(f"[DOCUMENT] Error fetching {field_name}: {e}", flush=True)
         return jsonify({'message': str(e)}), 500
 
+@student_api_bp.route('/storage/proxy', methods=['GET'])
+@student_api_bp.route('/storage-proxy/<string:bucket_name>/<path:file_path>', methods=['GET'])
+@student_api_bp.route('/storage/<string:bucket_name>/<path:file_path>', methods=['GET'])
+def student_proxy_storage_file(bucket_name=None, file_path=None):
+    """Proxy files from private Supabase buckets for student portal."""
+    target_url = request.args.get('url')
+    data = None
+    if not bucket_name and target_url:
+        target_url = target_url.strip()
+        data, _ = fetch_video_bytes_from_url(target_url)
+    elif bucket_name and file_path:
+        from project_config import get_supabase_client, SUPABASE_URL
+        try:
+            supa = get_supabase_client()
+            if supa:
+                res = supa.storage.from_(bucket_name).download(file_path)
+                data = res if res else None
+        except Exception:
+            data = None
+
+        if not data and SUPABASE_URL:
+            direct_url = f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/authenticated/{bucket_name}/{file_path}"
+            data, _ = fetch_video_bytes_from_url(direct_url)
+    elif target_url:
+        data, _ = fetch_video_bytes_from_url(target_url)
+    else:
+        return jsonify({'message': 'Missing URL or bucket/file_path parameter'}), 400
+
+    if not data:
+        return jsonify({'message': 'File not found or access denied'}), 404
+
+    mime_type = 'image/jpeg'
+    if (file_path and file_path.endswith('.png')) or (target_url and '.png' in target_url) or data.startswith(b'\x89PNG'):
+        mime_type = 'image/png'
+    elif (file_path and file_path.endswith('.pdf')) or (target_url and '.pdf' in target_url) or data.startswith(b'%PDF'):
+        mime_type = 'application/pdf'
+    elif (file_path and file_path.endswith('.webm')) or (target_url and '.webm' in target_url) or data.startswith(b'\x1a\x45\xdf\xa3'):
+        mime_type = 'video/webm'
+    elif (file_path and file_path.endswith('.mp4')) or (target_url and '.mp4' in target_url) or data.startswith(b'ftyp') or data.startswith(b'\x00\x00\x00\x18ftyp'):
+        mime_type = 'video/mp4'
+
+    if mime_type.startswith('video/'):
+        from flask import Response
+        range_header = request.headers.get('Range', None)
+        total_len = len(data)
+        if range_header and range_header.startswith('bytes='):
+            try:
+                byte_ranges = range_header.replace('bytes=', '').split('-')
+                start = int(byte_ranges[0]) if byte_ranges[0] else 0
+                end = int(byte_ranges[1]) if len(byte_ranges) > 1 and byte_ranges[1] else total_len - 1
+            except ValueError:
+                start = 0
+                end = total_len - 1
+            if end >= total_len: end = total_len - 1
+            if start > end: start = end
+            
+            chunk = data[start:end+1]
+            response = Response(chunk, status=206, mimetype=mime_type)
+            response.headers.set('Accept-Ranges', 'bytes')
+            response.headers.set('Content-Range', f'bytes {start}-{end}/{total_len}')
+            response.headers.set('Content-Length', str(len(chunk)))
+            response.headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600')
+            return response
+        else:
+            response = Response(data, mimetype=mime_type)
+            response.headers.set('Accept-Ranges', 'bytes')
+            response.headers.set('Content-Length', str(total_len))
+            response.headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600')
+            return response
+
+    from flask import make_response
+    response = make_response(data)
+    response.headers.set('Content-Type', mime_type)
+    response.headers.set('Content-Disposition', 'inline')
+    response.headers.set('Cache-Control', 'public, max-age=86400, immutable')
+    return response
+
 @student_api_bp.route('/applicant/document/raw/<string:field_name>', methods=['GET'])
 @token_required
 def get_applicant_document_raw(field_name):
@@ -2579,25 +2656,16 @@ def get_applicant_document_raw(field_name):
             if field_name == 'signature_image_data':
                 value = decode_signature(value)
             
-            # Handle Supabase Storage URLs (MIGRATION: BYTEA -> TEXT)
+            # Handle Supabase Storage URLs
             if isinstance(value, str) and value.startswith('http'):
                 from services.applicant_document_service import normalize_supabase_url
                 normalized_url = normalize_supabase_url(value)
-                # Redirect for videos to save memory/egress
-                if 'vid_url' in field_name or 'video' in field_name:
-                    from flask import redirect, make_response
-                    response = make_response(redirect(normalized_url))
-                    response.headers.set('Cache-Control', 'public, max-age=3600')
-                    return response
+                content, error = fetch_video_bytes_from_url(normalized_url)
+                if content is not None:
+                    from services.crypto_service import decrypt_if_encrypted
+                    value = decrypt_if_encrypted(content)
                 else:
-                    # Download and proxy images directly using the authenticated service role key
-                    content, error = fetch_video_bytes_from_url(normalized_url)
-                    if content is not None:
-                        from services.crypto_service import decrypt_if_encrypted
-                        value = decrypt_if_encrypted(content)
-                    else:
-                        from flask import redirect
-                        return redirect(normalized_url)
+                    return "Document not available", 404
             else:
                 if not isinstance(value, bytes):
                     if hasattr(value, 'tobytes'):
