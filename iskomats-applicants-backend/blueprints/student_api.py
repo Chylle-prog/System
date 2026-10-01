@@ -686,6 +686,18 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
             'merit_proof_1': 'merit_documents',
             'merit_proof_2': 'merit_documents',
             'merit_proof_3': 'merit_documents',
+            'enrollment_certificate_vid_url': 'verification_videos',
+            'grades_vid_url': 'verification_videos',
+            'indigency_vid_url': 'verification_videos',
+            'id_vid_url': 'verification_videos',
+            'schoolid_front_vid_url': 'verification_videos',
+            'schoolid_back_vid_url': 'verification_videos',
+            'face_video': 'verification_videos',
+            'mayorCOE_video': 'verification_videos',
+            'mayorGrades_video': 'verification_videos',
+            'mayorIndigency_video': 'verification_videos',
+            'schoolIdFront_video': 'verification_videos',
+            'schoolIdBack_video': 'verification_videos',
         }
 
         if field_name and ('merit' in field_name.lower()):
@@ -719,8 +731,10 @@ def upload_image_to_storage(image_data, applicant_no, field_name, is_update=Fals
         # Generate unique path with timestamp to keep separate documents per application snapshot
         import uuid
         unique_token = f"{int(time.time() * 1000)}-{uuid.uuid4().hex[:6]}"
-        file_path = f"applicant_{applicant_no}/{scope_folder}/{folder}-{field_name}-{unique_token}.jpg"
-        mime_type = "image/jpeg"
+        is_video = 'vid' in field_name.lower() or 'video' in field_name.lower()
+        ext = 'webm' if is_video else 'jpg'
+        file_path = f"applicant_{applicant_no}/{scope_folder}/{folder}-{field_name}-{unique_token}.{ext}"
+        mime_type = "video/webm" if is_video else "image/jpeg"
         
         # Ensure we have bytes
         if isinstance(image_data, str) and image_data.startswith('http'):
@@ -3298,7 +3312,8 @@ def update_profile():
 
             binary_fields = {
                 'profile_picture': 'profile_picture',
-                'id_pic': 'id_pic',  # legacy mapping
+                'id_pic': 'id_pic',
+                'face_photo': 'id_pic',
                 'signature_data': 'signature_image_data',
                 'schoolID_photo': 'school_id',
                 'id_front': 'id_img_front',
@@ -3306,6 +3321,13 @@ def update_profile():
                 'indigency_doc': 'indigency_doc',
                 'grades_doc': 'grades_doc',
                 'enrollment_certificate_doc': 'enrollment_certificate_doc',
+                'mayorIndigency_video': 'indigency_vid_url',
+                'mayorGrades_video': 'grades_vid_url',
+                'mayorCOE_video': 'enrollment_certificate_vid_url',
+                'schoolIdFront_video': 'schoolid_front_vid_url',
+                'schoolIdBack_video': 'schoolid_back_vid_url',
+                'face_video': 'id_vid_url',
+                'id_vid_url': 'id_vid_url',
             }
 
             # 1. Collect upload tasks for concurrent execution
@@ -4037,6 +4059,27 @@ def submit_application():
                 'schoolID_photo': doc_bytes['schoolID_photo'],
             }
 
+            video_keys = {
+                'mayorCOE_video': 'enrollment_certificate_vid_url',
+                'mayorGrades_video': 'grades_vid_url',
+                'mayorIndigency_video': 'indigency_vid_url',
+                'face_video': 'id_vid_url',
+                'id_vid_url': 'id_vid_url',
+                'schoolIdFront_video': 'schoolid_front_vid_url',
+                'schoolIdBack_video': 'schoolid_back_vid_url',
+            }
+            for vk, db_col in video_keys.items():
+                if vk in files_data:
+                    binary_map[db_col] = files_data[vk].read()
+                else:
+                    v_val = get_unified_val(vk)
+                    if v_val and isinstance(v_val, str):
+                        if not v_val.startswith('http') and (v_val.startswith('data:') or len(v_val) > 100):
+                            binary_map[db_col] = decode_base64(v_val)
+                        elif v_val.startswith('http://') or v_val.startswith('https://'):
+                            if not ('/applicant/document/raw/' in v_val or 'onrender.com' in v_val or 'localhost' in v_val):
+                                document_updates[db_col] = v_val
+
             submit_upload_tasks = []
             for column_name, value in binary_map.items():
                 # If we already have a URL (from profile_pic_url etc), use it directly
@@ -4063,10 +4106,13 @@ def submit_application():
                         col_name, url = fut.result()
                         if url:
                             print(f"[SUBMIT] SUCCESS: {col_name} uploaded to {url[:50]}...", flush=True)
+                            document_updates[col_name] = url
                             if col_name == 'profile_picture' and has_profile_picture_column:
                                 add_update(col_name, url)
-                            else:
-                                document_updates[col_name] = url
+                            elif col_name == 'signature_image_data' and applicant_has_column(cur, 'signature_image_data'):
+                                add_update('signature_image_data', url)
+                            elif col_name == 'id_pic' and applicant_has_column(cur, 'id_pic'):
+                                add_update('id_pic', url)
                         else:
                             print(f"[SUBMIT] ERROR: Cloud upload failed for {col_name}. Refusing BYTEA fallback.", flush=True)
                             raise ValueError(f"Failed to upload {col_name} to cloud storage.")
@@ -4208,6 +4254,13 @@ def submit_application():
                     'pro_no': pro_no,
                     'program': pro_name
                 }, broadcast=True)
+                if pro_no:
+                    safe_emit('add_room', {
+                        'room': f"{current_user_id}+{pro_no}",
+                        'applicant_no': current_user_id,
+                        'pro_no': pro_no,
+                        'other_name': pro_name or 'Admin'
+                    }, broadcast=True)
                 safe_emit('account_change', {'type': 'new_application', 'applicant_no': current_user_id}, broadcast=True)
                 safe_emit('notification_update', {'user_no': current_user_id}, broadcast=True)
             except Exception as emit_err:

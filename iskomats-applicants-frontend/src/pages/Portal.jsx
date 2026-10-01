@@ -237,6 +237,36 @@ const Portal = () => {
   // Scholarship chat data
   const [scholarships, setScholarships] = useState([]);
 
+  // Auto-sync chat channels from active applications
+  useEffect(() => {
+    if (!applications || applications.length === 0) return;
+    const resolvedAppNo = localStorage.getItem('applicantNo') || userProfile?.applicant_no || userProfile?.id;
+    if (!resolvedAppNo) return;
+
+    setScholarships(prev => {
+      const existingIds = new Set(prev.map(s => s.id));
+      const added = [];
+      applications.forEach(app => {
+        const proNo = app.pro_no || app.provider_no;
+        if (!proNo) return;
+        const roomId = `${resolvedAppNo}+${proNo}`;
+        if (!existingIds.has(roomId)) {
+          const providerLabel = app.provider_name || app.scholarship_name || `Scholarship Provider ${proNo}`;
+          added.push({
+            id: roomId,
+            name: providerLabel,
+            icon: 'fa-building',
+            unread: 0,
+            lastMessage: 'Chat available',
+            time: ''
+          });
+        }
+      });
+      if (added.length === 0) return prev;
+      return [...prev, ...added];
+    });
+  }, [applications, userProfile]);
+
   // Chat messages for each scholarship
   const [chatMessages, setChatMessages] = useState({});
 
@@ -4585,9 +4615,17 @@ const Portal = () => {
                         ? 'status-approved'
                         : selectedAppForView.status === 'Rejected'
                           ? 'status-rejected'
-                          : 'status-pending'
+                          : selectedAppForView.status === 'Suspended'
+                            ? 'status-suspended'
+                            : selectedAppForView.status === 'Cancelled'
+                              ? 'status-cancelled'
+                              : 'status-pending'
                       }`}>
-                      {selectedAppForView.status}
+                      {(selectedAppForView.status === 'Approved' || selectedAppForView.status === 'Accepted')
+                        ? 'Accepted'
+                        : (selectedAppForView.status === 'Submitted' || selectedAppForView.status === 'Pending')
+                          ? 'Pending'
+                          : selectedAppForView.status}
                     </span>
                     <span style={{ fontSize: '0.85rem', color: 'var(--text-soft)', fontWeight: 600 }}>
                       Application #{selectedAppForView.scholarship_no || selectedAppForView.req_no}

@@ -43,7 +43,8 @@ import {
   FaCamera,
   FaUserSlash,
   FaInfoCircle,
-  FaBan
+  FaBan,
+  FaUndo
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { adminAPI, scholarshipAPI, announcementService, messagingAPI } from '../../services/api';
@@ -1026,6 +1027,12 @@ export default function ScholarshipDashboard({
     isOpen: false,
     applicant: null,
     reason: '',
+    isSubmitting: false,
+    error: '',
+  });
+  const [unsuspendModal, setUnsuspendModal] = useState({
+    isOpen: false,
+    applicant: null,
     isSubmitting: false,
     error: '',
   });
@@ -3875,8 +3882,62 @@ export default function ScholarshipDashboard({
   };
   const handleConfirmCancelAccepted = handleConfirmSuspendAccepted;
 
+  const handleUnsuspendApplicant = (applicant) => {
+    if (!applicant) return;
+    setUnsuspendModal({
+      isOpen: true,
+      applicant,
+      isSubmitting: false,
+      error: '',
+    });
+  };
+
+  const handleConfirmUnsuspend = async () => {
+    if (!unsuspendModal.applicant) return;
+    const applicant = unsuspendModal.applicant;
+    const applicantId = applicant?.id || applicant?.applicant_no || applicant?.applicantNo;
+    const scholarshipNo = applicant?.scholarshipNo || applicant?.scholarship_no || applicant?.req_no;
+
+    if (!applicantId || !scholarshipNo) {
+      setUnsuspendModal(prev => ({ ...prev, error: 'Incomplete applicant or scholarship information.' }));
+      return;
+    }
+
+    setUnsuspendModal(prev => ({ ...prev, isSubmitting: true, error: '' }));
+
+    try {
+      await scholarshipAPI.unsuspendApplicant(applicantId, scholarshipNo);
+
+      const applicantKey = getApplicantIdentityKey(applicant);
+
+      setData(prev => ({
+        ...prev,
+        suspended: (prev.suspended || []).filter(a => getApplicantIdentityKey(a) !== applicantKey),
+      }));
+
+      if (viewApplicant) {
+        setViewApplicant(null);
+        setSection('track');
+      }
+
+      setUnsuspendModal({
+        isOpen: false,
+        applicant: null,
+        isSubmitting: false,
+        error: '',
+      });
+    } catch (err) {
+      console.error('Error unsuspending applicant:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Failed to unsuspend application.';
+      setUnsuspendModal(prev => ({ ...prev, isSubmitting: false, error: msg }));
+    }
+  };
+
   const getStudentStatus = (id, name, currentStatus, email = null) => {
-    if (currentStatus && currentStatus !== 'Unknown') return currentStatus;
+    let norm = currentStatus;
+    if (norm === 'Submitted') norm = 'Pending';
+    if (norm === 'Approved') norm = 'Accepted';
+    if (norm && norm !== 'Unknown') return norm;
     const inList = (list) => (list || []).some((a) => {
       const aNo = (a.applicant_no || a.applicantNo || a.applicant_id || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id) || '').toString();
       if (id && aNo && aNo === id.toString()) return true;
@@ -4280,8 +4341,20 @@ export default function ScholarshipDashboard({
     if (inboxMode === 'applicants') {
       filtered = filtered.filter(c => !c.isAdminRoom && !c.room?.startsWith('provider_room_'));
 
-      // Ensure rejected, declined, cancelled, and suspended applicants are not shown in the inbox
+      // Ensure rejected, declined, cancelled, and suspended applicants are not shown in the inbox unless they have an active application
       filtered = filtered.filter((c) => {
+        const isApplicantActive = (list) => (list || []).some((a) => {
+          const aNo = (a.applicant_no || a.applicantNo || a.applicant_id || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id) || '').toString();
+          if (c.applicant_no && aNo && aNo === c.applicant_no.toString()) return true;
+          const aEmail = (a.email || a.emailAddress || '').toLowerCase();
+          if (c.studentEmail && aEmail && aEmail === c.studentEmail.toLowerCase()) return true;
+          return false;
+        });
+
+        if (isApplicantActive(data.applicants) || isApplicantActive(data.accepted)) {
+          return true;
+        }
+
         const studentStatus = getStudentStatus(c.applicant_no, c.studentName, c.lastMessage?.studentStatus, c.studentEmail);
         const normStatus = (studentStatus || '').toLowerCase();
 
@@ -5520,12 +5593,23 @@ export default function ScholarshipDashboard({
                             </button>
                           </div>
                         ) : listType === 'suspended' ? (
-                          <div className="flex flex-col items-center">
-                            <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                              Suspended
-                            </span>
+                          <div className="flex flex-col items-center gap-1">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                Suspended
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleUnsuspendApplicant(a)}
+                                disabled={Boolean(processingState)}
+                                className="px-2 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-all flex items-center gap-1 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Unsuspend and reset applicant so they can apply fresh"
+                              >
+                                <FaUndo className="text-[10px]" /> Unsuspend
+                              </button>
+                            </div>
                             {(a.cancellationReason || a.cancellation_reason) && (
-                              <span className="text-[10px] text-amber-700 italic mt-0.5 max-w-[130px] truncate" title={a.cancellationReason || a.cancellation_reason}>
+                              <span className="text-[10px] text-amber-700 italic max-w-[150px] truncate" title={a.cancellationReason || a.cancellation_reason}>
                                 {a.cancellationReason || a.cancellation_reason}
                               </span>
                             )}
@@ -7019,6 +7103,15 @@ export default function ScholarshipDashboard({
                   <FaBan /> Suspend Scholarship
                 </button>
               )}
+              {listType === 'suspended' && (
+                <button
+                  type="button"
+                  onClick={() => handleUnsuspendApplicant(a)}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs uppercase tracking-wider hover:bg-emerald-700 shadow-md shadow-emerald-100 transition-all flex items-center gap-1.5"
+                >
+                  <FaUndo /> Unsuspend Application
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => { setViewApplicant(null); setSection('track'); }}
@@ -7711,6 +7804,15 @@ export default function ScholarshipDashboard({
               className="w-full sm:w-auto px-6 py-2.5 sm:px-8 sm:py-3 rounded-xl bg-amber-600 text-white font-black uppercase tracking-widest text-xs hover:bg-amber-700 shadow-lg shadow-amber-100 transition-all flex items-center justify-center gap-2"
             >
               <FaBan /> Suspend Scholarship
+            </button>
+          )}
+          {listType === 'suspended' && (
+            <button
+              type="button"
+              onClick={() => handleUnsuspendApplicant(a)}
+              className="w-full sm:w-auto px-6 py-2.5 sm:px-8 sm:py-3 rounded-xl bg-emerald-600 text-white font-black uppercase tracking-widest text-xs hover:bg-emerald-700 shadow-lg shadow-emerald-100 transition-all flex items-center justify-center gap-2"
+            >
+              <FaUndo /> Unsuspend Application
             </button>
           )}
           <button
@@ -8527,6 +8629,65 @@ export default function ScholarshipDashboard({
                 ) : (
                   <>
                     <FaBan className="text-xs" /> Confirm Suspend
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UNSUSPEND CONFIRMATION MODAL */}
+      {unsuspendModal.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 flex flex-col gap-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl flex-shrink-0 border border-emerald-100 shadow-sm">
+                <FaUndo />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-base">Unsuspend Application</h3>
+                <p className="text-xs text-gray-500">Reset applicant for new submission</p>
+              </div>
+            </div>
+
+            <div className="text-xs text-gray-600 bg-emerald-50/50 p-3.5 rounded-xl border border-emerald-100 space-y-2">
+              <p>
+                Are you sure you want to unsuspend <strong>{unsuspendModal.applicant?.name || unsuspendModal.applicant?.studentName || 'this student'}</strong>?
+              </p>
+              <p className="text-emerald-800 font-medium">
+                Their previous suspended application will be cleared and reset. They will be treated as a fresh applicant and can apply again with a new submission (e.g., for the 2nd semester).
+              </p>
+            </div>
+
+            {unsuspendModal.error && (
+              <div className="p-3 bg-red-50 text-red-700 text-xs rounded-xl border border-red-200 font-medium">
+                {unsuspendModal.error}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                disabled={unsuspendModal.isSubmitting}
+                onClick={() => setUnsuspendModal({ isOpen: false, applicant: null, isSubmitting: false, error: '' })}
+                className="px-4 py-2 rounded-xl text-gray-600 hover:bg-gray-100 font-bold text-xs transition-all disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={unsuspendModal.isSubmitting}
+                onClick={handleConfirmUnsuspend}
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all shadow-md shadow-emerald-200 disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {unsuspendModal.isSubmitting ? (
+                  <>
+                    <FaSpinner className="animate-spin text-xs" /> Unsuspending...
+                  </>
+                ) : (
+                  <>
+                    <FaUndo className="text-xs" /> Confirm Unsuspend
                   </>
                 )}
               </button>

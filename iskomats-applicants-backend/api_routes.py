@@ -2177,13 +2177,13 @@ def init_socketio(socketio):
                             SELECT DISTINCT ast.applicant_no, s.pro_no 
                             FROM applicant_status ast
                             JOIN scholarships s ON ast.scholarship_no = s.req_no
-                            WHERE s.pro_no = %s AND (ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL)
+                            WHERE s.pro_no = %s AND (LOWER(COALESCE(ast.is_accepted, 'pending')) NOT IN ('declined', 'rejected', 'suspended', 'cancelled') OR ast.is_accepted IS NULL)
                             UNION
                             SELECT DISTINCT m.applicant_no, m.pro_no
                             FROM message m
                             JOIN scholarships sch ON m.pro_no = sch.pro_no
                             LEFT JOIN applicant_status ast ON (m.applicant_no = ast.applicant_no AND ast.scholarship_no = sch.req_no)
-                            WHERE m.pro_no = %s AND (ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL)
+                            WHERE m.pro_no = %s AND (LOWER(COALESCE(ast.is_accepted, 'pending')) NOT IN ('declined', 'rejected', 'suspended', 'cancelled') OR ast.is_accepted IS NULL)
                         """, (pro_no, pro_no))
                         relevant_pairs = cursor.fetchall()
                         rooms = [f"{p['applicant_no']}+{p['pro_no']}" for p in relevant_pairs]
@@ -2194,7 +2194,7 @@ def init_socketio(socketio):
                             FROM message m
                             LEFT JOIN scholarships s ON m.pro_no = s.pro_no
                             LEFT JOIN applicant_status ast ON (m.applicant_no = ast.applicant_no AND ast.scholarship_no = s.req_no)
-                            WHERE m.room IS NOT NULL AND (ast.is_accepted = 'Pending' OR ast.is_accepted = 'Accepted' OR ast.is_accepted IS NULL)
+                            WHERE m.room IS NOT NULL AND (LOWER(COALESCE(ast.is_accepted, 'pending')) NOT IN ('declined', 'rejected', 'suspended', 'cancelled') OR ast.is_accepted IS NULL)
                         """)
                         rooms = [row['room'] for row in cursor.fetchall()]
                 else:
@@ -4879,6 +4879,124 @@ def suspend_applicant(current_user_id, pro_no, role, applicant_no):
         traceback.print_exc()
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
+@api_bp.route('/applicants/<int:applicant_no>/unsuspend', methods=['POST'])
+@api_bp.route('/admin/applicants/<int:applicant_no>/unsuspend', methods=['POST'])
+@token_required
+def unsuspend_applicant(current_user_id, pro_no, role, applicant_no):
+    """Unsuspend an applicant by deleting their suspended application record and drafts, completely resetting them so they can apply fresh as a new applicant."""
+    try:
+        data = request.get_json(silent=True) or {}
+        scholarship_no = data.get('scholarshipNo') or data.get('scholarship_no') or data.get('req_no')
+        if scholarship_no is None:
+            return jsonify({'success': False, 'message': 'scholarshipNo is required'}), 400
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                '''SELECT s.pro_no, s.scholarship_name, sp.provider_name, ast.is_accepted
+                   FROM applicant_status ast
+                   INNER JOIN scholarships s ON ast.scholarship_no = s.req_no
+                   LEFT JOIN scholarship_providers sp ON s.pro_no = sp.pro_no
+                   WHERE ast.applicant_no = %s AND ast.scholarship_no = %s''',
+                (applicant_no, scholarship_no)
+            )
+            status_row = cursor.fetchone()
+            if not status_row:
+                return jsonify({'success': False, 'message': 'Application not found'}), 404
+
+            if role != 'Admin' and status_row['pro_no'] != pro_no:
+                return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+
+            # Delete the status record so the student is reset as a clean applicant with no prior application for this scholarship
+            cursor.execute(
+                '''DELETE FROM applicant_status 
+                   WHERE applicant_no = %s AND scholarship_no = %s''',
+                (applicant_no, scholarship_no)
+            )
+
+            # Clear any existing application drafts
+            try:
+                cursor.execute(
+                    "DELETE FROM application_drafts WHERE scholarship_no = %s AND applicant_no = %s",
+                    (scholarship_no, applicant_no),
+                )
+            except Exception:
+                pass
+
+            conn.commit()
+
+            sch_name = status_row.get('scholarship_name') or 'Scholarship'
+            sch_pro_no = status_row.get('pro_no')
+            provider_name = status_row.get('provider_name') or 'Scholarship Office'
+
+            # 1. Create notification for the student
+            try:
+                create_notification(
+                    user_no=applicant_no,
+                    title='Suspension Lifted',
+                    message=f"Your suspension for {sch_name} has been lifted by the administrator. You may now apply again and submit a new application.",
+                    notif_type='result',
+                    db_conn=conn
+                )
+                conn.commit()
+            except Exception as notif_err:
+                print(f"[NOTIF ERROR] Failed to notify unsuspended applicant {applicant_no}: {notif_err}", flush=True)
+
+            # 2. Insert chat message into message table and emit
+            try:
+                room = f"{applicant_no}+{sch_pro_no}" if sch_pro_no else None
+                if room:
+                    msg_text = f"Notice: Your suspension for {sch_name} has been lifted. You may now apply again and submit a new application."
+                    cursor.execute("""
+                        INSERT INTO message (applicant_no, pro_no, room, username, message, timestamp, sender_id, is_student_sender)
+                        VALUES (%s, %s, %s, %s, %s, NOW(), %s, %s)
+                        RETURNING m_id, timestamp
+                    """, (applicant_no, sch_pro_no, room, provider_name, msg_text, current_user_id, False))
+                    msg_row = cursor.fetchone()
+                    conn.commit()
+
+                    if msg_row:
+                        msg_payload = {
+                            'm_id': msg_row['m_id'],
+                            'username': provider_name,
+                            'sender_id': current_user_id,
+                            'is_student_sender': False,
+                            'message': msg_text,
+                            'room': room,
+                            'timestamp': msg_row['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(msg_row['timestamp'], 'strftime') else str(msg_row['timestamp']),
+                            'student_status': 'Pending'
+                        }
+                        safe_emit('message', msg_payload, room=room)
+                        safe_emit('receive_message', msg_payload, room=room)
+            except Exception as msg_err:
+                print(f"[CHAT MSG ERROR] Failed to send unsuspend chat message to applicant {applicant_no}: {msg_err}", flush=True)
+
+            # 3. Emit real-time status update to student portal and admin dashboard
+            try:
+                safe_emit('applicant_status_update', {
+                    'applicant_no': applicant_no,
+                    'status': 'Unsuspended',
+                    'action': 'unsuspend',
+                    'scholarship_no': scholarship_no,
+                }, room=f"applicant_{applicant_no}")
+                safe_emit('applicant_status_update', {
+                    'applicant_no': applicant_no,
+                    'status': 'Unsuspended',
+                    'action': 'unsuspend',
+                    'scholarship_no': scholarship_no,
+                }, broadcast=True)
+                safe_emit('account_change', {'type': 'application_unsuspended', 'applicant_no': applicant_no}, broadcast=True)
+                safe_emit('notification_update', {'user_no': applicant_no}, broadcast=True)
+            except Exception as emit_err:
+                print(f"[SOCKET ERROR] Failed to emit unsuspend status update: {emit_err}", flush=True)
+
+            return jsonify({'success': True, 'message': 'Applicant unsuspended successfully and reset for reapplication'}), 200
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
 @api_bp.route('/applicants/<program>', methods=['POST'])
 @token_required
 def create_applicant(current_user_id, pro_no, role, program):
@@ -6530,13 +6648,18 @@ def get_all_messages_rest(pro_no=None):
                            COALESCE(ast.is_accepted, 'Pending') as student_status
                     FROM message m
                     LEFT JOIN LATERAL (
-                        SELECT is_accepted FROM applicant_status
-                        WHERE applicant_no = m.applicant_no LIMIT 1
+                        SELECT ast_sub.is_accepted 
+                        FROM applicant_status ast_sub
+                        LEFT JOIN scholarships sch ON ast_sub.scholarship_no = sch.req_no
+                        WHERE ast_sub.applicant_no = m.applicant_no 
+                          AND (sch.pro_no = %s OR sch.pro_no = m.pro_no)
+                        ORDER BY (CASE WHEN LOWER(COALESCE(ast_sub.is_accepted, '')) IN ('pending', 'accepted', 'submitted') THEN 1 ELSE 2 END)
+                        LIMIT 1
                     ) ast ON TRUE
                     WHERE (m.pro_no = %s OR m.room = 'provider_room_' || %s OR m.room = 'superadmin_room_' || %s OR m.room = '0+' || %s)
                       AND {valid_room_filter}
                     ORDER BY m.timestamp ASC
-                """, (pro_no, str(pro_no), str(pro_no), str(pro_no)))
+                """, (pro_no, pro_no, str(pro_no), str(pro_no), str(pro_no)))
             else:
                 cursor.execute(f"""
                     SELECT m.m_id, m.applicant_no, m.pro_no, m.room, m.username,
@@ -6544,8 +6667,13 @@ def get_all_messages_rest(pro_no=None):
                            COALESCE(ast.is_accepted, 'Pending') as student_status
                     FROM message m
                     LEFT JOIN LATERAL (
-                        SELECT is_accepted FROM applicant_status
-                        WHERE applicant_no = m.applicant_no LIMIT 1
+                        SELECT ast_sub.is_accepted 
+                        FROM applicant_status ast_sub
+                        LEFT JOIN scholarships sch ON ast_sub.scholarship_no = sch.req_no
+                        WHERE ast_sub.applicant_no = m.applicant_no 
+                          AND (sch.pro_no = m.pro_no OR m.pro_no IS NULL)
+                        ORDER BY (CASE WHEN LOWER(COALESCE(ast_sub.is_accepted, '')) IN ('pending', 'accepted', 'submitted') THEN 1 ELSE 2 END)
+                        LIMIT 1
                     ) ast ON TRUE
                     WHERE {valid_room_filter}
                     ORDER BY m.timestamp ASC

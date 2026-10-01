@@ -268,6 +268,11 @@ export const scholarshipAPI = {
     scholarshipAPI.getApplicants.invalidate();
     return api.post(`/admin/applicants/${applicantId}/suspend`, { scholarshipNo, reason });
   },
+
+  unsuspendApplicant: (applicantId, scholarshipNo) => {
+    scholarshipAPI.getApplicants.invalidate();
+    return api.post(`/admin/applicants/${applicantId}/unsuspend`, { scholarshipNo });
+  },
   
   sendSchoolVerification: (applicantId, scholarshipNo) =>
     api.post(`/admin/applicants/${applicantId}/school-verification`, { scholarshipNo }),

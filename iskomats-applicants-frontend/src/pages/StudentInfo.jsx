@@ -7962,45 +7962,57 @@ const StudentInfo = () => {
         appendSmartDocPhoto('face_photo', [photos.face_photo, formData.face_photo, formData.id_pic, photos.id_pic, faceVerificationPreview]);
       }
 
-      const finalSignature = signaturePreview || drawnSignature || formData.applicantSignatureName;
+      const finalSignature = (drawnSignature && drawnSignature.startsWith('data:'))
+        ? drawnSignature
+        : ((formData.applicantSignatureName && formData.applicantSignatureName.startsWith('data:'))
+          ? formData.applicantSignatureName
+          : (signaturePreview || drawnSignature || formData.applicantSignatureName));
       if (finalSignature) {
         submissionData.append('signature_data', finalSignature);
       }
 
-      const appendSmartVideo = (fieldName) => {
+      const appendSmartVideo = async (fieldName) => {
         const videoValue = documentVideos[fieldName] || formData[fieldName];
         if (!videoValue) return;
 
-        if (typeof videoValue === 'string') {
+        if (videoValue instanceof Blob || (typeof File !== 'undefined' && videoValue instanceof File)) {
+          submissionData.append(fieldName, videoValue, `${fieldName}.webm`);
+        } else if (typeof videoValue === 'string') {
           if (videoValue.startsWith('http://') || videoValue.startsWith('https://')) {
             submissionData.append(fieldName, videoValue);
           } else if (videoValue.startsWith('blob:')) {
-            const publicUrl = formData[fieldName];
-            if (publicUrl && typeof publicUrl === 'string' && (publicUrl.startsWith('http://') || publicUrl.startsWith('https://'))) {
-              submissionData.append(fieldName, publicUrl);
-            } else {
-              console.warn(`Local blob URL found for ${fieldName} but no public HTTP storage URL available. Omitting blob string.`);
+            try {
+              const res = await fetch(videoValue);
+              const blob = await res.blob();
+              if (blob && blob.size > 0) {
+                submissionData.append(fieldName, blob, `${fieldName}.webm`);
+              }
+            } catch (err) {
+              console.warn(`Could not fetch blob for ${fieldName}:`, err);
+            }
+          } else if (videoValue.startsWith('data:')) {
+            const blob = dataUrlToBlob(videoValue);
+            if (blob) {
+              submissionData.append(fieldName, blob, `${fieldName}.webm`);
             }
           }
-        } else if (videoValue instanceof Blob || (typeof File !== 'undefined' && videoValue instanceof File)) {
-          submissionData.append(fieldName, videoValue, `${fieldName}.webm`);
         }
       };
 
       appendSmartDocPhoto('mayorCOE_photo', [photos.mayorCOE_photo, photos.enrollment, formData.mayorCOE_photo, formData.enrollment]);
-      appendSmartVideo('mayorCOE_video');
+      await appendSmartVideo('mayorCOE_video');
 
       appendSmartDocPhoto('mayorGrades_photo', [photos.mayorGrades_photo, photos.grades, formData.mayorGrades_photo, formData.grades]);
-      appendSmartVideo('mayorGrades_video');
+      await appendSmartVideo('mayorGrades_video');
 
       appendSmartDocPhoto('mayorIndigency_photo', [photos.mayorIndigency_photo, photos.indigency, formData.mayorIndigency_photo, formData.indigency]);
-      appendSmartVideo('mayorIndigency_video');
+      await appendSmartVideo('mayorIndigency_video');
 
-      appendSmartVideo('face_video');
+      await appendSmartVideo('face_video');
 
-      ['schoolIdFront_video', 'schoolIdBack_video'].forEach((videoField) => {
-        appendSmartVideo(videoField);
-      });
+      for (const videoField of ['schoolIdFront_video', 'schoolIdBack_video']) {
+        await appendSmartVideo(videoField);
+      }
 
       // Append 1NF merit proof certificates
       const activeMeritsWithPhotos = meritList.filter(m => m.title && m.title.trim() && m.photo);
