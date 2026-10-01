@@ -47,7 +47,7 @@ import {
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { adminAPI, scholarshipAPI, announcementService, messagingAPI } from '../../services/api';
-import { decryptUrl, preloadMediaUrls } from '../../services/CryptoService';
+import { decryptUrl, preloadMediaUrls, clearUrlCache } from '../../services/CryptoService';
 import socketService from '../../services/socket';
 import iskomatsLogo from '../../assets/logo.png';
 
@@ -1780,6 +1780,7 @@ export default function ScholarshipDashboard({
           if (scholarshipAPI.getApplicants?.invalidate) {
             scholarshipAPI.getApplicants.invalidate();
           }
+          clearUrlCache();
           loadApplicants();
           loadScholarships(false);
         }, 300);
@@ -4279,14 +4280,19 @@ export default function ScholarshipDashboard({
     if (inboxMode === 'applicants') {
       filtered = filtered.filter(c => !c.isAdminRoom && !c.room?.startsWith('provider_room_'));
 
-      // Ensure rejected and declined applicants are not shown in the inbox
+      // Ensure rejected, declined, cancelled, and suspended applicants are not shown in the inbox
       filtered = filtered.filter((c) => {
         const studentStatus = getStudentStatus(c.applicant_no, c.studentName, c.lastMessage?.studentStatus, c.studentEmail);
         const normStatus = (studentStatus || '').toLowerCase();
 
-        const isRejectedStatus = normStatus === 'rejected' || normStatus === 'declined';
+        const isHiddenStatus =
+          normStatus === 'rejected' ||
+          normStatus === 'declined' ||
+          normStatus === 'cancelled' ||
+          normStatus === 'suspended' ||
+          normStatus === 'submitted';
 
-        const isRejectedApplicant = (a) => {
+        const isHiddenApplicant = (a) => {
           const aNo = (a.applicant_no || a.applicantNo || a.applicant_id || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id) || '').toString();
           if (c.applicant_no && aNo && aNo === c.applicant_no.toString()) return true;
           const aEmail = (a.email || a.emailAddress || '').toLowerCase();
@@ -4294,11 +4300,13 @@ export default function ScholarshipDashboard({
           return false;
         };
 
-        const isRejectedList =
-          (data.rejected || []).some(isRejectedApplicant) ||
-          (data.declined || []).some(isRejectedApplicant);
+        const isInHiddenList =
+          (data.rejected || []).some(isHiddenApplicant) ||
+          (data.declined || []).some(isHiddenApplicant) ||
+          (data.cancelled || []).some(isHiddenApplicant) ||
+          (data.suspended || []).some(isHiddenApplicant);
 
-        return !isRejectedStatus && !isRejectedList;
+        return !isHiddenStatus && !isInHiddenList;
       });
 
       if (inboxFilter !== 'all') {

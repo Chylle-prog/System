@@ -3480,6 +3480,12 @@ def update_profile():
 
             conn.commit()
 
+            try:
+                from api_routes import invalidate_media_cache
+                invalidate_media_cache(request.user_no)
+            except Exception:
+                pass
+
             return jsonify({
                 'message': 'Progress saved successfully',
                 'document_urls': document_updates,
@@ -3527,6 +3533,23 @@ def check_sibling_restriction():
             restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=source_data)
             restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
             blocked = restriction['blocked'] and not is_skip_alternate_check_active(cur)
+
+            # Allow self-editing of an existing submitted application for this same scholarship
+            is_edit = bool(data.get('is_edit') or data.get('edit') or data.get('isEditMode'))
+            if not is_edit:
+                cur.execute(
+                    "SELECT is_accepted FROM applicant_status WHERE applicant_no = %s AND scholarship_no = %s",
+                    (request.user_no, scholarship_id)
+                )
+                exist_stat = cur.fetchone()
+                if exist_stat:
+                    raw_s = exist_stat.get('is_accepted') if isinstance(exist_stat, dict) else exist_stat[0]
+                    norm_s = 'Submitted' if raw_s in ('Submitted', 'Pending', None) else raw_s
+                    if norm_s == 'Submitted':
+                        is_edit = True
+
+            if is_edit and restriction.get('reason') == 'identity-pending-same-scholarship':
+                blocked = False
             
             return jsonify({
                 'success': True,
@@ -4155,6 +4178,12 @@ def submit_application():
             conn.commit()
 
             try:
+                from api_routes import invalidate_media_cache
+                invalidate_media_cache(current_user_id)
+            except Exception:
+                pass
+
+            try:
                 from api_routes import safe_emit
                 safe_emit('applicant_status_update', {
                     'applicant_no': current_user_id,
@@ -4393,6 +4422,21 @@ def cancel_application(scholarship_no):
                 pass
             
             conn.commit()
+
+            try:
+                from api_routes import invalidate_media_cache, safe_emit
+                invalidate_media_cache(request.user_no)
+                safe_emit('applicant_status_update', {
+                    'applicant_no': request.user_no,
+                    'applicantId': request.user_no,
+                    'scholarship_no': scholarship_no,
+                    'status': 'Cancelled',
+                    'newStatus': 'Cancelled',
+                    'is_accepted': 'Cancelled',
+                    'action': 'cancel'
+                }, broadcast=True)
+            except Exception:
+                pass
 
             return jsonify({'message': 'Application cancelled successfully'})
     except Exception as exc:

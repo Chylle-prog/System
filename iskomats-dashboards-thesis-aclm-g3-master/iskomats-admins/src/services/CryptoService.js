@@ -100,7 +100,30 @@ export const resolveProxiedMediaUrl = (url) => {
   return trimmed;
 };
 
-export const decryptUrl = (url, type = 'image/jpeg') => {
+export const clearUrlCache = (url = null) => {
+  if (url) {
+    const p = urlCache.get(url);
+    if (p) {
+      p.then((resolvedUrl) => {
+        if (typeof resolvedUrl === 'string' && resolvedUrl.startsWith('blob:')) {
+          try { URL.revokeObjectURL(resolvedUrl); } catch {}
+        }
+      }).catch(() => {});
+      urlCache.delete(url);
+    }
+  } else {
+    urlCache.forEach((promise) => {
+      promise.then((resolvedUrl) => {
+        if (typeof resolvedUrl === 'string' && resolvedUrl.startsWith('blob:')) {
+          try { URL.revokeObjectURL(resolvedUrl); } catch {}
+        }
+      }).catch(() => {});
+    });
+    urlCache.clear();
+  }
+};
+
+export const decryptUrl = (url, type = 'image/jpeg', forceRefresh = false) => {
   if (!url || typeof url !== 'string' || !url.startsWith('http')) return Promise.resolve(url);
 
   const isVideo = Boolean(
@@ -120,13 +143,16 @@ export const decryptUrl = (url, type = 'image/jpeg') => {
     return Promise.resolve(proxiedUrl);
   }
 
-  if (urlCache.has(url)) {
+  if (!forceRefresh && urlCache.has(url)) {
     return urlCache.get(url);
   }
 
   const decryptPromise = (async () => {
     try {
-      const response = await fetch(proxiedUrl, { cache: 'force-cache' });
+      const response = await fetch(proxiedUrl, { 
+        cache: forceRefresh ? 'no-cache' : 'default',
+        headers: { 'Pragma': 'no-cache' }
+      });
       if (!response.ok) {
         return url;
       }
@@ -162,7 +188,7 @@ export const decryptUrl = (url, type = 'image/jpeg') => {
 /**
  * Preload and decrypt multiple media URLs in parallel, prioritizing images
  */
-export const preloadMediaUrls = (urls = [], type = 'image/jpeg') => {
+export const preloadMediaUrls = (urls = [], type = 'image/jpeg', forceRefresh = false) => {
   if (!Array.isArray(urls) || urls.length === 0) return;
   
   const imageUrls = urls.filter(u => 
@@ -176,6 +202,6 @@ export const preloadMediaUrls = (urls = [], type = 'image/jpeg') => {
 
   // Concurrently warm images in browser cache
   imageUrls.forEach(url => {
-    decryptUrl(url, type || 'image/jpeg');
+    decryptUrl(url, type || 'image/jpeg', forceRefresh);
   });
 };

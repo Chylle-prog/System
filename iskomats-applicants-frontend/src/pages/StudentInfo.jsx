@@ -4315,14 +4315,17 @@ const StudentInfo = () => {
   // Automated Sibling Early Warning Check
   useEffect(() => {
     const checkSiblingRestriction = async () => {
+      // In edit mode, the user is editing their own existing application for this scholarship
+      if (isEditMode) return;
+
       // Only check if identifying family fields (last name + either father or mother) + scholarship ID are present
       let reqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id') || scholarshipDetails?.req_no || scholarshipDetails?.reqNo || scholarshipDetails?.id;
       const hasFamilyData = formData.lastName && (formData.fatherName || formData.motherName);
 
       if (reqNo && hasFamilyData) {
         try {
-          const res = await applicationAPI.checkSibling(parseInt(reqNo), formData);
-          if (res && res.blocked) {
+          const res = await applicationAPI.checkSibling(parseInt(reqNo), { ...formData, is_edit: isEditMode });
+          if (res && res.blocked && res.reason !== 'identity-pending-same-scholarship') {
             showPromptMessage(`Restriction Notice: ${res.message}`);
           }
         } catch (err) {
@@ -4333,7 +4336,7 @@ const StudentInfo = () => {
 
     const timer = setTimeout(checkSiblingRestriction, 1500); // Debounce to let page mount settle
     return () => clearTimeout(timer);
-  }, [formData.lastName, formData.fatherName, formData.motherName, searchParams, scholarshipDetails]);
+  }, [formData.lastName, formData.fatherName, formData.motherName, searchParams, scholarshipDetails, isEditMode]);
 
   const scholarshipSearchSnapshot = {
     scholarship: scholarshipName,
@@ -7628,9 +7631,9 @@ const StudentInfo = () => {
             message: 'Checking family application status... Please wait.'
           });
           setIsSavingStep(true);
-          const res = await applicationAPI.checkSibling(parseInt(reqNo), formData);
+          const res = await applicationAPI.checkSibling(parseInt(reqNo), { ...formData, is_edit: isEditMode });
           setIsSavingStep(false);
-          if (res && res.blocked) {
+          if (res && res.blocked && !(isEditMode && res.reason === 'identity-pending-same-scholarship')) {
             showPromptMessage(res.message || 'An applicant with the same last name and father or mother name has already applied for this scholarship.');
             return;
           }

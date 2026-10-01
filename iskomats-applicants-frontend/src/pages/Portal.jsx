@@ -3427,8 +3427,18 @@ const Portal = () => {
                   </button>
                 </div>
                 <div className="message-list">
-                  {scholarships.length > 0 ? (
-                    scholarships.map(scholar => (
+                  {(() => {
+                    // Hide chat rooms for apps that are Cancelled, Submitted, or Suspended
+                    const restrictedStatuses = ['Cancelled', 'Submitted', 'Suspended'];
+                    const visibleScholarships = scholarships.filter(scholar => {
+                      const roomProNo = scholar.id && scholar.id.includes('+') ? parseInt(scholar.id.split('+')[1]) : null;
+                      if (!roomProNo) return true;
+                      const matchingApp = applications.find(app => Number(app.pro_no || app.provider_no) === roomProNo);
+                      if (!matchingApp) return true;
+                      return !restrictedStatuses.includes(matchingApp.status);
+                    });
+                    return visibleScholarships.length > 0 ? (
+                    visibleScholarships.map(scholar => (
                       <div
                         key={scholar.id}
                         className={`message-item ${scholar.unread > 0 ? 'unread' : ''}`}
@@ -3466,7 +3476,8 @@ const Portal = () => {
                       <i className="fas fa-comments"></i>
                       <span>No messages here</span>
                     </div>
-                  )}
+                  );
+                  })()}
                 </div>
               </div>
             </div>
@@ -3663,16 +3674,39 @@ const Portal = () => {
             <div ref={chatMessagesEndRef} />
           </div>
           <div className="chat-input-area">
-            <input
-              type="text"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type your message..."
-            />
-            <button onClick={sendMessage}>
-              <i className="fas fa-paper-plane"></i>
-            </button>
+            {(() => {
+              const restrictedStatuses = ['Cancelled', 'Submitted', 'Suspended'];
+              const roomProNo = currentChatId && currentChatId.includes('+') ? parseInt(currentChatId.split('+')[1]) : null;
+              const matchingApp = roomProNo ? applications.find(app => Number(app.pro_no || app.provider_no) === roomProNo) : null;
+              const isRestricted = matchingApp && restrictedStatuses.includes(matchingApp.status);
+              if (isRestricted) {
+                return (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    padding: '0.6rem 1rem', background: 'rgba(0,0,0,0.04)',
+                    borderRadius: '8px', color: '#888', fontSize: '0.85rem',
+                    width: '100%', justifyContent: 'center', fontStyle: 'italic'
+                  }}>
+                    <i className="fas fa-lock" style={{ fontSize: '0.9rem' }}></i>
+                    Messaging is disabled — your application is {matchingApp.status.toLowerCase()}.
+                  </div>
+                );
+              }
+              return (
+                <>
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Type your message..."
+                  />
+                  <button onClick={sendMessage}>
+                    <i className="fas fa-paper-plane"></i>
+                  </button>
+                </>
+              );
+            })()}
           </div>
         </div>
       </div>

@@ -5458,49 +5458,6 @@ def fetch_cloud_media_bytes(url):
 
     return None
 
-def _get_media_cache_key(applicant_no, column_name, app_doc_no=None, scholarship_no=None):
-    return f"{applicant_no}_{column_name}_{app_doc_no or ''}_{scholarship_no or ''}"
-
-def _get_cached_media(key):
-    global _MEDIA_CACHE
-    entry = _MEDIA_CACHE.get(key)
-    if entry:
-        _MEDIA_CACHE.move_to_end(key)
-        return entry
-    return None
-
-def _set_cached_media(key, data, mime_type, etag):
-    global _MEDIA_CACHE, _current_media_cache_bytes
-    if not data or len(data) > _MAX_SINGLE_ITEM_BYTES:
-        return
-    
-    if key in _MEDIA_CACHE:
-        _current_media_cache_bytes -= len(_MEDIA_CACHE[key]['data'])
-        del _MEDIA_CACHE[key]
-    
-    while _MEDIA_CACHE and (_current_media_cache_bytes + len(data) > _MAX_MEDIA_CACHE_BYTES):
-        _, oldest_entry = _MEDIA_CACHE.popitem(last=False)
-        _current_media_cache_bytes -= len(oldest_entry['data'])
-    
-    _MEDIA_CACHE[key] = {
-        'data': data,
-        'mime_type': mime_type,
-        'etag': etag,
-        'time': time.time()
-    }
-    _current_media_cache_bytes += len(data)
-
-def invalidate_media_cache(applicant_no=None):
-    global _MEDIA_CACHE, _current_media_cache_bytes
-    if applicant_no is None:
-        _MEDIA_CACHE.clear()
-        _current_media_cache_bytes = 0
-    else:
-        prefix = f"{applicant_no}_"
-        keys_to_del = [k for k in _MEDIA_CACHE if k.startswith(prefix)]
-        for k in keys_to_del:
-            _current_media_cache_bytes -= len(_MEDIA_CACHE[k]['data'])
-            del _MEDIA_CACHE[k]
 
 
 @api_bp.route('/applicant-image/<int:applicant_no>/<column_name>', methods=['GET'])
@@ -5682,7 +5639,7 @@ def get_applicant_image(applicant_no, column_name):
                 response.headers['Accept-Ranges'] = 'bytes'
                 response.headers['Content-Range'] = f'bytes {start}-{end}/{total_len}'
                 response.headers['Content-Length'] = str(len(chunk))
-                response.headers['Cache-Control'] = 'public, max-age=86400, stale-while-revalidate=3600'
+                response.headers['Cache-Control'] = 'no-cache, must-revalidate'
                 if etag:
                     response.headers['ETag'] = etag
                 return response
@@ -5690,7 +5647,7 @@ def get_applicant_image(applicant_no, column_name):
                 response = Response(data, mimetype=mime_type)
                 response.headers['Accept-Ranges'] = 'bytes'
                 response.headers['Content-Length'] = str(total_len)
-                response.headers['Cache-Control'] = 'public, max-age=86400, stale-while-revalidate=3600'
+                response.headers['Cache-Control'] = 'no-cache, must-revalidate'
                 if etag:
                     response.headers['ETag'] = etag
                 return response
@@ -5702,9 +5659,9 @@ def get_applicant_image(applicant_no, column_name):
                 mimetype=mime_type,
                 as_attachment=False,
                 download_name=f'applicant_{applicant_no}_{column_name}.png',
-                max_age=86400
+                max_age=0
             )
-            response.headers['Cache-Control'] = 'public, max-age=86400, immutable'
+            response.headers['Cache-Control'] = 'no-cache, must-revalidate'
             if etag:
                 response.headers['ETag'] = etag
             return response
