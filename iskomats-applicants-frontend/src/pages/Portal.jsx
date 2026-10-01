@@ -3428,8 +3428,8 @@ const Portal = () => {
                 </div>
                 <div className="message-list">
                   {(() => {
-                    // Hide chat rooms for apps that are Cancelled, Submitted, or Suspended
-                    const restrictedStatuses = ['Cancelled', 'Submitted', 'Suspended'];
+                    // Hide chat rooms for apps that are Cancelled or Suspended
+                    const restrictedStatuses = ['Cancelled', 'Suspended'];
                     const visibleScholarships = scholarships.filter(scholar => {
                       const roomProNo = scholar.id && scholar.id.includes('+') ? parseInt(scholar.id.split('+')[1]) : null;
                       if (!roomProNo) return true;
@@ -3675,7 +3675,7 @@ const Portal = () => {
           </div>
           <div className="chat-input-area">
             {(() => {
-              const restrictedStatuses = ['Cancelled', 'Submitted', 'Suspended'];
+              const restrictedStatuses = ['Cancelled', 'Suspended'];
               const roomProNo = currentChatId && currentChatId.includes('+') ? parseInt(currentChatId.split('+')[1]) : null;
               const matchingApp = roomProNo ? applications.find(app => Number(app.pro_no || app.provider_no) === roomProNo) : null;
               const isRestricted = matchingApp && restrictedStatuses.includes(matchingApp.status);
@@ -3898,14 +3898,14 @@ const Portal = () => {
                     const isApproved = app.status === 'Approved' || app.status === 'Accepted';
                     const canEdit = isSubmitted && !isApproved && Boolean(app.can_edit ?? true);
                     const hasAnyAccepted = applications.some(a => a.status === 'Approved' || a.status === 'Accepted');
-                    const displayStatus = isApproved ? 'Approved' :
-                      isSubmitted ? 'Submitted' :
+                    const displayStatus = isApproved ? 'Accepted' :
+                      isSubmitted ? 'Pending' :
                       app.status;
 
-                    const badgeClass = displayStatus === 'Approved' ? 'status-approved' :
+                    const badgeClass = (displayStatus === 'Accepted' || displayStatus === 'Approved') ? 'status-approved' :
                       displayStatus === 'Rejected' ? 'status-rejected' :
                       displayStatus === 'Suspended' ? 'status-suspended' :
-                      displayStatus === 'Cancelled' ? 'status-cancelled' : 'status-submitted';
+                      displayStatus === 'Cancelled' ? 'status-cancelled' : 'status-pending';
 
                     return (
                       <div key={app.scholarship_no || app.req_no || index} className="application-item">

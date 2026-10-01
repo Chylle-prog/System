@@ -22,7 +22,7 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
     if (initialVideoUrl) {
       setVideoError(null);
       setFileName('Saved video proof');
-      if (typeof initialVideoUrl === 'string' && (initialVideoUrl.startsWith('http://') || initialVideoUrl.startsWith('https://') || initialVideoUrl.startsWith('/'))) {
+      if (typeof initialVideoUrl === 'string' && (initialVideoUrl.startsWith('http://') || initialVideoUrl.startsWith('https://'))) {
         import('../services/CryptoService').then(({ decryptUrl }) => {
           decryptUrl(initialVideoUrl, 'video/mp4').then(resolved => {
             if (isMounted && resolved) {
@@ -32,6 +32,15 @@ const VideoRecorder = ({ onRecordComplete, label = "Upload Video", initialVideoU
             if (isMounted) setPreviewUrl(initialVideoUrl);
           });
         });
+      } else if (typeof initialVideoUrl === 'string' && initialVideoUrl.startsWith('/')) {
+        // Relative path from backend — make it absolute using the API origin
+        const apiOrigin = (
+          (typeof window !== 'undefined' && window.__API_ORIGIN__) ||
+          import.meta.env.VITE_API_BASE_URL ||
+          import.meta.env.VITE_API_URL ||
+          'http://localhost:5000'
+        ).replace(/\/+$/, '').replace(/\/api\/?$/, '');
+        if (isMounted) setPreviewUrl(`${apiOrigin}${initialVideoUrl}`);
       } else {
         setPreviewUrl(initialVideoUrl);
       }

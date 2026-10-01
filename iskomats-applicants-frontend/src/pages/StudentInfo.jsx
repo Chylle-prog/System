@@ -7429,6 +7429,7 @@ const StudentInfo = () => {
     if (file && window.compressImage) {
       window.compressImage(file).then(compressedBase64 => {
         setSignaturePreview(compressedBase64);
+        setDrawnSignature(null); // Clear drawn signature so uploaded photo takes priority
         triggerBackgroundUpload('signature_data', compressedBase64);
       });
     }
@@ -7503,6 +7504,7 @@ const StudentInfo = () => {
       setSignatureVerified(null); // Reset verification when updated
       setSignatureStatus('');
       setDrawnSignature(dataUrl);
+      setSignaturePreview(null); // Clear old URL so new drawn signature takes priority on submit
       triggerBackgroundUpload('signature_data', dataUrl);
     } else {
       showPromptMessage('Please provide a signature first.');
@@ -7948,8 +7950,17 @@ const StudentInfo = () => {
 
       appendSmartDocPhoto('id_front', [photos.id_front, schoolIdPhotos.front, formData.schoolIdFront, formData.id_front]);
       appendSmartDocPhoto('id_back', [photos.id_back, schoolIdPhotos.back, formData.schoolIdBack, formData.id_back]);
-      appendSmartDocPhoto('id_pic', [photos.face_photo, formData.face_photo, formData.id_pic, photos.id_pic, faceVerificationPreview]);
-      appendSmartDocPhoto('face_photo', [photos.face_photo, formData.face_photo, formData.id_pic, photos.id_pic, faceVerificationPreview]);
+      // Face photo: prefer newly captured/uploaded data URLs over old stored HTTP URLs
+      const newFaceDataUrl = (faceVerificationPreview && !faceVerificationPreview.startsWith('http'))
+        ? faceVerificationPreview
+        : ((photos.face_photo && !photos.face_photo.startsWith('http')) ? photos.face_photo : null);
+      if (newFaceDataUrl) {
+        submissionData.append('id_pic', newFaceDataUrl);
+        submissionData.append('face_photo', newFaceDataUrl);
+      } else {
+        appendSmartDocPhoto('id_pic', [photos.face_photo, formData.face_photo, formData.id_pic, photos.id_pic, faceVerificationPreview]);
+        appendSmartDocPhoto('face_photo', [photos.face_photo, formData.face_photo, formData.id_pic, photos.id_pic, faceVerificationPreview]);
+      }
 
       const finalSignature = signaturePreview || drawnSignature || formData.applicantSignatureName;
       if (finalSignature) {

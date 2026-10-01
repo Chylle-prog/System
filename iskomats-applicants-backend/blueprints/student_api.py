@@ -3723,12 +3723,12 @@ def submit_application():
                 except (ValueError, TypeError):
                     pass
 
-            # Enforce edit restriction: 'Submitted' and 'Approved' applications can be modified.
+            # Enforce edit restriction: 'Pending' (and 'Submitted') applications can be modified.
             # 'Cancelled' applications are only allowed to reapply under specific conditions.
-            target_submission_status = 'Submitted'
+            target_submission_status = 'Pending'
             if existing_app_status:
                 raw_stat = existing_app_status.get('is_accepted')
-                norm_stat = 'Submitted' if raw_stat in ('Submitted', 'Pending', None) else ('Approved' if raw_stat in ('Approved', 'Accepted') else raw_stat)
+                norm_stat = 'Pending' if raw_stat in ('Submitted', 'Pending', None) else ('Accepted' if raw_stat in ('Approved', 'Accepted') else raw_stat)
                 if norm_stat in ('Approved', 'Accepted'):
                     return jsonify({
                         'message': "Cannot edit this application because it has already been accepted/approved."
@@ -3757,7 +3757,7 @@ def submit_application():
                         return jsonify({
                             'message': "Cannot reapply: This application was cancelled by an administrator and cannot be resubmitted."
                         }), 403
-                elif norm_stat not in ('Submitted',):
+                elif norm_stat not in ('Pending', 'Submitted'):
                     if norm_stat == 'Suspended':
                         return jsonify({
                             'message': "Cannot apply: Your application for this scholarship was suspended by an administrator."
@@ -3765,7 +3765,7 @@ def submit_application():
                     return jsonify({
                         'message': f"Cannot edit or submit this application. Current status is '{norm_stat}'."
                     }), 403
-                target_submission_status = 'Submitted'
+                target_submission_status = 'Pending'
 
 
             preliminary_identity = build_restriction_identity_from_applicant(applicant, source_data=request_payload)
@@ -3778,9 +3778,9 @@ def submit_application():
             restriction_scope = get_identity_restriction_scope(cur, applicant, source_data=request_payload)
             restriction = get_scholarship_restriction(restriction_scope, scholarship_id)
             if restriction['blocked'] and not is_skip_alternate_check_active(cur):
-                # When editing an already submitted application for this same scholarship,
+                # When editing an already submitted/pending application for this same scholarship,
                 # do not self-block on same-scholarship status.
-                is_self_edit = existing_app_status and norm_stat == 'Submitted' and restriction['reason'] == 'identity-pending-same-scholarship'
+                is_self_edit = existing_app_status and norm_stat in ('Pending', 'Submitted') and restriction['reason'] == 'identity-pending-same-scholarship'
                 if not is_self_edit:
                     if restriction['auto_reject']:
                         cur.execute(
@@ -4398,8 +4398,8 @@ def cancel_application(scholarship_no):
                 return jsonify({'message': 'Application not found or does not belong to you'}), 404
 
             raw_stat = app_row.get('is_accepted')
-            norm_stat = 'Submitted' if raw_stat in ('Submitted', 'Pending', None) else ('Approved' if raw_stat in ('Approved', 'Accepted') else raw_stat)
-            if norm_stat != 'Submitted':
+            norm_stat = 'Pending' if raw_stat in ('Submitted', 'Pending', None) else ('Accepted' if raw_stat in ('Approved', 'Accepted') else raw_stat)
+            if norm_stat not in ('Pending', 'Submitted'):
                 return jsonify({'message': f"Cannot cancel application. Current status is '{norm_stat}'."}), 400
 
             # Mark the application as Cancelled
@@ -4509,8 +4509,8 @@ def save_application_draft():
             existing_stat = cur.fetchone()
             if existing_stat:
                 raw_stat = existing_stat.get('is_accepted')
-                norm_stat = 'Submitted' if raw_stat in ('Submitted', 'Pending', None) else ('Approved' if raw_stat in ('Approved', 'Accepted') else raw_stat)
-                if norm_stat not in ('Submitted', 'Approved'):
+                norm_stat = 'Pending' if raw_stat in ('Submitted', 'Pending', None) else ('Accepted' if raw_stat in ('Approved', 'Accepted') else raw_stat)
+                if norm_stat not in ('Pending', 'Submitted', 'Accepted', 'Approved'):
                     return jsonify({'success': False, 'message': f"Cannot edit application with status '{norm_stat}'"}), 403
 
             json_val = json.dumps(draft_data) if isinstance(draft_data, dict) else str(draft_data)
@@ -4576,13 +4576,13 @@ def init_edit_application(scholarship_no):
                 return jsonify({'success': False, 'message': 'Application not found'}), 404
 
             raw_stat = app_row.get('is_accepted')
-            norm_stat = 'Submitted' if raw_stat in ('Submitted', 'Pending', None) else ('Approved' if raw_stat in ('Approved', 'Accepted') else raw_stat)
+            norm_stat = 'Pending' if raw_stat in ('Submitted', 'Pending', None) else ('Accepted' if raw_stat in ('Approved', 'Accepted') else raw_stat)
             if norm_stat in ('Approved', 'Accepted'):
                 return jsonify({
                     'success': False,
                     'message': "This application has already been accepted and cannot be edited."
                 }), 403
-            if norm_stat != 'Submitted':
+            if norm_stat not in ('Pending', 'Submitted'):
                 return jsonify({
                     'success': False,
                     'message': f"This application has already been marked as '{norm_stat}' and cannot be edited."
@@ -4993,11 +4993,11 @@ def get_my_applications():
                     s.pro_no,
                     sp.provider_name,
                     CASE
-                        WHEN ast.is_accepted IN ('Approved', 'Accepted') THEN 'Approved'
+                        WHEN ast.is_accepted IN ('Approved', 'Accepted') THEN 'Accepted'
                         WHEN ast.is_accepted = 'Rejected' THEN 'Rejected'
                         WHEN ast.is_accepted = 'Cancelled' THEN 'Cancelled'
                         WHEN ast.is_accepted = 'Suspended' THEN 'Suspended'
-                        ELSE 'Submitted'
+                        ELSE 'Pending'
                     END as status,
                     ast.status_updated,
                     ast.cancellation_reason,

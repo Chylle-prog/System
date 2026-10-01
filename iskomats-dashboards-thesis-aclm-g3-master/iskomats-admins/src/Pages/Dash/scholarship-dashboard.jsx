@@ -4289,8 +4289,7 @@ export default function ScholarshipDashboard({
           normStatus === 'rejected' ||
           normStatus === 'declined' ||
           normStatus === 'cancelled' ||
-          normStatus === 'suspended' ||
-          normStatus === 'submitted';
+          normStatus === 'suspended';
 
         const isHiddenApplicant = (a) => {
           const aNo = (a.applicant_no || a.applicantNo || a.applicant_id || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id) || '').toString();
@@ -7969,7 +7968,7 @@ export default function ScholarshipDashboard({
                           }`}>
                           <div className="flex items-center justify-between mb-1.5 sm:mb-2 gap-4">
                             <span className={`font-semibold text-[11px] sm:text-xs ${isFromMe ? 'text-white/90' : 'text-[#800020]'}`}>
-                              {isFromMe ? 'Me' : (msg.studentName || msg.username || 'Applicant')}
+                              {isFromMe ? 'Me' : (currentConversation?.studentName || msg.studentName || 'Applicant')}
                             </span>
                             <span className={`text-[9px] sm:text-[10px] flex items-center gap-1 ${isFromMe ? 'text-white/70' : 'text-gray-500'}`}>
                               <FaClock className="text-[9px]" /> {formatDate(msg.timestamp)}
