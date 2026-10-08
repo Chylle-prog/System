@@ -95,7 +95,7 @@ export const resolveProxiedMediaUrl = (url) => {
     const origin = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'https://iskomats-backend.onrender.com')
       .replace(/\/+$/, '')
       .replace(/\/api\/?$/, '');
-    return `${origin}/api/storage/proxy?url=${encodeURIComponent(trimmed)}`;
+    return `${origin}/api/admin/storage/proxy?url=${encodeURIComponent(trimmed)}`;
   }
   return trimmed;
 };
@@ -154,18 +154,24 @@ export const decryptUrl = (url, type = 'image/jpeg', forceRefresh = false) => {
         headers: { 'Pragma': 'no-cache' }
       });
 
-      // Resilient fallback for admin/student routing variations
-      if (!response.ok && proxiedUrl.includes('/api/storage/proxy')) {
-        const adminProxyUrl = proxiedUrl.replace('/api/storage/proxy', '/api/admin/storage/proxy');
-        try {
-          const fallbackRes = await fetch(adminProxyUrl, {
-            cache: forceRefresh ? 'no-cache' : 'default',
-            headers: { 'Pragma': 'no-cache' }
-          });
-          if (fallbackRes.ok) {
-            response = fallbackRes;
-          }
-        } catch (_) {}
+      // Resilient fallback if /api/admin/storage/proxy fails (e.g. try /api/storage/proxy or /api/student/storage/proxy)
+      if (!response.ok && proxiedUrl.includes('/api/admin/storage/proxy')) {
+        const altUrls = [
+          proxiedUrl.replace('/api/admin/storage/proxy', '/api/storage/proxy'),
+          proxiedUrl.replace('/api/admin/storage/proxy', '/api/student/storage/proxy')
+        ];
+        for (const altUrl of altUrls) {
+          try {
+            const fallbackRes = await fetch(altUrl, {
+              cache: forceRefresh ? 'no-cache' : 'default',
+              headers: { 'Pragma': 'no-cache' }
+            });
+            if (fallbackRes.ok) {
+              response = fallbackRes;
+              break;
+            }
+          } catch (_) {}
+        }
       }
 
       if (!response.ok) {

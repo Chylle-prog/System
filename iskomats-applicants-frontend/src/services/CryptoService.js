@@ -141,7 +141,7 @@ export const resolveProxiedMediaUrl = (url) => {
         .replace(/\/+$/, '')
         .replace(/\/api\/?$/, '');
     }
-    return `${origin}/api/storage/proxy?url=${encodeURIComponent(trimmed)}`;
+    return `${origin}/api/student/storage/proxy?url=${encodeURIComponent(trimmed)}`;
   }
   return trimmed;
 };
@@ -194,14 +194,20 @@ export const decryptUrl = (url, type = 'image/jpeg') => {
         response = await fetch(proxiedUrl).catch(() => null);
       }
 
-      if ((!response || !response.ok) && proxiedUrl.includes('/api/storage/proxy')) {
-        const studentProxyUrl = proxiedUrl.replace('/api/storage/proxy', '/api/student/storage/proxy');
-        try {
-          const fallbackRes = await fetch(studentProxyUrl, { headers, cache: 'default' });
-          if (fallbackRes && fallbackRes.ok) {
-            response = fallbackRes;
-          }
-        } catch (_) {}
+      if ((!response || !response.ok) && proxiedUrl.includes('/api/student/storage/proxy')) {
+        const altUrls = [
+          proxiedUrl.replace('/api/student/storage/proxy', '/api/storage/proxy'),
+          proxiedUrl.replace('/api/student/storage/proxy', '/api/admin/storage/proxy')
+        ];
+        for (const altUrl of altUrls) {
+          try {
+            const fallbackRes = await fetch(altUrl, { headers, cache: 'default' });
+            if (fallbackRes && fallbackRes.ok) {
+              response = fallbackRes;
+              break;
+            }
+          } catch (_) {}
+        }
       }
 
       if (!response || !response.ok) return url;
