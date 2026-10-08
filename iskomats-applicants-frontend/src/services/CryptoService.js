@@ -194,6 +194,16 @@ export const decryptUrl = (url, type = 'image/jpeg') => {
         response = await fetch(proxiedUrl).catch(() => null);
       }
 
+      if ((!response || !response.ok) && proxiedUrl.includes('/api/storage/proxy')) {
+        const studentProxyUrl = proxiedUrl.replace('/api/storage/proxy', '/api/student/storage/proxy');
+        try {
+          const fallbackRes = await fetch(studentProxyUrl, { headers, cache: 'default' });
+          if (fallbackRes && fallbackRes.ok) {
+            response = fallbackRes;
+          }
+        } catch (_) {}
+      }
+
       if (!response || !response.ok) return url;
       const blob = await response.blob();
       if (!blob || blob.size === 0) return url;

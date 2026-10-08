@@ -149,10 +149,25 @@ export const decryptUrl = (url, type = 'image/jpeg', forceRefresh = false) => {
 
   const decryptPromise = (async () => {
     try {
-      const response = await fetch(proxiedUrl, { 
+      let response = await fetch(proxiedUrl, { 
         cache: forceRefresh ? 'no-cache' : 'default',
         headers: { 'Pragma': 'no-cache' }
       });
+
+      // Resilient fallback for admin/student routing variations
+      if (!response.ok && proxiedUrl.includes('/api/storage/proxy')) {
+        const adminProxyUrl = proxiedUrl.replace('/api/storage/proxy', '/api/admin/storage/proxy');
+        try {
+          const fallbackRes = await fetch(adminProxyUrl, {
+            cache: forceRefresh ? 'no-cache' : 'default',
+            headers: { 'Pragma': 'no-cache' }
+          });
+          if (fallbackRes.ok) {
+            response = fallbackRes;
+          }
+        } catch (_) {}
+      }
+
       if (!response.ok) {
         return url;
       }
