@@ -2894,6 +2894,9 @@ def student_proxy_storage_file(bucket_name=None, file_path=None):
     if not data:
         return jsonify({'message': 'File not found or access denied'}), 404
 
+    from services.crypto_service import decrypt_if_encrypted
+    data = decrypt_if_encrypted(data)
+
     mime_type = 'image/jpeg'
     if (file_path and file_path.endswith('.png')) or (target_url and '.png' in target_url) or data.startswith(b'\x89PNG'):
         mime_type = 'image/png'

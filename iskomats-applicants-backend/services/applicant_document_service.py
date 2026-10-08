@@ -513,6 +513,62 @@ def normalize_supabase_url(url):
         return url
 
     current_url = os.environ.get('SUPABASE_URL', '').strip()
+    raw_bucket = os.environ.get('SUPABASE_STORAGE_BUCKET', 'document_images').strip()
+    img_bucket = raw_bucket.split(',')[0].strip() if ',' in raw_bucket else (raw_bucket or 'document_images')
+    vid_bucket = 'document_videos' # Hardcoded as seen in user's Supabase dashboard
+    
+    if not current_url:
+        return url
+
+    try:
+        current_host = urlparse(current_url).netloc.lower()
+        parsed_url = urlparse(url)
+        path = parsed_url.path
+        
+        if '/storage/v1/object/' in path:
+            parts = path.split('/')
+            if len(parts) > 5:
+                # parts[5] is the bucket name
+                old_bucket = parts[5]
+                
+                # 1. Determine the correct target bucket
+                # If it's already one of our new buckets, keep it.
+                # If it's an old bucket (like iskomats-files), decide based on folder/file name
+                target_bucket = old_bucket
+                
+                configured_buckets = {b.strip() for b in raw_bucket.split(',') if b.strip()}
+                valid_buckets = configured_buckets | {img_bucket, vid_bucket, 'announcement_images', 'scholarship_images', 'applicant_documents', 'documents', 'document_images', 'document_videos'}
+                
+                if old_bucket not in valid_buckets:
+                    # Logic to migrate from old 'iskomats-files' or other buckets
+                    if '/videos/' in path or 'vid_url' in path or old_bucket == 'document_videos':
+                        target_bucket = vid_bucket
+                    else:
+                        target_bucket = img_bucket
+                
+                # 2. Rewrite path if bucket changed or if it's improperly nested
+                bucket_changed = (old_bucket != target_bucket)
+                
+                # Deduplication: if parts[6] is the same as the bucket name, it's likely a nested error (bucket/bucket/path)
+                # This fixes the "document_images/document_images/videos" issue.
+                is_nested = (len(parts) > 6 and parts[6] == target_bucket)
+                if bucket_changed or is_nested:
+                    parts[5] = target_bucket
+                    if is_nested:
+                        # Remove the duplicate bucket folder
+                        parts.pop(6)
+                    path = '/'.join(parts)
+            
+            # 3. Always update the host to the current project domain
+            query_str = ('?' + parsed_url.query) if parsed_url.query else ''
+            return f"https://{current_host}{path}{query_str}"
+
+    except Exception:
+        pass
+
+    return url
+
+    current_url = os.environ.get('SUPABASE_URL', '').strip()
     img_bucket = os.environ.get('SUPABASE_STORAGE_BUCKET', 'document_images').strip()
     vid_bucket = 'document_videos' # Hardcoded as seen in user's Supabase dashboard
     

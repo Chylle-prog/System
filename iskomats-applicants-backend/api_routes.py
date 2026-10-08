@@ -5888,6 +5888,9 @@ def proxy_storage_file(bucket_name=None, file_path=None):
     if not data:
         return jsonify({'message': 'File not found or access denied'}), 404
 
+    from services.crypto_service import decrypt_if_encrypted
+    data = decrypt_if_encrypted(data)
+
     mime_type = get_mime_type(data)
     if (file_path and file_path.endswith('.mp4')) or (target_url and '.mp4' in target_url):
         mime_type = 'video/mp4'
