@@ -194,8 +194,12 @@ export const decryptUrl = (url, type = 'image/jpeg', forceRefresh = false) => {
         }
       }
 
-      // Unencrypted file — browser can use original URL or object URL directly
-      return url;
+      // Return local Object URL from the downloaded blob so private cloud storage URLs render seamlessly
+      try {
+        return URL.createObjectURL(blob);
+      } catch (e) {
+        return url;
+      }
     } catch (error) {
       console.warn('[CRYPTO] Failed to fetch and decrypt URL:', url, error);
       return url;
