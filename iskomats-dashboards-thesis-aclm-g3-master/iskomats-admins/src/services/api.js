@@ -309,6 +309,9 @@ export const messagingAPI = {
   sendMessage: (roomId, messageData) =>
     api.post(`/messages/${encodeURIComponent(roomId)}`, messageData)
       .catch(() => api.post(`/admin/messages/${encodeURIComponent(roomId)}`, messageData)),
+  markRoomAsRead: (roomId, applicantNo = null) =>
+    api.post(`/messages/${encodeURIComponent(roomId)}/read`, { applicant_no: applicantNo })
+      .catch(() => api.post(`/admin/messages/${encodeURIComponent(roomId)}/read`, { applicant_no: applicantNo })),
 };
 
 export default api;

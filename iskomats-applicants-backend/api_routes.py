@@ -2035,6 +2035,7 @@ def initialize_auto_chat_rooms():
                 sender_id INTEGER,
                 is_student_sender BOOLEAN,
                 message TEXT NOT NULL,
+                is_read BOOLEAN DEFAULT FALSE,
                 timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -2050,6 +2051,11 @@ def initialize_auto_chat_rooms():
         if 'is_student_sender' not in existing_columns:
             print("[MIGRATION] Adding missing column is_student_sender to message as BOOLEAN", flush=True)
             cursor.execute("ALTER TABLE message ADD COLUMN is_student_sender BOOLEAN")
+
+        if 'is_read' not in existing_columns:
+            print("[MIGRATION] Adding missing column is_read to message as BOOLEAN", flush=True)
+            cursor.execute("ALTER TABLE message ADD COLUMN is_read BOOLEAN DEFAULT FALSE")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_is_read ON message(is_read)")
             
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_app_pro ON message(applicant_no, pro_no)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_room ON message(room)")
@@ -2294,6 +2300,7 @@ def init_socketio(socketio):
                         query = """
                             SELECT m.m_id, m.username, m.message, m.timestamp,
                                    m.sender_id, m.is_student_sender,
+                                   COALESCE(m.is_read, FALSE) as is_read,
                                    COALESCE(ast.is_accepted, 'Pending') as student_status
                             FROM message m
                             LEFT JOIN LATERAL (
@@ -2323,7 +2330,9 @@ def init_socketio(socketio):
                     except Exception:
                         query = """
                             SELECT m.m_id, m.username, m.message, m.timestamp,
-                                   m.sender_id, m.is_student_sender, 'Pending' as student_status
+                                   m.sender_id, m.is_student_sender,
+                                   COALESCE(m.is_read, FALSE) as is_read,
+                                   'Pending' as student_status
                             FROM message m
                             WHERE m.room = %s
                         """
@@ -2331,8 +2340,13 @@ def init_socketio(socketio):
                 else:
                     query = """
                         SELECT m.m_id, m.username, m.message, m.timestamp,
-                               m.sender_id, m.is_student_sender, 'Pending' as student_status
+                               m.sender_id, m.is_student_sender,
+                               COALESCE(m.is_read, FALSE) as is_read,
+                               'Pending' as student_status,
+                               NULLIF(TRIM(CONCAT_WS(' ', a.first_name, a.last_name)), '') as applicant_name,
+                               a.first_name, a.last_name
                         FROM message m
+                        LEFT JOIN applicants a ON a.applicant_no = m.applicant_no
                         WHERE m.room = %s
                     """
                     params = [room]
@@ -2346,12 +2360,16 @@ def init_socketio(socketio):
                     fmt = {
                         'm_id': msg['m_id'],
                         'username': msg['username'],
+                        'applicant_name': msg.get('applicant_name'),
+                        'first_name': msg.get('first_name'),
+                        'last_name': msg.get('last_name'),
                         'sender_id': msg['sender_id'],
                         'is_student_sender': msg['is_student_sender'],
                         'message': msg['message'],
                         'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(msg['timestamp'], 'strftime') else str(msg['timestamp']),
                         'room': room,
-                        'student_status': msg.get('student_status', 'Pending')
+                        'student_status': msg.get('student_status', 'Pending'),
+                        'read': bool(msg.get('is_read', False))
                     }
                     formatted_list.append(fmt)
 
@@ -2361,6 +2379,47 @@ def init_socketio(socketio):
                 })
         except Exception as e:
             print(f"[SOCKET HISTORY ERROR] Error loading history for room {room}: {e}")
+
+    @socketio.on('mark_read')
+    def on_mark_read(data):
+        try:
+            room = data.get('room') if isinstance(data, dict) else None
+            app_no = data.get('applicant_no') if isinstance(data, dict) else None
+            if not room and not app_no:
+                return
+            with get_db() as conn:
+                cursor = conn.cursor()
+                if app_no and room and '+' in room:
+                    try:
+                        p_no = int(room.split('+')[1])
+                        cursor.execute("""
+                            UPDATE message
+                            SET is_read = TRUE
+                            WHERE (room = %s OR (applicant_no = %s AND pro_no = %s))
+                              AND (is_read IS NOT TRUE)
+                        """, (room, int(app_no), p_no))
+                    except Exception:
+                        cursor.execute("""
+                            UPDATE message
+                            SET is_read = TRUE
+                            WHERE (room = %s OR applicant_no = %s)
+                              AND (is_read IS NOT TRUE)
+                        """, (room, int(app_no)))
+                elif room:
+                    cursor.execute("""
+                        UPDATE message
+                        SET is_read = TRUE
+                        WHERE room = %s AND (is_read IS NOT TRUE)
+                    """, (room,))
+                elif app_no:
+                    cursor.execute("""
+                        UPDATE message
+                        SET is_read = TRUE
+                        WHERE applicant_no = %s AND (is_read IS NOT TRUE)
+                    """, (int(app_no),))
+                conn.commit()
+        except Exception as e:
+            print(f"[SOCKET MARK READ ERROR] {e}", flush=True)
 
     @socketio.on('message')
     def on_message(data):
@@ -6651,8 +6710,12 @@ def get_all_messages_rest(pro_no=None):
                 cursor.execute(f"""
                     SELECT m.m_id, m.applicant_no, m.pro_no, m.room, m.username,
                            m.message, m.timestamp, m.sender_id, m.is_student_sender,
-                           COALESCE(ast.is_accepted, 'Pending') as student_status
+                           COALESCE(m.is_read, FALSE) as is_read,
+                           COALESCE(ast.is_accepted, 'Pending') as student_status,
+                           NULLIF(TRIM(CONCAT_WS(' ', a.first_name, a.last_name)), '') as applicant_name,
+                           a.first_name, a.last_name
                     FROM message m
+                    LEFT JOIN applicants a ON a.applicant_no = m.applicant_no
                     LEFT JOIN LATERAL (
                         SELECT ast_sub.is_accepted 
                         FROM applicant_status ast_sub
@@ -6670,8 +6733,12 @@ def get_all_messages_rest(pro_no=None):
                 cursor.execute(f"""
                     SELECT m.m_id, m.applicant_no, m.pro_no, m.room, m.username,
                            m.message, m.timestamp, m.sender_id, m.is_student_sender,
-                           COALESCE(ast.is_accepted, 'Pending') as student_status
+                           COALESCE(m.is_read, FALSE) as is_read,
+                           COALESCE(ast.is_accepted, 'Pending') as student_status,
+                           NULLIF(TRIM(CONCAT_WS(' ', a.first_name, a.last_name)), '') as applicant_name,
+                           a.first_name, a.last_name
                     FROM message m
+                    LEFT JOIN applicants a ON a.applicant_no = m.applicant_no
                     LEFT JOIN LATERAL (
                         SELECT ast_sub.is_accepted 
                         FROM applicant_status ast_sub
@@ -6691,16 +6758,66 @@ def get_all_messages_rest(pro_no=None):
                 'pro_no': r['pro_no'],
                 'room': r['room'],
                 'username': r['username'],
+                'applicant_name': r.get('applicant_name'),
+                'first_name': r.get('first_name'),
+                'last_name': r.get('last_name'),
                 'message': r['message'],
                 'timestamp': r['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(r['timestamp'], 'strftime') else str(r['timestamp']),
                 'sender_id': r['sender_id'],
                 'is_student_sender': r['is_student_sender'],
-                'student_status': r['student_status'] or 'Pending'
+                'student_status': r['student_status'] or 'Pending',
+                'read': bool(r.get('is_read', False))
             } for r in rows]
             return jsonify({'success': True, 'messages': messages}), 200
     except Exception as e:
         print(f"[REST ALL MESSAGES ERROR] {e}", flush=True)
         return jsonify({'success': False, 'error': str(e), 'messages': []}), 200
+
+@api_bp.route('/messages/<path:room_id>/read', methods=['POST'])
+@api_bp.route('/admin/messages/<path:room_id>/read', methods=['POST'])
+def mark_room_as_read_rest(room_id):
+    """Mark all messages in the specified room as read."""
+    try:
+        data = request.json or {}
+        app_no = data.get('applicant_no')
+        pro_no = None
+        if '+' in room_id:
+            try:
+                parts = room_id.split('+')
+                if not app_no:
+                    app_no = int(parts[0])
+                pro_no = int(parts[1])
+            except Exception:
+                pass
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            if app_no and pro_no:
+                cursor.execute("""
+                    UPDATE message
+                    SET is_read = TRUE
+                    WHERE (room = %s OR (applicant_no = %s AND pro_no = %s))
+                      AND (is_read IS NOT TRUE)
+                """, (room_id, int(app_no), int(pro_no)))
+            elif app_no:
+                cursor.execute("""
+                    UPDATE message
+                    SET is_read = TRUE
+                    WHERE (room = %s OR applicant_no = %s)
+                      AND (is_read IS NOT TRUE)
+                """, (room_id, int(app_no)))
+            else:
+                cursor.execute("""
+                    UPDATE message
+                    SET is_read = TRUE
+                    WHERE room = %s
+                      AND (is_read IS NOT TRUE)
+                """, (room_id,))
+            conn.commit()
+            return jsonify({'success': True, 'message': 'Messages marked as read'}), 200
+    except Exception as e:
+        print(f"[MARK READ ERROR] {e}", flush=True)
+        return jsonify({'success': False, 'error': str(e)}), 200
 
 @api_bp.route('/messages/<path:room_id>', methods=['GET', 'POST'])
 def handle_room_messages_rest(room_id):
@@ -6777,14 +6894,16 @@ def handle_room_messages_rest(room_id):
                 cursor = conn.cursor()
                 if app_no and pro_no:
                     cursor.execute("""
-                        SELECT m_id, room, username, message, timestamp, sender_id, is_student_sender
+                        SELECT m_id, room, username, message, timestamp, sender_id, is_student_sender,
+                               COALESCE(is_read, FALSE) as is_read
                         FROM message
                         WHERE room = %s OR (applicant_no = %s AND pro_no = %s)
                         ORDER BY timestamp ASC
                     """, (room_id, app_no, pro_no))
                 else:
                     cursor.execute("""
-                        SELECT m_id, room, username, message, timestamp, sender_id, is_student_sender
+                        SELECT m_id, room, username, message, timestamp, sender_id, is_student_sender,
+                               COALESCE(is_read, FALSE) as is_read
                         FROM message
                         WHERE room = %s
                         ORDER BY timestamp ASC
@@ -6798,7 +6917,8 @@ def handle_room_messages_rest(room_id):
                     'message': r['message'],
                     'timestamp': r['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(r['timestamp'], 'strftime') else str(r['timestamp']),
                     'sender_id': r['sender_id'],
-                    'is_student_sender': r['is_student_sender']
+                    'is_student_sender': r['is_student_sender'],
+                    'read': bool(r.get('is_read', False))
                 } for r in rows]
                 return jsonify({'success': True, 'messages': messages}), 200
         except Exception as e:

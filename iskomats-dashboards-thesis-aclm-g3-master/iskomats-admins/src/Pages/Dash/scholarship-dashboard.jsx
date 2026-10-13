@@ -1517,6 +1517,28 @@ export default function ScholarshipDashboard({
   const readMessageIdsRef = useRef(new Set());
   const readRoomsRef = useRef(new Set());
 
+  // Restore persistent read state from localStorage on initial render and provider switch
+  useEffect(() => {
+    try {
+      const storedRooms = localStorage.getItem(`iskomats_admin_read_rooms_${activeProviderNo || 1}`);
+      if (storedRooms) {
+        const parsed = JSON.parse(storedRooms);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(r => readRoomsRef.current.add(String(r)));
+        }
+      }
+      const storedMsgs = localStorage.getItem(`iskomats_admin_read_msg_ids_${activeProviderNo || 1}`);
+      if (storedMsgs) {
+        const parsed = JSON.parse(storedMsgs);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(id => readMessageIdsRef.current.add(String(id)));
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse cached read message state:', e);
+    }
+  }, [activeProviderNo]);
+
   const loadApplicants = async () => {
     try {
       const response = await scholarshipAPI.getApplicants(providerKey);
@@ -1671,10 +1693,11 @@ export default function ScholarshipDashboard({
           }
 
           const isActiveRoom = currentInboxRoomRef.current === normRoom || currentInboxRoomRef.current === msg.room;
-          const isAdminMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
+          const isAdminMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username)) || msg.is_student_sender === false;
           const isPreviouslyRead = (msg.m_id && readMessageIdsRef.current.has(String(msg.m_id))) ||
-            (readRoomsRef.current.has(normRoom) || readRoomsRef.current.has(msg.room));
-          const isRead = isActiveRoom || isAdminMessage || isPreviouslyRead;
+            (readRoomsRef.current.has(normRoom) || readRoomsRef.current.has(msg.room)) ||
+            (msg.applicant_no && readRoomsRef.current.has(String(msg.applicant_no)));
+          const isRead = Boolean(msg.read) || isActiveRoom || isAdminMessage || isPreviouslyRead;
           if (isRead && msg.m_id) {
             readMessageIdsRef.current.add(String(msg.m_id));
           }
@@ -1721,21 +1744,22 @@ export default function ScholarshipDashboard({
           messages.forEach(msg => {
             if (msg.m_id && existingIds.has(String(msg.m_id))) return; // skip duplicates
 
+            const resolvedApplicantNo = msg.applicant_no
+              ? String(msg.applicant_no)
+              : (isApplicantRoom ? normRoom.split('+')[0] : null);
             const isActiveRoom = currentInboxRoomRef.current === normRoom || currentInboxRoomRef.current === roomId;
-            const isSelfMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username));
-            const isRoomMarkedRead = readRoomsRef.current.has(normRoom) || readRoomsRef.current.has(roomId);
+            const isSelfMessage = adminSenderAliases.has(normalizeProviderIdentity(msg.username)) || msg.is_student_sender === false;
+            const isRoomMarkedRead = readRoomsRef.current.has(normRoom) || readRoomsRef.current.has(roomId) ||
+              (resolvedApplicantNo && readRoomsRef.current.has(String(resolvedApplicantNo)));
             const isPreviouslyRead = (msg.m_id && readMessageIdsRef.current.has(String(msg.m_id))) ||
               (msg.id && readMessageIdsRef.current.has(String(msg.id)));
-            const isRead = isActiveRoom || isSelfMessage || isRoomMarkedRead || isPreviouslyRead;
+            const isRead = Boolean(msg.read) || isActiveRoom || isSelfMessage || isRoomMarkedRead || isPreviouslyRead;
             if (isRead && msg.m_id) {
               readMessageIdsRef.current.add(String(msg.m_id));
             }
             if (isRead && msg.id) {
               readMessageIdsRef.current.add(String(msg.id));
             }
-            const resolvedApplicantNo = msg.applicant_no
-              ? String(msg.applicant_no)
-              : (isApplicantRoom ? normRoom.split('+')[0] : null);
 
             newMsgs.push({
               id: msg.m_id || (Date.now() + Math.random()),
@@ -1856,12 +1880,13 @@ export default function ScholarshipDashboard({
 
             const appNo = m.applicant_no ? String(m.applicant_no) : (normRoom.includes('+') ? normRoom.split('+')[0] : null);
             const isStudentName = m.username && !m.username.toLowerCase().includes('admin') && !m.username.toLowerCase().includes('mayor') && !m.username.toLowerCase().includes('ched') && !m.username.toLowerCase().includes('vilma');
-            const isSelfMessage = adminSenderAliases.has(normalizeProviderIdentity(m.username));
+            const isSelfMessage = adminSenderAliases.has(normalizeProviderIdentity(m.username)) || m.is_student_sender === false;
             const isActiveRoom = currentInboxRoomRef.current === normRoom || currentInboxRoomRef.current === m.room;
-            const isRoomMarkedRead = readRoomsRef.current.has(normRoom) || readRoomsRef.current.has(m.room);
+            const isRoomMarkedRead = readRoomsRef.current.has(normRoom) || readRoomsRef.current.has(m.room) ||
+              (appNo && readRoomsRef.current.has(String(appNo)));
             const isPreviouslyRead = (m.m_id && readMessageIdsRef.current.has(String(m.m_id))) ||
               (m.id && readMessageIdsRef.current.has(String(m.id)));
-            const isRead = isActiveRoom || isSelfMessage || isRoomMarkedRead || isPreviouslyRead;
+            const isRead = Boolean(m.read) || isActiveRoom || isSelfMessage || isRoomMarkedRead || isPreviouslyRead;
             if (isRead && m.m_id) {
               readMessageIdsRef.current.add(String(m.m_id));
             }
@@ -3948,10 +3973,12 @@ export default function ScholarshipDashboard({
     if (inList(data.accepted)) return 'Accepted';
     if (inList(data.declined)) return 'Declined';
     if (inList(data.applicants)) return 'Pending';
+    if (inList(data.suspended)) return 'Suspended';
+    if (inList(data.cancelled)) return 'Cancelled';
     return 'Unknown';
   };
 
-  const groupMessagesByStudent = (messages, forceMode = null) => {
+  const groupMessagesByStudent = (messages, forceMode = null, knownApplicants = null) => {
     const userRole = (localStorage.getItem('userRole') || '').toLowerCase();
     const isSuperAdminUser = (
       standaloneInbox ||
@@ -4012,7 +4039,9 @@ export default function ScholarshipDashboard({
 
           if (!isDuplicate) {
             roomMsgs.push(m);
-            const isMsgRead = m.read ||
+            const isSelfMsg = m.is_student_sender === false || adminSenderAliases.has(normalizeProviderIdentity(m.username));
+            const isMsgRead = Boolean(m.read) ||
+              isSelfMsg ||
               (m.m_id && readMessageIdsRef.current.has(String(m.m_id))) ||
               (m.id && readMessageIdsRef.current.has(String(m.id))) ||
               (targetRoom && (readRoomsRef.current.has(targetRoom.room) || currentInboxRoomRef.current === targetRoom.room)) ||
@@ -4024,15 +4053,28 @@ export default function ScholarshipDashboard({
       });
     } else {
       // Applicant mode: Group applicant messages (including all applicant statuses)
-      const allKnownApplicants = [
-        ...(data.applicants || []),
-        ...(data.accepted || []),
-        ...(data.rejected || []),
-        ...(data.declined || []),
-        ...(data.cancelled || [])
-      ];
+      const effectiveApplicants = (knownApplicants && knownApplicants.length > 0)
+        ? knownApplicants
+        : [
+            ...(data.applicants || []),
+            ...(data.accepted || []),
+            ...(data.rejected || []),
+            ...(data.declined || []),
+            ...(data.cancelled || []),
+            ...(data.suspended || [])
+          ];
 
-      allKnownApplicants.forEach(a => {
+      const getApplicantOfficialName = (app, fallbackKey) => {
+        if (!app) return fallbackKey ? `Applicant ${fallbackKey}` : 'Applicant';
+        const first = (app.firstName || app.first_name || '').trim();
+        const last = (app.lastName || app.last_name || '').trim();
+        const full = `${first} ${last}`.trim();
+        if (full) return full;
+        if (app.name && !app.name.toLowerCase().startsWith('applicant ')) return app.name;
+        return fallbackKey ? `Applicant ${fallbackKey}` : (app.name || 'Applicant');
+      };
+
+      effectiveApplicants.forEach(a => {
         const rawId = (a.applicant_no || a.applicantNo || a.applicant_id || a.user_no || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id) || '').toString();
         if (!rawId || !/^[1-9]\d*$/.test(rawId)) return;
         const key = rawId;
@@ -4054,7 +4096,7 @@ export default function ScholarshipDashboard({
         }
 
         const applicantRoom = `${key}+${activeProviderNo || 1}`;
-        const officialName = (a.firstName && a.lastName) ? `${a.firstName} ${a.lastName}` : ((a.first_name && a.last_name) ? `${a.first_name} ${a.last_name}` : (a.name || `Applicant ${key}`));
+        const officialName = getApplicantOfficialName(a, key);
 
         if (!grouped[key]) {
           grouped[key] = {
@@ -4101,7 +4143,7 @@ export default function ScholarshipDashboard({
         }
 
         if (!resolvedApplicantNo) {
-          const match = allKnownApplicants.find(a =>
+          const match = effectiveApplicants.find(a =>
             (m.studentEmail && (a.email === m.studentEmail || a.emailAddress === m.studentEmail)) ||
             (m.studentName && a.name?.toLowerCase() === m.studentName.toLowerCase())
           );
@@ -4114,12 +4156,13 @@ export default function ScholarshipDashboard({
         // Only allow positive integer applicant numbers — filters out '0', admin names, etc.
         if (!key || !/^[1-9]\d*$/.test(key)) return;
 
-        const match = allKnownApplicants.find(a =>
+        const match = effectiveApplicants.find(a =>
           String(a.applicant_no || a.applicantNo || a.applicant_id || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id)) === String(key)
         );
+        const messageDirectName = m.applicant_name || ((m.first_name || m.last_name) ? `${m.first_name || ''} ${m.last_name || ''}`.trim() : null);
         const resolvedStudentName = match
-          ? ((match.firstName && match.lastName) ? `${match.firstName} ${match.lastName}` : ((match.first_name && match.last_name) ? `${match.first_name} ${match.last_name}` : (match.name || `Applicant ${key}`)))
-          : (m.is_student_sender && m.username && !m.username.toLowerCase().includes('admin') && !m.username.toLowerCase().includes('mayor') && !m.username.toLowerCase().includes('ched') && !m.username.toLowerCase().includes('vilma') ? m.username : `Applicant ${key}`);
+          ? getApplicantOfficialName(match, key)
+          : (messageDirectName || (m.is_student_sender && m.username && !m.username.toLowerCase().includes('admin') && !m.username.toLowerCase().includes('mayor') && !m.username.toLowerCase().includes('ched') && !m.username.toLowerCase().includes('vilma') ? m.username : `Applicant ${key}`));
 
         if (!grouped[key]) {
           const applicantRoom = m.room || `${key}+${activeProviderNo || 1}`;
@@ -4140,8 +4183,13 @@ export default function ScholarshipDashboard({
               room: applicantRoom
             },
           };
-        } else if (match && (grouped[key].studentName.startsWith('Applicant ') || grouped[key].studentName.toLowerCase().includes('admin') || grouped[key].studentName.toLowerCase().includes('mayor'))) {
-          grouped[key].studentName = resolvedStudentName;
+        } else {
+          if (resolvedStudentName && !resolvedStudentName.startsWith('Applicant ') && (grouped[key].studentName.startsWith('Applicant ') || grouped[key].studentName.toLowerCase().includes('admin') || grouped[key].studentName.toLowerCase().includes('mayor'))) {
+            grouped[key].studentName = resolvedStudentName;
+          }
+          if (match && grouped[key].studentName.startsWith('Applicant ')) {
+            grouped[key].studentName = getApplicantOfficialName(match, key);
+          }
         }
 
         const exists = grouped[key].messages.some(existingMsg => {
@@ -4152,7 +4200,9 @@ export default function ScholarshipDashboard({
 
         if (!exists) {
           grouped[key].messages.push(m);
-          const isMsgRead = m.read ||
+          const isSelfMsg = m.is_student_sender === false || adminSenderAliases.has(normalizeProviderIdentity(m.username));
+          const isMsgRead = Boolean(m.read) ||
+            isSelfMsg ||
             (m.m_id && readMessageIdsRef.current.has(String(m.m_id))) ||
             (m.id && readMessageIdsRef.current.has(String(m.id))) ||
             (m.room && (readRoomsRef.current.has(m.room) || currentInboxRoomRef.current === m.room)) ||
@@ -4197,6 +4247,31 @@ export default function ScholarshipDashboard({
   const markConversationAsRead = (applicantNo, room) => {
     if (room) readRoomsRef.current.add(room);
     if (applicantNo) readRoomsRef.current.add(String(applicantNo));
+
+    // Persist read rooms to localStorage
+    try {
+      localStorage.setItem(
+        `iskomats_admin_read_rooms_${activeProviderNo || 1}`,
+        JSON.stringify(Array.from(readRoomsRef.current))
+      );
+    } catch (e) {
+      console.warn('Failed to save read rooms to localStorage:', e);
+    }
+
+    // Persist to backend database via REST
+    if (room && messagingAPI?.markRoomAsRead) {
+      messagingAPI.markRoomAsRead(room, applicantNo).catch(err => {
+        console.warn('Failed to mark room as read in database:', err);
+      });
+    }
+
+    // Also notify via socket if connected
+    if (socketService?.socket?.connected && (room || applicantNo)) {
+      try {
+        socketService.socket.emit('mark_read', { room, applicant_no: applicantNo });
+      } catch (e) {}
+    }
+
     setData((d) => ({
       ...d,
       inbox: d.inbox.map((m) => {
@@ -4210,6 +4285,16 @@ export default function ScholarshipDashboard({
         return m;
       }),
     }));
+
+    // Persist message IDs to localStorage
+    try {
+      localStorage.setItem(
+        `iskomats_admin_read_msg_ids_${activeProviderNo || 1}`,
+        JSON.stringify(Array.from(readMessageIdsRef.current).slice(-2000))
+      );
+    } catch (e) {
+      console.warn('Failed to save read message IDs to localStorage:', e);
+    }
   };
 
   const toggleStar = (messageId) => {
@@ -4302,12 +4387,30 @@ export default function ScholarshipDashboard({
   ], [data.applicants, data.accepted, data.rejected, data.declined, data.cancelled, data.suspended]);
 
   const allMessages = data.inbox || [];
-  const unreadCount = allMessages.filter((m) => !m.read).length;
-  const conversations = useMemo(() => groupMessagesByStudent(allMessages), [allMessages, inboxMode]);
+  const conversations = useMemo(
+    () => groupMessagesByStudent(allMessages, inboxMode, allKnownApplicants),
+    [allMessages, inboxMode, allKnownApplicants]
+  );
+
+  const { hasUnreadInboxMessages, unreadApplicantCount, unreadAdminRoomsCount, totalUnreadInboxCount } = useMemo(() => {
+    const applicantConvs = groupMessagesByStudent(allMessages, 'applicants', allKnownApplicants) || [];
+    const adminConvs = groupMessagesByStudent(allMessages, 'admin_rooms', allKnownApplicants) || [];
+    const appUnread = applicantConvs.reduce((acc, c) => acc + (Number(c.unreadCount) || 0), 0);
+    const admUnread = adminConvs.reduce((acc, c) => acc + (Number(c.unreadCount) || 0), 0);
+    const total = appUnread + admUnread;
+    return {
+      hasUnreadInboxMessages: total > 0,
+      unreadApplicantCount: appUnread,
+      unreadAdminRoomsCount: admUnread,
+      totalUnreadInboxCount: total,
+    };
+  }, [allMessages, allKnownApplicants]);
+
+  const unreadCount = totalUnreadInboxCount;
 
   const recentApplicantMessages = useMemo(() => {
     // Group messages by student in applicant mode so each applicant thread's latest message is correctly extracted and sorted descending by timestamp
-    const applicantConvs = groupMessagesByStudent(allMessages, 'applicants') || [];
+    const applicantConvs = groupMessagesByStudent(allMessages, 'applicants', allKnownApplicants) || [];
 
     // Only include conversations that have actual messages
     const activeConvs = applicantConvs.filter(c => !c.isAdminRoom && c.hasActualMessages);
@@ -4440,10 +4543,15 @@ export default function ScholarshipDashboard({
 
   useEffect(() => {
     currentInboxRoomRef.current = currentMessage?.room || currentConversation?.room || null;
-    if (section === 'inbox' && currentConversation?.room) {
-      socketService.loadHistory(currentConversation.room);
+    if (section === 'inbox' && currentConversation) {
+      if (currentConversation.room) {
+        socketService.loadHistory(currentConversation.room);
+      }
+      if (currentConversation.unreadCount > 0) {
+        markConversationAsRead(currentConversation.applicant_no, currentConversation.room);
+      }
     }
-  }, [currentMessage, currentConversation?.room, section]);
+  }, [currentMessage, currentConversation?.room, currentConversation?.applicant_no, currentConversation?.unreadCount, section]);
 
   useEffect(() => {
     if (section !== 'inbox' || !currentConversation) {
@@ -7843,7 +7951,18 @@ export default function ScholarshipDashboard({
               : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
               }`}
           >
-            <FaUsers className="text-xs sm:text-sm" /> <span>Applicant Messages</span>
+            <span className="relative flex items-center justify-center">
+              <FaUsers className="text-xs sm:text-sm" />
+              {unreadApplicantCount > 0 && inboxMode !== 'applicants' && (
+                <span className="absolute -top-1 -right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              )}
+            </span>
+            <span>Applicant Messages</span>
+            {unreadApplicantCount > 0 && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${inboxMode === 'applicants' ? 'bg-white text-[#800020]' : 'bg-[#800020] text-white'}`}>
+                {unreadApplicantCount}
+              </span>
+            )}
           </button>
         )}
         <button
@@ -7857,7 +7976,18 @@ export default function ScholarshipDashboard({
             : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100 shadow-sm'
             }`}
         >
-          <FaInbox className="text-xs sm:text-sm" /> <span>Super Admin Chat</span>
+          <span className="relative flex items-center justify-center">
+            <FaInbox className="text-xs sm:text-sm" />
+            {unreadAdminRoomsCount > 0 && inboxMode !== 'admin_rooms' && (
+              <span className="absolute -top-1 -right-1.5 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+            )}
+          </span>
+          <span>Super Admin Chat</span>
+          {unreadAdminRoomsCount > 0 && (
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${inboxMode === 'admin_rooms' ? 'bg-white text-[#800020]' : 'bg-[#800020] text-white'}`}>
+              {unreadAdminRoomsCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -8165,28 +8295,31 @@ export default function ScholarshipDashboard({
         className={`fixed left-0 top-16 sm:top-20 bottom-0 z-50 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${isMobileSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full md:translate-x-0'
           } ${sidebarCollapsed ? 'md:w-20' : 'md:w-72'}`}
       >
-        <div className={`border-b border-white/10 mb-2 flex items-center justify-between transition-all ${sidebarCollapsed ? 'p-3' : 'p-6 sm:p-8'}`}>
-          <div className="flex flex-col items-center text-center gap-2 sm:gap-4 w-full">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white/10 backdrop-blur-md p-2 shadow-inner border border-white/20 flex items-center justify-center group overflow-hidden flex-shrink-0">
+        <div className="h-20 min-h-[5rem] max-h-[5rem] border-b border-white/10 mb-2 flex items-center px-4 flex-shrink-0 relative overflow-hidden transition-all duration-300">
+          <div className="flex items-center gap-3 w-full min-w-0">
+            <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md p-2 shadow-inner border border-white/20 flex items-center justify-center group overflow-hidden flex-shrink-0">
               <img src={logo} alt="Scholarship Logo" className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-500" />
             </div>
             {(!sidebarCollapsed || isMobileSidebarOpen) && (
-              <div>
-                <h2 className="text-base sm:text-xl font-black tracking-tight leading-tight uppercase">{sidebarTitle}</h2>
-                <p className="text-[9px] sm:text-[10px] font-bold text-rose-200 tracking-[0.2em] uppercase opacity-70">{sidebarSubtitle}</p>
+              <div className="min-w-0 flex-1 overflow-hidden animate-in fade-in duration-200">
+                <h2 className="text-sm sm:text-base font-black tracking-tight leading-tight uppercase truncate">{sidebarTitle}</h2>
+                <p className="text-[9px] sm:text-[10px] font-bold text-rose-200 tracking-[0.18em] uppercase opacity-75 truncate">{sidebarSubtitle}</p>
               </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setIsMobileSidebarOpen(false)}
-            className="md:hidden text-white/70 hover:text-white p-1"
-          >
-            <FaTimes className="text-xl" />
-          </button>
+          {isMobileSidebarOpen && (
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="md:hidden text-white/70 hover:text-white p-1 ml-2 flex-shrink-0"
+              title="Close Sidebar"
+            >
+              <FaTimes className="text-xl" />
+            </button>
+          )}
         </div>
         <nav className="flex-1 overflow-y-auto transition-all">
-          <div className={`${sidebarCollapsed && !isMobileSidebarOpen ? 'px-1' : 'px-2'} py-4 space-y-1`}>
+          <div className="px-3 py-4 space-y-1">
             {[
               { id: 'dashboard', label: 'Dashboard', icon: <FaTachometerAlt /> },
               { id: 'finder', label: 'Slot Tracking', icon: <FaSearch /> },
@@ -8202,11 +8335,21 @@ export default function ScholarshipDashboard({
                   setSection(item.id);
                   setIsMobileSidebarOpen(false);
                 }}
-                className={`w-full flex items-center transition-all rounded-xl ${section === item.id ? 'bg-white/20' : 'hover:bg-white/10'
-                  } ${sidebarCollapsed && !isMobileSidebarOpen ? 'justify-center p-3' : 'justify-start px-4 py-3 gap-3'}`}
+                className={`w-full flex items-center h-12 px-3 rounded-xl transition-all ${section === item.id ? 'bg-white/20' : 'hover:bg-white/10'
+                  } ${sidebarCollapsed && !isMobileSidebarOpen ? '' : 'gap-3'}`}
               >
-                <span className="flex-shrink-0 text-lg">{item.icon}</span>
-                {(!sidebarCollapsed || isMobileSidebarOpen) && <span className="whitespace-nowrap font-medium text-sm sm:text-base">{item.label}</span>}
+                <span className="w-8 h-8 flex items-center justify-center flex-shrink-0 text-lg relative">
+                  {item.icon}
+                  {item.id === 'inbox' && hasUnreadInboxMessages && (
+                    <span
+                      className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-[#800020] shadow-sm animate-pulse"
+                      title="Unread messages in inbox"
+                    />
+                  )}
+                </span>
+                {(!sidebarCollapsed || isMobileSidebarOpen) && (
+                  <span className="whitespace-nowrap font-medium text-sm sm:text-base truncate animate-in fade-in duration-200">{item.label}</span>
+                )}
               </button>
             ))}
           </div>

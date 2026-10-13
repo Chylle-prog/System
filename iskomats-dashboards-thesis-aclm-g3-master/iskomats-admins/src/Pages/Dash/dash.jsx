@@ -30,7 +30,7 @@ import {
   FaUsersCog,
 } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
-import { adminAPI, scholarshipAPI } from '../../services/api';
+import { adminAPI, scholarshipAPI, messagingAPI } from '../../services/api';
 import socketService from '../../services/socket';
 import ScholarshipDashboard from './scholarship-dashboard';
 
@@ -190,7 +190,33 @@ export default function Dash() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [hasUnreadInbox, setHasUnreadInbox] = useState(false);
   const userName = localStorage.getItem('userName') || 'Admin';
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkUnread = async () => {
+      try {
+        const res = await messagingAPI.getAllMessages();
+        if (isMounted && res.data && Array.isArray(res.data.messages)) {
+          const unread = res.data.messages.some(m => !m.read && m.is_student_sender !== false);
+          setHasUnreadInbox(unread);
+        }
+      } catch (e) {}
+    };
+    checkUnread();
+
+    const unsubMsg = socketService.subscribe('message', (msg) => {
+      if (activeTab !== 'inbox' && !msg.read && msg.is_student_sender !== false) {
+        setHasUnreadInbox(true);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      if (unsubMsg) unsubMsg();
+    };
+  }, [activeTab]);
 
   const [accountModal, setAccountModal] = useState({ open: false, mode: 'add', data: null });
   const [reportModal, setReportModal] = useState({ open: false });
@@ -750,29 +776,43 @@ export default function Dash() {
         onMouseLeave={() => setSidebarCollapsed(true)}
         className={`fixed left-0 top-20 bottom-0 flex-shrink-0 bg-gradient-to-b from-[#800020] to-[#650018] text-white shadow-xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out z-40 w-64 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'}`}
       >
-        <h2 className={`text-center font-bold py-6 flex items-center justify-center gap-2 border-b border-white/10 transition-all ${(sidebarCollapsed && !mobileMenuOpen) ? 'px-2' : 'px-4'}`}>
-          <FaTachometerAlt className={`flex-shrink-0 transition-all ${(sidebarCollapsed && !mobileMenuOpen) ? 'text-2xl' : 'text-lg'}`} />
-          {(!sidebarCollapsed || mobileMenuOpen) && <span className="text-xl font-bold whitespace-nowrap">Iskomats Admin</span>}
+        <h2 className="h-20 min-h-[5rem] max-h-[5rem] border-b border-white/10 flex items-center px-4 flex-shrink-0 transition-all duration-300">
+          <div className="flex items-center gap-3 w-full min-w-0">
+            <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md shadow-inner border border-white/20 flex items-center justify-center flex-shrink-0">
+              <FaTachometerAlt className="text-xl" />
+            </div>
+            {(!sidebarCollapsed || mobileMenuOpen) && (
+              <span className="text-lg font-bold whitespace-nowrap truncate animate-in fade-in duration-200">Iskomats Admin</span>
+            )}
+          </div>
         </h2>
         <nav className="flex-1 space-y-2 overflow-y-auto transition-all">
-          <div className={`${(sidebarCollapsed && !mobileMenuOpen) ? 'px-1' : 'px-4'} py-6 space-y-2`}>
-            <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-white/20' : 'hover:bg-white/10'} ${(sidebarCollapsed && !mobileMenuOpen) ? 'justify-center p-3' : 'px-4 py-3'}`}>
-              <FaTachometerAlt className="flex-shrink-0" />
-              {(!sidebarCollapsed || mobileMenuOpen) && <span>Dashboard</span>}
+          <div className="px-3 py-6 space-y-2">
+            <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center h-12 px-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-white/20' : 'hover:bg-white/10'} ${(sidebarCollapsed && !mobileMenuOpen) ? '' : 'gap-3'}`}>
+              <span className="w-8 h-8 flex items-center justify-center flex-shrink-0 text-lg"><FaTachometerAlt /></span>
+              {(!sidebarCollapsed || mobileMenuOpen) && <span className="truncate">Dashboard</span>}
             </button>
-            <button onClick={() => setActiveTab('manage-accounts')} className={`w-full flex items-center gap-3 rounded-xl transition-all ${activeTab === 'manage-accounts' ? 'bg-white/20' : 'hover:bg-white/10'} ${(sidebarCollapsed && !mobileMenuOpen) ? 'justify-center p-3' : 'px-4 py-3'}`}>
-              <FaUsersCog className="flex-shrink-0" />
-              {(!sidebarCollapsed || mobileMenuOpen) && <span>Manage Accounts</span>}
+            <button onClick={() => setActiveTab('manage-accounts')} className={`w-full flex items-center h-12 px-3 rounded-xl transition-all ${activeTab === 'manage-accounts' ? 'bg-white/20' : 'hover:bg-white/10'} ${(sidebarCollapsed && !mobileMenuOpen) ? '' : 'gap-3'}`}>
+              <span className="w-8 h-8 flex items-center justify-center flex-shrink-0 text-lg"><FaUsersCog /></span>
+              {(!sidebarCollapsed || mobileMenuOpen) && <span className="truncate">Manage Accounts</span>}
             </button>
-            <button onClick={() => setActiveTab('inbox')} className={`w-full flex items-center gap-3 rounded-xl transition-all ${activeTab === 'inbox' ? 'bg-white/20' : 'hover:bg-white/10'} ${(sidebarCollapsed && !mobileMenuOpen) ? 'justify-center p-3' : 'px-4 py-3'}`}>
-              <FaInbox className="flex-shrink-0" />
-              {(!sidebarCollapsed || mobileMenuOpen) && <span>Admin Inbox</span>}
+            <button onClick={() => { setActiveTab('inbox'); setHasUnreadInbox(false); }} className={`w-full flex items-center h-12 px-3 rounded-xl transition-all ${activeTab === 'inbox' ? 'bg-white/20' : 'hover:bg-white/10'} ${(sidebarCollapsed && !mobileMenuOpen) ? '' : 'gap-3'}`}>
+              <span className="w-8 h-8 flex items-center justify-center flex-shrink-0 text-lg relative">
+                <FaInbox />
+                {hasUnreadInbox && (
+                  <span
+                    className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-[#800020] shadow-sm animate-pulse"
+                    title="Unread messages in inbox"
+                  />
+                )}
+              </span>
+              {(!sidebarCollapsed || mobileMenuOpen) && <span className="truncate">Admin Inbox</span>}
             </button>
 
             <div className="space-y-1">
-              <button onClick={() => toggleSubmenu('reports')} className={`w-full flex items-center justify-between rounded-xl hover:bg-white/10 transition-all ${(sidebarCollapsed && !mobileMenuOpen) ? 'justify-center p-3' : 'px-4 py-3'}`}>
-                <div className="flex items-center gap-3">
-                  <FaChartBar className="flex-shrink-0" />
+              <button onClick={() => toggleSubmenu('reports')} className={`w-full flex items-center justify-between h-12 px-3 rounded-xl hover:bg-white/10 transition-all`}>
+                <div className={`flex items-center ${(sidebarCollapsed && !mobileMenuOpen) ? '' : 'gap-3'}`}>
+                  <span className="w-8 h-8 flex items-center justify-center flex-shrink-0 text-lg"><FaChartBar /></span>
                   {(!sidebarCollapsed || mobileMenuOpen) && <span>Reports</span>}
                 </div>
                 {(!sidebarCollapsed || mobileMenuOpen) && <FaChevronDown className={`transition-transform ${submenus.reports ? 'rotate-180' : ''}`} />}
@@ -786,13 +826,14 @@ export default function Dash() {
             </div>
           </div>
         </nav>
-        <div className={`border-t border-white/10 space-y-3 transition-all ${(sidebarCollapsed && !mobileMenuOpen) ? 'p-2' : 'p-4'}`}>
-          <button onClick={() => setReportModal({ open: true })} className={`w-full py-3 bg-white text-[#800020] font-black rounded-xl shadow-lg hover:bg-gray-100 transition-all flex items-center justify-center gap-2 ${(sidebarCollapsed && !mobileMenuOpen) ? 'p-3' : 'px-4'}`}>
-            <FaPrint className="flex-shrink-0" />
-            {(!sidebarCollapsed || mobileMenuOpen) && <span className="whitespace-nowrap">Generate Report</span>}
+        <div className="border-t border-white/10 space-y-3 transition-all p-3">
+          <button onClick={() => setReportModal({ open: true })} className={`w-full h-12 px-3 bg-white text-[#800020] font-black rounded-xl shadow-lg hover:bg-gray-100 transition-all flex items-center ${(sidebarCollapsed && !mobileMenuOpen) ? 'justify-center' : 'gap-3'}`}>
+            <span className="w-8 h-8 flex items-center justify-center flex-shrink-0 text-base"><FaPrint /></span>
+            {(!sidebarCollapsed || mobileMenuOpen) && <span className="whitespace-nowrap truncate">Generate Report</span>}
           </button>
-          <button onClick={() => loadDashboardData(false)} className={`w-full py-3 bg-white/10 text-white font-black rounded-xl hover:bg-white/15 transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2 ${(sidebarCollapsed && !mobileMenuOpen) ? 'p-3' : 'px-4'}`}>
-            {(!sidebarCollapsed || mobileMenuOpen) && <span className="whitespace-nowrap">Refresh Data</span>}
+          <button onClick={() => loadDashboardData(false)} className={`w-full h-12 px-3 bg-white/10 text-white font-black rounded-xl hover:bg-white/15 transition-all text-xs uppercase tracking-widest flex items-center ${(sidebarCollapsed && !mobileMenuOpen) ? 'justify-center' : 'gap-3'}`}>
+            <span className="w-8 h-8 flex items-center justify-center flex-shrink-0 text-base"><FaClock /></span>
+            {(!sidebarCollapsed || mobileMenuOpen) && <span className="whitespace-nowrap truncate">Refresh Data</span>}
           </button>
         </div>
       </aside>
