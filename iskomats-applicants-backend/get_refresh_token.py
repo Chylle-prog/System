@@ -121,7 +121,6 @@ def main():
 
                 env_files = [
                     r'c:\Users\Chyle\OneDrive\Desktop\System\iskomats-applicants-backend\.env',
-                    r'c:\Users\Chyle\OneDrive\Desktop\System\iskomats-dashboards-thesis-aclm-g3-master\iskomats-admins\TESTPYTHON\Student Ranking\.env'
                 ]
                 for ep in env_files:
                     if os.path.exists(ep):
