@@ -1516,6 +1516,28 @@ export default function ScholarshipDashboard({
   const inboxMessagesEndRef = useRef(null);
   const readMessageIdsRef = useRef(new Set());
   const readRoomsRef = useRef(new Set());
+  const unreadSessionKeysRef = useRef(new Set());
+
+  const markConversationRetainedInUnread = (c) => {
+    if (!c) return;
+    if (c.room) unreadSessionKeysRef.current.add(`room:${c.room}`);
+    if (c.applicant_no) unreadSessionKeysRef.current.add(`app:${c.applicant_no}`);
+    if (c.studentEmail) unreadSessionKeysRef.current.add(`email:${c.studentEmail.toLowerCase()}`);
+  };
+
+  const isConversationRetainedInUnread = (c) => {
+    if (!c) return false;
+    if (c.room && unreadSessionKeysRef.current.has(`room:${c.room}`)) return true;
+    if (c.applicant_no && unreadSessionKeysRef.current.has(`app:${c.applicant_no}`)) return true;
+    if (c.studentEmail && unreadSessionKeysRef.current.has(`email:${c.studentEmail.toLowerCase()}`)) return true;
+    return false;
+  };
+
+  useEffect(() => {
+    if (inboxFilter !== 'unread') {
+      unreadSessionKeysRef.current.clear();
+    }
+  }, [inboxFilter, inboxMode, section]);
 
   // Restore persistent read state from localStorage on initial render and provider switch
   useEffect(() => {
@@ -4444,8 +4466,13 @@ export default function ScholarshipDashboard({
     if (inboxMode === 'applicants') {
       filtered = filtered.filter(c => !c.isAdminRoom && !c.room?.startsWith('provider_room_'));
 
-      // Ensure rejected, declined, cancelled, and suspended applicants are not shown in the inbox unless they have an active application
+      // Ensure rejected, declined, cancelled, and suspended applicants are not shown in the inbox unless they have an active application or active messages
       filtered = filtered.filter((c) => {
+        // If the applicant has actual messages or unread messages, always keep them visible in the inbox
+        if (c.hasActualMessages || (c.messages && c.messages.length > 0) || (c.unreadCount || 0) > 0) {
+          return true;
+        }
+
         const isApplicantActive = (list) => (list || []).some((a) => {
           const aNo = (a.applicant_no || a.applicantNo || a.applicant_id || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id) || '').toString();
           if (c.applicant_no && aNo && aNo === c.applicant_no.toString()) return true;
@@ -4486,6 +4513,14 @@ export default function ScholarshipDashboard({
 
       if (inboxFilter !== 'all') {
         filtered = filtered.filter((c) => {
+          if (inboxFilter === 'unread') {
+            const hasUnread = (c.unreadCount || 0) > 0;
+            if (hasUnread) {
+              markConversationRetainedInUnread(c);
+              return true;
+            }
+            return isConversationRetainedInUnread(c);
+          }
           const studentStatus = getStudentStatus(c.applicant_no, c.studentName, c.lastMessage?.studentStatus, c.studentEmail);
           if (inboxFilter === 'pending') {
             return studentStatus === 'Pending';
@@ -4509,6 +4544,16 @@ export default function ScholarshipDashboard({
       }
     } else {
       filtered = filtered.filter(c => c.isAdminRoom || c.room?.startsWith('provider_room_'));
+      if (inboxFilter === 'unread') {
+        filtered = filtered.filter((c) => {
+          const hasUnread = (c.unreadCount || 0) > 0;
+          if (hasUnread) {
+            markConversationRetainedInUnread(c);
+            return true;
+          }
+          return isConversationRetainedInUnread(c);
+        });
+      }
     }
 
     return [...filtered].sort((a, b) => {
@@ -4528,7 +4573,7 @@ export default function ScholarshipDashboard({
       const idB = Number(b.applicant_no || 0);
       return idB - idA;
     });
-  }, [conversations, inboxSearch, inboxFilter, inboxMode]);
+  }, [conversations, inboxSearch, inboxFilter, inboxMode, viewMessage]);
 
   const selectedConversation = viewMessage
     ? (filteredConversations.find((c) => (viewMessage.applicant_no && c.applicant_no?.toString() === viewMessage.applicant_no?.toString()) || (viewMessage.room && c.room === viewMessage.room)) || null)
@@ -8005,23 +8050,55 @@ export default function ScholarshipDashboard({
                   className="flex-1 px-3 py-1.5 sm:py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020] text-xs sm:text-sm"
                 />
               </div>
-              <div className="flex gap-1.5 sm:gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <button
-                  onClick={() => setInboxFilter('all')}
+                  type="button"
+                  onClick={() => {
+                    unreadSessionKeysRef.current.clear();
+                    setInboxFilter('all');
+                  }}
                   className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${inboxFilter === 'all' ? 'bg-[#800020] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
                   All
                 </button>
                 <button
-                  onClick={() => setInboxFilter('pending')}
+                  type="button"
+                  onClick={() => {
+                    unreadSessionKeysRef.current.clear();
+                    setInboxFilter('unread');
+                    setViewMessage(null);
+                  }}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${inboxFilter === 'unread' ? 'bg-[#800020] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                >
+                  <span>Unread</span>
+                  {unreadApplicantCount > 0 && (
+                    <span
+                      className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none ${inboxFilter === 'unread' ? 'bg-white text-[#800020]' : 'bg-[#800020] text-white'
+                        }`}
+                    >
+                      {unreadApplicantCount}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    unreadSessionKeysRef.current.clear();
+                    setInboxFilter('pending');
+                  }}
                   className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${inboxFilter === 'pending' ? 'bg-yellow-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
                   Pending
                 </button>
                 <button
-                  onClick={() => setInboxFilter('accepted')}
+                  type="button"
+                  onClick={() => {
+                    unreadSessionKeysRef.current.clear();
+                    setInboxFilter('accepted');
+                  }}
                   className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${inboxFilter === 'accepted' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
@@ -8057,6 +8134,9 @@ export default function ScholarshipDashboard({
                     <div
                       key={conv.room || conv.applicant_no}
                       onClick={() => {
+                        if (inboxFilter === 'unread') {
+                          markConversationRetainedInUnread(conv);
+                        }
                         markConversationAsRead(conv.applicant_no, conv.room);
                         currentInboxRoomRef.current = conv.room || null;
                         setViewMessage({
@@ -8134,9 +8214,24 @@ export default function ScholarshipDashboard({
                 })}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-12 px-6">
+              <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
                 <FaInbox className="text-4xl text-gray-300 mb-3" />
-                <p className="text-gray-500 text-sm text-center">No conversations found</p>
+                <p className="text-gray-500 text-sm font-medium">
+                  {inboxFilter === 'unread' ? 'No unread conversations' : 'No conversations found'}
+                </p>
+                {inboxFilter === 'unread' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      unreadSessionKeysRef.current.clear();
+                      setInboxFilter('all');
+                      setViewMessage(null);
+                    }}
+                    className="mt-2.5 px-3 py-1 rounded-md text-xs font-semibold text-[#800020] hover:bg-rose-50 transition-colors"
+                  >
+                    View all conversations
+                  </button>
+                )}
               </div>
             )}
           </div>
