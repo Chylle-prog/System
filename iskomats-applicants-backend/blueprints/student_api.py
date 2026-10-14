@@ -1458,6 +1458,47 @@ def ensure_applicant_document_storage():
             VALUES ('skip_alternate_check', FALSE)
             ON CONFLICT (key) DO NOTHING
         """)
+
+        # Ensure Supabase storage RLS policies for document_images and document_videos
+        try:
+            cur.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_policy WHERE polname = 'Allow anon select from document_images'
+                    ) THEN
+                        CREATE POLICY "Allow anon select from document_images"
+                        ON storage.objects FOR SELECT
+                        TO anon, authenticated
+                        USING (bucket_id = 'document_images');
+                    END IF;
+
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_policy WHERE polname = 'Allow anon select from document_videos'
+                    ) THEN
+                        CREATE POLICY "Allow anon select from document_videos"
+                        ON storage.objects FOR SELECT
+                        TO anon, authenticated
+                        USING (bucket_id = 'document_videos');
+                    END IF;
+
+                    DROP POLICY IF EXISTS "Allow anon updates to document_images" ON storage.objects;
+                    CREATE POLICY "Allow anon updates to document_images"
+                    ON storage.objects FOR UPDATE
+                    TO anon, authenticated
+                    USING (bucket_id = 'document_images')
+                    WITH CHECK (bucket_id = 'document_images');
+
+                    DROP POLICY IF EXISTS "Allow anon updates to document_videos" ON storage.objects;
+                    CREATE POLICY "Allow anon updates to document_videos"
+                    ON storage.objects FOR UPDATE
+                    TO anon, authenticated
+                    USING (bucket_id = 'document_videos')
+                    WITH CHECK (bucket_id = 'document_videos');
+                END $$;
+            """)
+        except Exception as storage_pol_err:
+            print(f"[MIGRATION WARNING] Storage RLS policy check: {storage_pol_err}", flush=True)
             
         conn.commit()
         conn.close()
@@ -3847,16 +3888,15 @@ def submit_application():
             profile_pic_bytes = None
             profile_pic_url = None
         
-            if has_profile_picture_column:
-                raw_url = get_unified_val('profile_picture') or get_unified_val('profilePicture')
-                if isinstance(raw_url, str) and (raw_url.startswith('http') or raw_url.startswith('https')):
-                    if '/applicant/document/raw/' in raw_url or '/applicant-image/' in raw_url:
-                        print(f"[SUBMIT] profile_picture is a backend proxy URL. Skipping profile picture update.", flush=True)
-                        profile_pic_url = None
-                    else:
-                        profile_pic_url = raw_url
+            raw_url = get_unified_val('profile_picture') or get_unified_val('profilePicture')
+            if isinstance(raw_url, str) and (raw_url.startswith('http') or raw_url.startswith('https')):
+                if '/applicant/document/raw/' in raw_url or '/applicant-image/' in raw_url:
+                    print(f"[SUBMIT] profile_picture is a backend proxy URL. Skipping profile picture update.", flush=True)
+                    profile_pic_url = None
                 else:
-                    profile_pic_bytes = get_doc_bytes('profile_picture', 'profile_picture')
+                    profile_pic_url = raw_url
+            else:
+                profile_pic_bytes = get_doc_bytes('profile_picture', 'profile_picture')
         
             signature_bytes = get_doc_bytes('signature_data', 'signature_image_data')
 

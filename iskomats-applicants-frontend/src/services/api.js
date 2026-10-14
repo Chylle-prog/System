@@ -238,37 +238,44 @@ export const uploadDocumentImageDirect = async (fieldName, fileOrDataUrl, onProg
 
 // Upload profile picture to Supabase Storage and return public URL
 export const uploadProfilePicture = async (file) => {
-  const applicantNo = sanitizeStorageSegment(localStorage.getItem('applicantNo'), 'unknown-applicant');
-  const currentUser = sanitizeStorageSegment(localStorage.getItem('currentUser'), 'unknown-user');
-  const ext = resolveImageUploadExtension(file);
-  const uniqueToken = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const objectPath = `applicant_${applicantNo}/profile/profile_picture-${currentUser}-${uniqueToken}${ext}`;
-
-  let uploadFile = file;
   try {
-    uploadFile = await compressImageForUpload(file, 1000, 0.85);
-  } catch (e) {}
+    const applicantNo = sanitizeStorageSegment(localStorage.getItem('applicantNo'), 'unknown-applicant');
+    const currentUser = sanitizeStorageSegment(localStorage.getItem('currentUser'), 'unknown-user');
+    const ext = resolveImageUploadExtension(file);
+    const uniqueToken = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const objectPath = `applicant_${applicantNo}/profile/profile_picture-${currentUser}-${uniqueToken}${ext}`;
 
-  const { encryptDocument } = await import('./CryptoService');
-  const encryptedFile = await encryptDocument(uploadFile);
+    let uploadFile = file;
+    try {
+      uploadFile = await compressImageForUpload(file, 1000, 0.85);
+    } catch (e) {}
 
-  const uploadResult = await supabase.storage
-    .from('document_images')
-    .upload(objectPath, encryptedFile, {
-      upsert: true,
-      contentType: 'application/octet-stream',
-      cacheControl: '31536000',  // 1 year
-    });
+    const { encryptDocument } = await import('./CryptoService');
+    const encryptedFile = await encryptDocument(uploadFile);
 
-  if (uploadResult.error) {
-    throw uploadResult.error;
+    const uploadResult = await supabase.storage
+      .from('document_images')
+      .upload(objectPath, encryptedFile, {
+        upsert: true,
+        contentType: 'application/octet-stream',
+        cacheControl: '31536000',  // 1 year
+      });
+
+    if (uploadResult.error) {
+      console.warn('[DIRECT UPLOAD] Supabase upload failed for profile_picture:', uploadResult.error);
+      return null;
+    }
+
+    const { data } = supabase.storage.from('document_images').getPublicUrl(objectPath);
+    if (!data?.publicUrl) {
+      console.warn('[DIRECT UPLOAD] No public URL returned for profile_picture');
+      return null;
+    }
+    return data.publicUrl;
+  } catch (err) {
+    console.warn('[DIRECT UPLOAD] Error uploading profile picture directly:', err);
+    return null;
   }
-
-  const { data } = supabase.storage.from('document_images').getPublicUrl(objectPath);
-  if (!data?.publicUrl) {
-    throw new Error('Profile picture upload succeeded but no public URL was returned.');
-  }
-  return data.publicUrl;
 };
 
 /**

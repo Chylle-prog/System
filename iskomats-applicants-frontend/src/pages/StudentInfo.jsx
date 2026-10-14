@@ -7935,10 +7935,15 @@ const StudentInfo = () => {
         try {
           console.log('[SUBMIT] Uploading profile picture to storage...');
           const profilePicUrl = await uploadProfilePicture(rawProfilePictureFile);
-          submissionData.append('profile_picture', profilePicUrl);
+          if (profilePicUrl) {
+            submissionData.append('profile_picture', profilePicUrl);
+          } else {
+            console.warn('[SUBMIT] Direct profile picture upload returned null; falling back to form submission');
+            submissionData.append('profile_picture', rawProfilePictureFile);
+          }
         } catch (uploadErr) {
-          console.error('[SUBMIT] Failed to upload profile picture:', uploadErr);
-          throw new Error(`Profile picture upload failed: ${uploadErr.message}`);
+          console.warn('[SUBMIT] Direct profile picture upload failed, falling back to form submission:', uploadErr);
+          submissionData.append('profile_picture', rawProfilePictureFile);
         }
       } else if (idPicturePreview && (idPicturePreview.startsWith('http://') || idPicturePreview.startsWith('https://'))) {
         submissionData.append('profile_picture', idPicturePreview);
