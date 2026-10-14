@@ -1,0 +1,26 @@
+# Ignore version control and local editor files
+.git
+.gitignore
+.vscode
+.idea
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+
+# Ignore sensitive and environment files (Render supplies env vars via service settings)
+.env
+.env.*
+!.env.example
+client_secret.json
+gcp-vision-key.json
+
+# Ignore local scratch directories and test data
+scratch/
+TESTPYTHON/
+jmeter/
+*.jtl
+*.jmx
+*.log
+chroma_db/

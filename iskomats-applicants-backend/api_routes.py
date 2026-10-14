@@ -602,7 +602,11 @@ def ensure_schema_integrity(cursor):
         ("idx_applicants_names", "CREATE INDEX IF NOT EXISTS idx_applicants_names ON applicants(LOWER(TRIM(last_name)), LOWER(TRIM(first_name)))"),
         ("idx_applicants_verification_ts", "CREATE INDEX IF NOT EXISTS idx_applicants_verification_ts ON applicants(verification_timestamp DESC)"),
         ("idx_applicant_status_app_schol", "CREATE INDEX IF NOT EXISTS idx_applicant_status_app_schol ON applicant_status(applicant_no, scholarship_no)"),
-        ("idx_applicant_status_schol_status", "CREATE INDEX IF NOT EXISTS idx_applicant_status_schol_status ON applicant_status(scholarship_no, is_accepted)")
+        ("idx_applicant_status_schol_status", "CREATE INDEX IF NOT EXISTS idx_applicant_status_schol_status ON applicant_status(scholarship_no, is_accepted)"),
+        ("idx_message_room_timestamp", "CREATE INDEX IF NOT EXISTS idx_message_room_timestamp ON message(room, timestamp ASC)"),
+        ("idx_message_app_pro_timestamp", "CREATE INDEX IF NOT EXISTS idx_message_app_pro_timestamp ON message(applicant_no, pro_no, timestamp ASC)"),
+        ("idx_message_pro_no_timestamp", "CREATE INDEX IF NOT EXISTS idx_message_pro_no_timestamp ON message(pro_no, timestamp ASC)"),
+        ("idx_message_unread", "CREATE INDEX IF NOT EXISTS idx_message_unread ON message(applicant_no, is_student_sender, is_read) WHERE is_read = FALSE")
     ]
     for idx_name, idx_sql in indexes_to_ensure:
         try:
@@ -730,6 +734,19 @@ def _extract_token_from_request():
     return token
 
 
+_ACCOUNT_LOCK_CACHE = {}
+_ACCOUNT_LOCK_CACHE_LOCK = threading.Lock()
+_ACCOUNT_LOCK_CACHE_TTL = 30  # 30-second TTL
+
+def invalidate_account_lock_cache(user_id=None):
+    with _ACCOUNT_LOCK_CACHE_LOCK:
+        if user_id is not None:
+            keys_to_remove = [k for k in _ACCOUNT_LOCK_CACHE if k[1] == user_id]
+            for k in keys_to_remove:
+                _ACCOUNT_LOCK_CACHE.pop(k, None)
+        else:
+            _ACCOUNT_LOCK_CACHE.clear()
+
 def _decode_request_token():
     token = _extract_token_from_request()
     data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
@@ -745,26 +762,38 @@ def token_required(f):
         try:
             current_user_id, pro_no, role = _decode_request_token()
             
-            # Real-time synchronization check: Verify if the account is locked in the database
-            with get_db() as conn:
-                cursor = conn.cursor()
-                user_email_table = get_user_email_table(cursor)
-                applicant_email_table = get_applicant_email_table(cursor)
-            
-                # Check either user_no (for admins) or applicant_no (for scholars)
-                if role and (role.lower() == 'scholar' or role.lower() == 'user'):
-                    cursor.execute(f"SELECT is_locked FROM {applicant_email_table} WHERE applicant_no = %s", (current_user_id,))
-                else:
-                    cursor.execute(f"SELECT is_locked FROM {user_email_table} WHERE user_no = %s", (current_user_id,))
-            
-                lock_record = cursor.fetchone()
-                if lock_record and lock_record.get('is_locked'):
-                    cursor = None
-                    conn = None
-                    return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
+            # Real-time synchronization check with 30s TTL cache to avoid trans-oceanic DB latency
+            cache_key = (role.lower() if role else '', current_user_id)
+            now = time.time()
+            cached_locked = None
+            with _ACCOUNT_LOCK_CACHE_LOCK:
+                if cache_key in _ACCOUNT_LOCK_CACHE:
+                    locked_val, ts = _ACCOUNT_LOCK_CACHE[cache_key]
+                    if now - ts < _ACCOUNT_LOCK_CACHE_TTL:
+                        cached_locked = locked_val
+
+            if cached_locked is True:
+                return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
+
+            if cached_locked is None:
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    user_email_table = get_user_email_table(cursor)
+                    applicant_email_table = get_applicant_email_table(cursor)
                 
-                cursor = None
-                conn = None
+                    # Check either user_no (for admins) or applicant_no (for scholars)
+                    if role and (role.lower() == 'scholar' or role.lower() == 'user'):
+                        cursor.execute(f"SELECT is_locked FROM {applicant_email_table} WHERE applicant_no = %s", (current_user_id,))
+                    else:
+                        cursor.execute(f"SELECT is_locked FROM {user_email_table} WHERE user_no = %s", (current_user_id,))
+                
+                    lock_record = cursor.fetchone()
+                    is_locked = bool(lock_record and lock_record.get('is_locked'))
+                    with _ACCOUNT_LOCK_CACHE_LOCK:
+                        _ACCOUNT_LOCK_CACHE[cache_key] = (is_locked, now)
+
+                    if is_locked:
+                        return jsonify({'message': 'Account has been suspended. Please contact the administrator.', 'suspended': True}), 403
             
         except (ValueError, KeyError) as e:
             return jsonify({'message': str(e)}), 401

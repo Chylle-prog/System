@@ -24,7 +24,6 @@ google-cloud-vision
 requests
 tensorflow-cpu
 chromadb
-sentence-transformers
 google-genai
 PyPDF2
 python-docx

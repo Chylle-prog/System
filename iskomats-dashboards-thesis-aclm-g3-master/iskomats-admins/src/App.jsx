@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom'
-import { useState, useEffect, useRef } from 'react'
-import Dash from './Pages/Dash/dash.jsx'
-import ProviderDashboard from './Pages/Dash/provider-dashboard'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+const Dash = lazy(() => import('./Pages/Dash/dash.jsx'))
+const ProviderDashboard = lazy(() => import('./Pages/Dash/provider-dashboard'))
 import { PROVIDER_DASHBOARD_ROUTE, isProviderDashboardRole } from './Pages/Dash/provider-dashboard-config'
 import Navbar from './Components/Navbar/navbar'
 import AccessDenied from './Pages/Auth/AccessDenied/access-denied'
@@ -13,6 +13,14 @@ import Suspended from './Pages/Auth/Suspended/suspended'
 import VerifyEmail from './Pages/Auth/VerifyE/verify-email'
 import { authAPI, API_ORIGIN } from './services/api'
 import { clearAdminSession } from './utils/admin-session'
+
+const DashboardFallback = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '1rem', color: '#4B5563' }}>
+    <div style={{ width: '40px', height: '40px', border: '3px solid #E5E7EB', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+    <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>Loading Dashboard...</span>
+    <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+  </div>
+);
 
 const REMOTE_SESSION_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const FORCED_SESSION_CHECK_COOLDOWN_MS = 30 * 1000;
@@ -183,12 +191,16 @@ function AppContent() {
         <Route path='/verify-email/:token' element={<VerifyEmail />} />
         <Route path='/dash' element={
           <ProtectedRoute>
-            <Dash />
+            <Suspense fallback={<DashboardFallback />}>
+              <Dash />
+            </Suspense>
           </ProtectedRoute>
         } />
         <Route path={PROVIDER_DASHBOARD_ROUTE} element={
           <ProtectedRoute requiredRole="provider">
-            <ProviderDashboard />
+            <Suspense fallback={<DashboardFallback />}>
+              <ProviderDashboard />
+            </Suspense>
           </ProtectedRoute>
         } />
         <Route path='/dash-africa' element={

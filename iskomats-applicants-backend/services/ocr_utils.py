@@ -139,49 +139,44 @@ def _init_tesseract():
                 break
     _tesseract_initialized = True
 
-def _run_tesseract_fallback(img_cv_or_bytes, psm=6):
-    """Fallback OCR engine if Google Cloud Vision API returns empty text or billing error."""
-    if img_cv_or_bytes is None or pytesseract is None:
-        return ""
-    try:
-        _init_tesseract()
-        img_cv = img_cv_or_bytes
-        if isinstance(img_cv_or_bytes, (bytes, str)):
-            data = decode_base64(img_cv_or_bytes) if isinstance(img_cv_or_bytes, str) else img_cv_or_bytes
-            if data:
-                nparr = np.frombuffer(data, np.uint8)
-                img_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-        if img_cv is None:
-            return ""
-
-        processed = preprocess_image_advanced(img_cv, scale_factor=2.0)
-        if processed is None:
-            processed = img_cv
-
-        text = pytesseract.image_to_string(processed, config=f'--psm {psm} --oem 1')
-        if not text.strip() and psm != 3:
-            text = pytesseract.image_to_string(processed, config='--psm 3 --oem 1')
-
-        return text.strip()
-    except Exception as e:
-        print(f"[OCR FALLBACK] Tesseract error: {e}", flush=True)
-        return ""
-
-def _run_tesseract_fallback(image_input):
-    """Fallback OCR using PyTesseract if available."""
+def _run_tesseract_fallback(image_input, psm=6):
+    """Fallback OCR using PyTesseract if Google Cloud Vision API is unavailable or returns empty."""
     if image_input is None or pytesseract is None:
         return ""
     try:
-        raw_bytes = resolve_verification_image_bytes(image_input)
-        if not raw_bytes:
+        _init_tesseract()
+        img = None
+        if isinstance(image_input, np.ndarray):
+            img = image_input
+        else:
+            raw_bytes = resolve_verification_image_bytes(image_input)
+            if raw_bytes:
+                nparr = np.frombuffer(raw_bytes, np.uint8)
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if img is None or img.size == 0:
             return ""
-        nparr = np.frombuffer(raw_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if img is None:
-            return ""
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        text = pytesseract.image_to_string(gray)
+
+        # Try advanced preprocessing if available, otherwise grayscale
+        processed = None
+        try:
+            if 'preprocess_image_advanced' in globals() and callable(globals()['preprocess_image_advanced']):
+                processed = globals()['preprocess_image_advanced'](img, scale_factor=2.0)
+        except Exception:
+            processed = None
+
+        if processed is None:
+            processed = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+
+        config = f'--psm {psm} --oem 1' if psm else '--oem 1'
+        text = pytesseract.image_to_string(processed, config=config)
+        if not text.strip() and psm != 3:
+            text = pytesseract.image_to_string(processed, config='--psm 3 --oem 1')
+        if not text.strip():
+            # Try basic grayscale if processed had aggressive contrast
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+            text = pytesseract.image_to_string(gray)
+
         return text.strip() if text else ""
     except Exception as te:
         logger.warning(f"[TESSERACT FALLBACK EXCEPTION] {te}")

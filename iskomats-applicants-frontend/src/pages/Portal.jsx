@@ -398,9 +398,25 @@ const Portal = () => {
       fetchNotifications()
     ]).catch(() => undefined);
 
-    // Lightweight polling fallback (every 25 seconds) for background recovery if sockets disconnect
-    const notifInterval = setInterval(fetchNotifications, 25000);
-    const announcementInterval = setInterval(fetchAnnouncements, 60000);
+    // Lightweight polling fallback for background recovery if sockets disconnect (only when tab is visible)
+    const notifInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchNotifications();
+      }
+    }, 45000);
+    const announcementInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchAnnouncements();
+      }
+    }, 90000);
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchNotifications();
+        fetchAnnouncements();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Debounce helpers to prevent socket event cascades from firing multiple heavy API calls in the same second
     let debounceAnnounceTimer = null;
@@ -772,6 +788,9 @@ const Portal = () => {
 
       clearInterval(notifInterval);
       clearInterval(announcementInterval);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
     };
   }, [navigate]);
 

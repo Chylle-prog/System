@@ -573,6 +573,11 @@ def fetch_video_bytes_from_url(url):
         
         if response.status_code == 200:
             content = response.content
+            try:
+                from services.crypto_service import decrypt_if_encrypted
+                content = decrypt_if_encrypted(content)
+            except Exception as dec_err:
+                print(f"[VIDEO FETCH] Decryption note: {dec_err}", flush=True)
             print(f"[VIDEO FETCH] Successfully fetched {len(content)} bytes", flush=True)
             _cache_video_fetch(normalized_url, content, None)
             return content, None
