@@ -3610,7 +3610,7 @@ export default function ScholarshipDashboard({
 
   const handleSendIndigencyVerification = async (applicant) => {
     const applicantId = applicant?.applicant_no || applicant?.id;
-    const scholarshipNo = applicant?.scholarshipNo;
+    const scholarshipNo = applicant?.scholarshipNo || applicant?.scholarship_no || applicant?.reqNo || applicant?.req_no;
     const dispatchKey = getApplicantDispatchKey(applicant);
     const docTypes = getApplicantDocTypes(applicant);
 

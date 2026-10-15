@@ -24,6 +24,9 @@ from io import BytesIO
 import traceback
 import threading
 import concurrent.futures
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from services.applicant_document_service import normalize_supabase_url
 
 # Global SocketIO instance to avoid circular imports with app.py
@@ -391,22 +394,37 @@ def get_mime_type(data):
     
     if hasattr(data, 'tobytes'):
         data = data.tobytes()
+    elif isinstance(data, bytearray):
+        data = bytes(data)
+    elif not isinstance(data, bytes):
+        try:
+            data = bytes(data)
+        except Exception:
+            return 'application/octet-stream'
+
+    trimmed = data.lstrip(b'\r\n\t \x00\xef\xbb\xbf')
     
     # PNG
-    if data[:4] == b'\x89PNG':
+    if trimmed[:4] == b'\x89PNG':
         return 'image/png'
     # JPEG
-    elif data[:2] == b'\xff\xd8':
+    elif trimmed[:2] == b'\xff\xd8':
         return 'image/jpeg'
     # GIF
-    elif data[:4] == b'GIF8':
+    elif trimmed[:4] == b'GIF8':
         return 'image/gif'
     # WEBP
-    elif data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+    elif trimmed[:4] == b'RIFF' and len(trimmed) >= 12 and trimmed[8:12] == b'WEBP':
         return 'image/webp'
+    # BMP
+    elif trimmed[:2] == b'BM':
+        return 'image/bmp'
+    # TIFF
+    elif trimmed[:4] in (b'II*\x00', b'MM\x00*'):
+        return 'image/tiff'
     # ISO Base Media File Format (AVIF, HEIC, etc.)
-    elif data[4:8] == b'ftyp':
-        brand = data[8:12]
+    elif len(trimmed) >= 12 and trimmed[4:8] == b'ftyp':
+        brand = trimmed[8:12]
         if brand in [b'avif', b'avis']:
             return 'image/avif'
         elif brand in [b'heic', b'heix', b'hevc', b'hevx']:
@@ -418,13 +436,13 @@ def get_mime_type(data):
         elif brand == b'qt  ':
             return 'video/quicktime'
     # Matroska / WebM
-    elif data[:4] == b'\x1a\x45\xdf\xa3':
+    elif trimmed[:4] == b'\x1a\x45\xdf\xa3':
         return 'video/webm'
     # SVG
-    elif data[:5].lower() == b'<svg ' or data[:14].lower() == b'<?xml version=':
+    elif trimmed[:5].lower() == b'<svg ' or trimmed[:14].lower() == b'<?xml version=' or b'<svg' in trimmed[:100].lower():
         return 'image/svg+xml'
     # PDF
-    elif data[:4] == b'%PDF':
+    elif trimmed[:4] == b'%PDF':
         return 'application/pdf'
         
     return 'application/octet-stream'
@@ -911,6 +929,74 @@ def build_applicant_full_name(applicant_row):
     ).strip()
 
 
+# Persistent HTTP session with connection pooling for lightning-fast cloud media fetches
+_CLOUD_SESSION = requests.Session()
+_cloud_adapter = HTTPAdapter(pool_connections=25, pool_maxsize=50, max_retries=Retry(total=2, backoff_factor=0.2))
+_CLOUD_SESSION.mount('http://', _cloud_adapter)
+_CLOUD_SESSION.mount('https://', _cloud_adapter)
+
+
+def fetch_cloud_media_bytes(url):
+    """Fetch cloud media bytes (Supabase or HTTP) using Service Role Key or Supabase SDK with connection pooling."""
+    if not url or not isinstance(url, str) or not url.startswith('http'):
+        return None
+        
+    normalized_url = normalize_supabase_url(url.strip())
+    
+    # 1. Try Supabase SDK download directly
+    try:
+        from project_config import get_supabase_client
+        supabase = get_supabase_client()
+        if supabase and 'supabase.co' in normalized_url:
+            parts = normalized_url.split('/storage/v1/object/')
+            if len(parts) > 1:
+                subpath = parts[1]
+                for prefix in ('public/', 'authenticated/', 'sign/'):
+                    if subpath.startswith(prefix):
+                        subpath = subpath[len(prefix):]
+                        break
+                if '/' in subpath:
+                    bucket_name, file_path = subpath.split('/', 1)
+                    file_path = file_path.split('?')[0]
+                    res_bytes = supabase.storage.from_(bucket_name).download(file_path)
+                    if res_bytes:
+                        return res_bytes
+    except Exception as sdk_err:
+        pass
+
+    # 2. High-speed HTTP GET with Connection Pooling and Service Role Key authentication
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ISKOMATS-AdminBackend/1.0',
+        'Accept': '*/*'
+    }
+    
+    url_to_fetch = normalized_url
+    supabase_key = (
+        os.environ.get('SUPABASE_SERVICE_ROLE_KEY') 
+        or os.environ.get('SUPABASE_KEY') 
+        or os.environ.get('SUPABASE_ANON_KEY')
+    )
+    if supabase_key and 'supabase.co' in url_to_fetch:
+        headers['apikey'] = supabase_key
+        headers['Authorization'] = f"Bearer {supabase_key}"
+
+    urls_to_try = [url_to_fetch]
+    if '/object/public/' in url_to_fetch:
+        urls_to_try.insert(0, url_to_fetch.replace('/object/public/', '/object/authenticated/'))
+    elif '/object/authenticated/' in url_to_fetch:
+        urls_to_try.append(url_to_fetch.replace('/object/authenticated/', '/object/public/'))
+
+    for attempt_url in urls_to_try:
+        try:
+            resp = _CLOUD_SESSION.get(attempt_url, headers=headers, timeout=15)
+            if resp.status_code == 200 and resp.content:
+                return resp.content
+        except Exception:
+            continue
+
+    return None
+
+
 def coerce_binary_bytes(value):
     if value is None:
         return None
@@ -923,38 +1009,83 @@ def coerce_binary_bytes(value):
     elif isinstance(value, bytes):
         result_bytes = value
     elif isinstance(value, str):
-        # Handle Base64 URL data
-        if value.startswith('data:'):
+        val_str = value.strip()
+        
+        # 1. Base64 data URI (e.g. data:image/jpeg;base64,...)
+        if val_str.startswith('data:'):
             try:
-                comma_idx = value.find(',')
+                comma_idx = val_str.find(',')
                 if comma_idx != -1:
-                    result_bytes = base64.b64decode(value[comma_idx+1:])
+                    result_bytes = base64.b64decode(val_str[comma_idx+1:])
+            except Exception as e:
+                print(f"[COERCE DATA URI ERROR] {e}", flush=True)
+
+        # 2. HTTP / Cloud URL (Supabase storage URL or external HTTP)
+        elif val_str.startswith('http://') or val_str.startswith('https://'):
+            try:
+                result_bytes = fetch_cloud_media_bytes(val_str)
+            except Exception as download_error:
+                print(f"[DOWNLOAD ERROR] Failed to fetch document from {val_str}: {download_error}", flush=True)
+
+        # 3. Raw Base64 string without data: prefix
+        elif len(val_str) > 30 and not val_str.startswith('/') and not val_str.startswith('.'):
+            try:
+                decoded = base64.b64decode(val_str)
+                if decoded and (
+                    decoded.startswith(b'\xff\xd8') or
+                    decoded.startswith(b'\x89PNG') or
+                    decoded.startswith(b'%PDF') or
+                    decoded.startswith(b'GIF8') or
+                    decoded.startswith(b'RIFF') or
+                    decoded.startswith(b'BM') or
+                    decoded.startswith(b'ENC:') or
+                    decoded.startswith(b'gAAAA')
+                ):
+                    result_bytes = decoded
             except Exception:
                 pass
-        
-        # Handle HTTP URLs (Download)
-        if not result_bytes and value.startswith('http'):
-            try:
-                # Use a timeout to prevent hanging the background thread indefinitely
-                with urllib_request.urlopen(value, timeout=15) as response:
-                    result_bytes = response.read()
-            except Exception as download_error:
-                print(f"[DOWNLOAD ERROR] Failed to fetch document from {value}: {download_error}", flush=True)
-                # Fallback to returning the URL bytes if download fails
-        
-        # Fallback to UTF-8 encoding if it's just a string (not a URL)
-        if not result_bytes:
-            result_bytes = value.encode('utf-8', errors='replace')
     else:
-        result_bytes = bytes(value)
-
-    # Ensure we decrypt the binary bytes if they are encrypted
-    if result_bytes:
-        from services.crypto_service import decrypt_if_encrypted
         try:
+            result_bytes = bytes(value)
+        except Exception:
+            result_bytes = None
+
+    # Decrypt if encrypted with Fernet or Web Crypto AES-GCM
+    if result_bytes:
+        try:
+            from services.crypto_service import decrypt_if_encrypted
             result_bytes = decrypt_if_encrypted(result_bytes)
         except Exception as e:
             print(f"[COERCE DECRYPT ERROR] Failed to decrypt: {e}", flush=True)
+
+    # If decrypted result is a base64 data URI or string, decode it
+    if result_bytes:
+        if isinstance(result_bytes, bytes) and result_bytes.startswith(b'data:'):
+            try:
+                comma_idx = result_bytes.find(b',')
+                if comma_idx != -1:
+                    result_bytes = base64.b64decode(result_bytes[comma_idx+1:])
+            except Exception:
+                pass
+        elif isinstance(result_bytes, str):
+            if result_bytes.startswith('data:'):
+                try:
+                    comma_idx = result_bytes.find(',')
+                    if comma_idx != -1:
+                        result_bytes = base64.b64decode(result_bytes[comma_idx+1:])
+                except Exception:
+                    pass
+            elif result_bytes.startswith('http://') or result_bytes.startswith('https://'):
+                result_bytes = fetch_cloud_media_bytes(result_bytes)
+
+    # Sanity check: Ensure result_bytes is actual binary content, not an un-downloaded URL
+    if result_bytes and isinstance(result_bytes, bytes):
+        if result_bytes.startswith(b'http://') or result_bytes.startswith(b'https://'):
+            try:
+                url_s = result_bytes.decode('utf-8', errors='ignore').strip()
+                result_bytes = fetch_cloud_media_bytes(url_s)
+            except Exception:
+                result_bytes = None
 
     return result_bytes
 
@@ -962,6 +1093,8 @@ def coerce_binary_bytes(value):
 def guess_extension_for_mime(mime_type):
     extension_map = {
         'image/jpeg': 'jpg',
+        'image/jpg': 'jpg',
+        'image/pjpeg': 'jpg',
         'image/png': 'png',
         'image/gif': 'gif',
         'image/webp': 'webp',
@@ -969,20 +1102,35 @@ def guess_extension_for_mime(mime_type):
         'image/heic': 'heic',
         'image/heif': 'heif',
         'image/svg+xml': 'svg',
+        'image/bmp': 'bmp',
+        'image/tiff': 'tiff',
         'application/pdf': 'pdf',
     }
-    return extension_map.get(mime_type, 'bin')
+    return extension_map.get(mime_type, 'jpg')
 
 
-def create_email_attachment(filename, content_bytes, mime_type):
+def create_email_attachment(filename, content_bytes, mime_type=None):
     safe_bytes = coerce_binary_bytes(content_bytes)
     if not safe_bytes:
         return None
 
+    # Detect the actual MIME type from the binary bytes
+    detected_mime = get_mime_type(safe_bytes)
+    if detected_mime and detected_mime != 'application/octet-stream':
+        mime_type = detected_mime
+    elif not mime_type or mime_type == 'application/octet-stream':
+        mime_type = 'image/jpeg'
+
+    ext = guess_extension_for_mime(mime_type)
+    # Ensure filename has an appropriate image/pdf extension and never .bin
+    if filename.endswith('.bin') or '.' not in filename:
+        base_name = filename.rsplit('.', 1)[0] if '.' in filename else filename
+        filename = f"{base_name}.{ext}"
+
     if '/' in mime_type:
         main_type, sub_type = mime_type.split('/', 1)
     else:
-        main_type, sub_type = 'application', 'octet-stream'
+        main_type, sub_type = 'image', 'jpeg'
 
     attachment = MIMEBase(main_type, sub_type)
     attachment.set_payload(safe_bytes)
@@ -1155,14 +1303,14 @@ def send_school_verification_dispatch(current_user_id, pro_no, role, applicant_n
                         document_values = fetch_applicant_document_values(
                             bg_cursor,
                             applicant_no,
-                            ['enrollment_certificate_doc', 'grades_doc', 'id_img_front', 'id_img_back'],
+                            ['enrollment_certificate_doc', 'grades_doc', 'id_img_front', 'id_img_back', 'id_pic', 'face_photo', 'mayorCOE_photo', 'mayorGrades_photo'],
                             app_doc_no=app_doc_no
                         )
 
-                        front_id = document_values.get('id_img_front')
+                        front_id = document_values.get('id_img_front') or document_values.get('id_pic') or document_values.get('face_photo')
                         back_id = document_values.get('id_img_back')
-                        enrollment_doc = document_values.get('enrollment_certificate_doc')
-                        grades_doc = document_values.get('grades_doc')
+                        enrollment_doc = document_values.get('enrollment_certificate_doc') or document_values.get('mayorCOE_photo')
+                        grades_doc = document_values.get('grades_doc') or document_values.get('mayorGrades_photo')
 
                         attachment_specs = [
                             ('enrollment_certificate', enrollment_doc),
@@ -1196,15 +1344,18 @@ def send_school_verification_dispatch(current_user_id, pro_no, role, applicant_n
                             if not raw_content:
                                 continue
                             content_bytes = coerce_binary_bytes(raw_content)
+                            if not content_bytes:
+                                print(f"[BG_DISPATCH WARNING] Could not retrieve bytes for {label}", flush=True)
+                                continue
                             mime_type = get_mime_type(content_bytes)
                             extension = guess_extension_for_mime(mime_type)
-                            attachments.append(
-                                create_email_attachment(
-                                    f"{applicant_name.replace(' ', '_').lower()}_{label}.{extension}",
-                                    content_bytes,
-                                    mime_type,
-                                )
+                            att = create_email_attachment(
+                                f"{applicant_name.replace(' ', '_').lower()}_{label}.{extension}",
+                                content_bytes,
+                                mime_type,
                             )
+                            if att:
+                                attachments.append(att)
 
                         attached_doc_lines = [
                             "- Enrollment certificate",
@@ -1290,8 +1441,23 @@ def send_indigency_verification_dispatch(current_user_id, pro_no, role, applican
 
             app_doc_no = applicant_row.get('app_doc_no') if isinstance(applicant_row, dict) else (dict(applicant_row).get('app_doc_no') if hasattr(applicant_row, 'keys') else None)
 
-            document_values = fetch_applicant_document_values(cursor, applicant_no, ['indigency_doc'], app_doc_no=app_doc_no)
-            indigency_doc = document_values.get('indigency_doc')
+            document_values = fetch_applicant_document_values(
+                cursor,
+                applicant_no,
+                ['indigency_doc', 'mayorIndigency_photo', 'indigency'],
+                app_doc_no=app_doc_no
+            )
+            indigency_doc = (
+                document_values.get('indigency_doc') or
+                document_values.get('mayorIndigency_photo') or
+                document_values.get('indigency')
+            )
+            if not indigency_doc:
+                cursor.execute('SELECT indigency_doc FROM applicants WHERE applicant_no = %s LIMIT 1', (applicant_no,))
+                i_row = cursor.fetchone()
+                if i_row:
+                    indigency_doc = i_row.get('indigency_doc') if isinstance(i_row, dict) else i_row[0]
+
             if not indigency_doc:
                 return jsonify({'success': False, 'message': 'Missing required document: Indigency/Residency Proof'}), 400
 
@@ -1303,15 +1469,18 @@ def send_indigency_verification_dispatch(current_user_id, pro_no, role, applican
             doc_type_name = 'residency' if is_residency else 'indigency'
 
             indigency_bytes = coerce_binary_bytes(indigency_doc)
+            if not indigency_bytes:
+                print(f"[INDIGENCY DISPATCH ERROR] Could not coerce bytes from indigency document: {indigency_doc[:100] if isinstance(indigency_doc, str) else type(indigency_doc)}", flush=True)
+                return jsonify({'success': False, 'message': 'Could not load indigency document image'}), 400
+
             indigency_mime = get_mime_type(indigency_bytes)
             indigency_extension = guess_extension_for_mime(indigency_mime)
-            attachments = [
-                create_email_attachment(
-                    f"{applicant_name.replace(' ', '_').lower()}_{doc_type_name}_proof.{indigency_extension}",
-                    indigency_bytes,
-                    indigency_mime,
-                )
-            ]
+            att = create_email_attachment(
+                f"{applicant_name.replace(' ', '_').lower()}_{doc_type_name}_proof.{indigency_extension}",
+                indigency_bytes,
+                indigency_mime,
+            )
+            attachments = [att] if att else []
 
             subject = f"{'Residency' if is_residency else 'Indigency'} Verification Request - {applicant_name}"
             body = f"""Hello,
@@ -5565,17 +5734,7 @@ def get_announcement_image_by_index(ann_no, idx):
         return jsonify({'message': f'Error: {str(e)}'}), 500
 
 import hashlib
-import time
-import requests
 from collections import OrderedDict
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-
-# Persistent HTTP session with connection pooling for lightning-fast cloud media fetches
-_CLOUD_SESSION = requests.Session()
-_cloud_adapter = HTTPAdapter(pool_connections=25, pool_maxsize=50, max_retries=Retry(total=2, backoff_factor=0.2))
-_CLOUD_SESSION.mount('http://', _cloud_adapter)
-_CLOUD_SESSION.mount('https://', _cloud_adapter)
 
 # In-Memory LRU Cache for Decrypted Media & Videos
 # Eliminates redundant Supabase downloads and decryptions during Range request seeking/buffering
@@ -5627,66 +5786,6 @@ def invalidate_media_cache(applicant_no=None):
         for k in keys_to_del:
             _current_media_cache_bytes -= len(_MEDIA_CACHE[k]['data'])
             del _MEDIA_CACHE[k]
-
-
-def fetch_cloud_media_bytes(url):
-    """Fetch cloud media bytes (Supabase or HTTP) using Service Role Key or Supabase SDK with connection pooling."""
-    if not url or not isinstance(url, str) or not url.startswith('http'):
-        return None
-        
-    normalized_url = normalize_supabase_url(url.strip())
-    
-    # 1. Try Supabase SDK download directly
-    try:
-        from project_config import get_supabase_client
-        supabase = get_supabase_client()
-        if supabase and 'supabase.co' in normalized_url:
-            parts = normalized_url.split('/storage/v1/object/')
-            if len(parts) > 1:
-                subpath = parts[1]
-                for prefix in ('public/', 'authenticated/', 'sign/'):
-                    if subpath.startswith(prefix):
-                        subpath = subpath[len(prefix):]
-                        break
-                if '/' in subpath:
-                    bucket_name, file_path = subpath.split('/', 1)
-                    file_path = file_path.split('?')[0]
-                    res_bytes = supabase.storage.from_(bucket_name).download(file_path)
-                    if res_bytes:
-                        return res_bytes
-    except Exception as sdk_err:
-        pass
-
-    # 2. High-speed HTTP GET with Connection Pooling
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ISKOMATS-AdminBackend/1.0'
-    }
-    
-    url_to_fetch = normalized_url
-    supabase_key = (
-        os.environ.get('SUPABASE_SERVICE_ROLE_KEY') 
-        or os.environ.get('SUPABASE_KEY') 
-        or os.environ.get('SUPABASE_ANON_KEY')
-    )
-    if supabase_key and 'supabase.co' in url_to_fetch:
-        headers['apikey'] = supabase_key
-        headers['Authorization'] = f"Bearer {supabase_key}"
-
-    urls_to_try = [url_to_fetch]
-    if '/object/public/' in url_to_fetch:
-        urls_to_try.insert(0, url_to_fetch.replace('/object/public/', '/object/authenticated/'))
-    elif '/object/authenticated/' in url_to_fetch:
-        urls_to_try.append(url_to_fetch.replace('/object/authenticated/', '/object/public/'))
-
-    for attempt_url in urls_to_try:
-        try:
-            resp = _CLOUD_SESSION.get(attempt_url, headers=headers, timeout=12)
-            if resp.status_code == 200 and resp.content:
-                return resp.content
-        except Exception:
-            continue
-
-    return None
 
 
 
