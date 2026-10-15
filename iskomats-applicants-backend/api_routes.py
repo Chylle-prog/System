@@ -741,7 +741,16 @@ _ACCOUNT_LOCK_CACHE_TTL = 30  # 30-second TTL
 def invalidate_account_lock_cache(user_id=None):
     with _ACCOUNT_LOCK_CACHE_LOCK:
         if user_id is not None:
-            keys_to_remove = [k for k in _ACCOUNT_LOCK_CACHE if k[1] == user_id]
+            uid_str = str(user_id).strip().lower()
+            keys_to_remove = []
+            for k in list(_ACCOUNT_LOCK_CACHE.keys()):
+                cached_id_str = str(k[1]).lower()
+                if (
+                    cached_id_str == uid_str
+                    or uid_str.endswith(f"-{cached_id_str}")
+                    or cached_id_str.endswith(f"-{uid_str}")
+                ):
+                    keys_to_remove.append(k)
             for k in keys_to_remove:
                 _ACCOUNT_LOCK_CACHE.pop(k, None)
         else:
@@ -3776,6 +3785,11 @@ def toggle_account_lock(current_user_id, pro_no, role, account_id):
         
             if not result:
                 return jsonify({'message': 'Account not found'}), 404
+
+            # Invalidate account lock cache immediately so unlock/lock takes effect with 0s delay
+            target_user_id = account_context.get('user_no') or account_context.get('applicant_no')
+            invalidate_account_lock_cache(target_user_id)
+            invalidate_account_lock_cache(account_id)
         
             status = 'locked' if data['locked'] else 'unlocked'
             record_admin_activity(

@@ -1,7 +1,5 @@
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
-const Dash = lazy(() => import('./Pages/Dash/dash.jsx'))
-const ProviderDashboard = lazy(() => import('./Pages/Dash/provider-dashboard'))
 import { PROVIDER_DASHBOARD_ROUTE, isProviderDashboardRole } from './Pages/Dash/provider-dashboard-config'
 import Navbar from './Components/Navbar/navbar'
 import AccessDenied from './Pages/Auth/AccessDenied/access-denied'
@@ -13,6 +11,9 @@ import Suspended from './Pages/Auth/Suspended/suspended'
 import VerifyEmail from './Pages/Auth/VerifyE/verify-email'
 import { authAPI, API_ORIGIN } from './services/api'
 import { clearAdminSession } from './utils/admin-session'
+
+const Dash = lazy(() => import('./Pages/Dash/dash.jsx'))
+const ProviderDashboard = lazy(() => import('./Pages/Dash/provider-dashboard'))
 
 const DashboardFallback = () => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '1rem', color: '#4B5563' }}>

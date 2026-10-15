@@ -10,7 +10,7 @@ services:
       - key: FRONTEND_URL
         value: https://admins-site.surge.sh
       - key: STUDENT_FRONTEND_URL
-        value: https://iskoMats.surge.sh
+        value: https://iskomats.surge.sh
       - key: ADMIN_FRONTEND_URL
         value: https://admins-site.surge.sh
       - key: USE_NEURAL_FACE_VERIFICATION

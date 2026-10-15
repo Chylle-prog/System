@@ -24,14 +24,18 @@ class GeminiService:
             groq_key = _DEFAULT_GROQ_KEY
             
         self.groq_api_key = groq_key
-        self.model = os.getenv("GROQ_MODEL") or "llama-3.3-70b-versatile"
+        self.model = os.getenv("GROQ_MODEL") or "openai/gpt-oss-20b"
 
         # Initialize Google GenAI client as fallback if needed
         self.client = None
-        if not self.groq_api_key and self.api_key and not self.api_key.startswith("gsk_"):
+        self.gemini_model = os.getenv("GEMINI_MODEL") or (model if model and "gemini" in model.lower() else "gemini-2.0-flash-lite")
+        gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+        if not gemini_key and self.api_key and not self.api_key.startswith("gsk_"):
+            gemini_key = self.api_key
+        if gemini_key and not gemini_key.startswith("gsk_"):
             try:
                 from google import genai
-                self.client = genai.Client(api_key=self.api_key)
+                self.client = genai.Client(api_key=gemini_key)
             except Exception as e:
                 logger.warning(f"Could not initialize Google GenAI client: {e}")
 
@@ -56,13 +60,15 @@ class GeminiService:
 
         # 1. USE GROQ API (If GROQ_API_KEY is configured)
         if groq_key:
-            configured_model = os.getenv("GROQ_MODEL", "").strip()
+            configured_model = os.getenv("GROQ_MODEL", "").strip() or self.model
             candidate_models = [
                 m for m in [
                     configured_model,
+                    "openai/gpt-oss-20b",
+                    "openai/gpt-oss-120b",
+                    "qwen/qwen3.8-27b",
                     "llama-3.3-70b-versatile",
-                    "llama-3.1-8b-instant",
-                    "mixtral-8x7b-32768"
+                    "llama-3.1-8b-instant"
                 ] if m
             ]
             # Deduplicate while preserving order
@@ -144,7 +150,7 @@ class GeminiService:
                 )
 
                 response_stream = self.client.models.generate_content_stream(
-                    model=self.model,
+                    model=self.gemini_model,
                     contents=contents,
                     config=config,
                 )
