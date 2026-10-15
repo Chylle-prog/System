@@ -24,7 +24,7 @@ class GeminiService:
             groq_key = _DEFAULT_GROQ_KEY
             
         self.groq_api_key = groq_key
-        self.model = os.getenv("GROQ_MODEL") or "openai/gpt-oss-20b"
+        self.model = os.getenv("GROQ_MODEL") or "llama-3.3-70b-versatile"
 
         # Initialize Google GenAI client as fallback if needed
         self.client = None
@@ -60,10 +60,9 @@ class GeminiService:
             candidate_models = [
                 m for m in [
                     configured_model,
-                    "openai/gpt-oss-20b",
-                    "openai/gpt-oss-120b",
-                    "qwen/qwen3.6-27b",
-                    "groq/compound-mini"
+                    "llama-3.3-70b-versatile",
+                    "llama-3.1-8b-instant",
+                    "mixtral-8x7b-32768"
                 ] if m
             ]
             # Deduplicate while preserving order
