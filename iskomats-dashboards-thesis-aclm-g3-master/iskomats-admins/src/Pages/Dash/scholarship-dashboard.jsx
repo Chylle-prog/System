@@ -1729,7 +1729,8 @@ export default function ScholarshipDashboard({
             studentName: msg.username,
             studentEmail: msg.username,
             applicant_no: msg.applicant_no || null,
-            studentStatus: msg.student_status,
+            studentStatus: (msg.student_status === 'Rejected' || msg.student_status === 'Declined') ? 'Declined' : ((msg.student_status === 'Active' || msg.student_status === 'active') ? 'Pending' : (msg.student_status || 'Pending')),
+            student_status: (msg.student_status === 'Rejected' || msg.student_status === 'Declined') ? 'Declined' : ((msg.student_status === 'Active' || msg.student_status === 'active') ? 'Pending' : (msg.student_status || 'Pending')),
             message: msg.message,
             timestamp: msg.timestamp,
             read: isRead,
@@ -1792,8 +1793,8 @@ export default function ScholarshipDashboard({
               last_name: msg.last_name,
               studentEmail: msg.username,
               applicant_no: resolvedApplicantNo,
-              studentStatus: msg.student_status || 'Pending',
-              student_status: msg.student_status || 'Pending',
+              studentStatus: (msg.student_status === 'Rejected' || msg.student_status === 'Declined') ? 'Declined' : ((msg.student_status === 'Active' || msg.student_status === 'active') ? 'Pending' : (msg.student_status || 'Pending')),
+              student_status: (msg.student_status === 'Rejected' || msg.student_status === 'Declined') ? 'Declined' : ((msg.student_status === 'Active' || msg.student_status === 'active') ? 'Pending' : (msg.student_status || 'Pending')),
               message: msg.message,
               timestamp: msg.timestamp,
               sender_id: msg.sender_id,
@@ -1927,8 +1928,8 @@ export default function ScholarshipDashboard({
               timestamp: m.timestamp,
               sender_id: m.sender_id,
               is_student_sender: m.is_student_sender,
-              student_status: m.student_status || 'Pending',
-              studentStatus: m.student_status || 'Pending',
+              student_status: (m.student_status === 'Rejected' || m.student_status === 'Declined') ? 'Declined' : ((m.student_status === 'Active' || m.student_status === 'active') ? 'Pending' : (m.student_status || 'Pending')),
+              studentStatus: (m.student_status === 'Rejected' || m.student_status === 'Declined') ? 'Declined' : ((m.student_status === 'Active' || m.student_status === 'active') ? 'Pending' : (m.student_status || 'Pending')),
               read: isRead,
               starred: false,
             };
@@ -3981,23 +3982,30 @@ export default function ScholarshipDashboard({
   };
 
   const getStudentStatus = (id, name, currentStatus, email = null) => {
-    let norm = currentStatus;
-    if (norm === 'Submitted') norm = 'Pending';
-    if (norm === 'Approved') norm = 'Accepted';
-    if (norm && norm !== 'Unknown') return norm;
+    // 1. Authoritative check: match applicant against current application data lists
     const inList = (list) => (list || []).some((a) => {
       const aNo = (a.applicant_no || a.applicantNo || a.applicant_id || (typeof a.id === 'string' ? a.id.split('_')[0] : a.id) || '').toString();
       if (id && aNo && aNo === id.toString()) return true;
       const aEmail = (a.email || a.emailAddress || a.studentContact?.email || '').toLowerCase();
       if (email && aEmail && aEmail === email.toLowerCase()) return true;
+      if (name && a.name && a.name.toLowerCase() === name.toLowerCase()) return true;
       return false;
     });
     if (inList(data.accepted)) return 'Accepted';
-    if (inList(data.declined)) return 'Declined';
-    if (inList(data.applicants)) return 'Pending';
     if (inList(data.suspended)) return 'Suspended';
     if (inList(data.cancelled)) return 'Cancelled';
-    return 'Unknown';
+    if (inList(data.declined) || inList(data.rejected)) return 'Declined';
+    if (inList(data.applicants)) return 'Pending';
+
+    // 2. Fallback: normalize currentStatus from message payload or applicant record
+    let norm = currentStatus;
+    if (norm === 'Submitted') norm = 'Pending';
+    if (norm === 'Approved') norm = 'Accepted';
+    if (norm === 'Rejected') norm = 'Declined';
+    if (norm === 'Active' || norm === 'active') norm = null; // 'Active' is not an applicant status
+
+    if (norm && norm !== 'Unknown') return norm;
+    return 'Pending';
   };
 
   const groupMessagesByStudent = (messages, forceMode = null, knownApplicants = null) => {
@@ -4133,7 +4141,7 @@ export default function ScholarshipDashboard({
             lastMessage: {
               timestamp: a.dateApplied || a.createdAt || new Date(0).toISOString(),
               message: "No messages yet",
-              studentStatus: a.status || getStudentStatus(key, officialName),
+              studentStatus: (a.status === 'Rejected' || a.status === 'Declined') ? 'Declined' : (a.status || getStudentStatus(key, officialName, null, a.email || a.emailAddress)),
               subject: 'No conversations started yet',
               room: applicantRoom
             },
@@ -4143,7 +4151,7 @@ export default function ScholarshipDashboard({
           grouped[key].studentEmail = a.email || a.emailAddress || grouped[key].studentEmail;
           grouped[key].studentPhone = a.mobileNumber || a.phone || grouped[key].studentPhone;
           if (a.status) {
-            grouped[key].lastMessage.studentStatus = a.status;
+            grouped[key].lastMessage.studentStatus = (a.status === 'Rejected' || a.status === 'Declined') ? 'Declined' : a.status;
           }
         }
       });
@@ -4200,7 +4208,9 @@ export default function ScholarshipDashboard({
             lastMessage: {
               timestamp: m.timestamp || new Date(0).toISOString(),
               message: m.message,
-              studentStatus: m.student_status || m.studentStatus || 'Pending',
+              studentStatus: (m.student_status === 'Rejected' || m.student_status === 'Declined' || m.studentStatus === 'Rejected' || m.studentStatus === 'Declined')
+                ? 'Declined'
+                : ((m.student_status === 'Active' || m.studentStatus === 'Active') ? 'Pending' : (m.student_status || m.studentStatus || 'Pending')),
               subject: 'Message Conversation',
               room: applicantRoom
             },
@@ -4348,13 +4358,23 @@ export default function ScholarshipDashboard({
     const resolvedSenderId = currentUserId ? Number(currentUserId) : null;
     const resolvedUsername = programName || userName || 'Admin';
 
+    const currentAppStatus = currentConversation?.isAdminRoom
+      ? 'Admin'
+      : getStudentStatus(
+          currentConversation?.applicant_no,
+          currentConversation?.studentName,
+          currentConversation?.lastMessage?.studentStatus,
+          currentConversation?.studentEmail
+        );
+
     const optimisticMsg = {
       id: tempId,
       m_id: tempId,
       studentName: userName || userFirstName || 'Admin',
       studentEmail: userName || userFirstName || 'Admin',
       applicant_no: currentConversation?.isAdminRoom ? null : (currentConversation?.applicant_no || room),
-      studentStatus: 'Active',
+      studentStatus: currentAppStatus,
+      student_status: currentAppStatus,
       message: textToSend,
       timestamp: nowIso,
       read: true,
@@ -4689,18 +4709,35 @@ export default function ScholarshipDashboard({
                         if (messagingAPI) {
                           messagingAPI.getRoomMessages(msg.room).then(res => {
                             if (res.data?.messages && Array.isArray(res.data.messages)) {
-                              const readRoomMsgs = res.data.messages.map(m => {
-                                if (m.m_id) readMessageIdsRef.current.add(String(m.m_id));
-                                if (m.id) readMessageIdsRef.current.add(String(m.id));
-                                return { ...m, read: true, room: msg.room };
+                              setData(prev => {
+                                const existingRoomMsgs = (prev.inbox || []).filter(m => m.room === msg.room);
+                                const existingMsgMap = new Map(existingRoomMsgs.map(m => [String(m.m_id || m.id), m]));
+                                const readRoomMsgs = res.data.messages.map(m => {
+                                  if (m.m_id) readMessageIdsRef.current.add(String(m.m_id));
+                                  if (m.id) readMessageIdsRef.current.add(String(m.id));
+                                  const old = existingMsgMap.get(String(m.m_id || m.id));
+                                  const appNo = m.applicant_no || old?.applicant_no || msg.applicant_no || (msg.room?.includes('+') ? msg.room.split('+')[0] : null);
+                                  const currentStatus = m.student_status || m.studentStatus || old?.student_status || old?.studentStatus;
+                                  const normStatus = getStudentStatus(appNo, m.applicant_name || m.username, currentStatus);
+                                  return {
+                                    ...old,
+                                    ...m,
+                                    applicant_no: appNo,
+                                    student_status: normStatus,
+                                    studentStatus: normStatus,
+                                    studentName: m.applicant_name || m.username || old?.studentName,
+                                    read: true,
+                                    room: msg.room
+                                  };
+                                });
+                                return {
+                                  ...prev,
+                                  inbox: sortMessages([
+                                    ...(prev.inbox || []).filter(m => m.room !== msg.room),
+                                    ...readRoomMsgs
+                                  ])
+                                };
                               });
-                              setData(prev => ({
-                                ...prev,
-                                inbox: sortMessages([
-                                  ...(prev.inbox || []).filter(m => m.room !== msg.room),
-                                  ...readRoomMsgs
-                                ])
-                              }));
                             }
                           }).catch(() => { });
                         }
@@ -8149,22 +8186,35 @@ export default function ScholarshipDashboard({
                         if (conv.room && messagingAPI) {
                           messagingAPI.getRoomMessages(conv.room).then(res => {
                             if (res.data?.messages && Array.isArray(res.data.messages)) {
-                              const readRoomMsgs = res.data.messages.map(m => {
-                                if (m.m_id) readMessageIdsRef.current.add(String(m.m_id));
-                                if (m.id) readMessageIdsRef.current.add(String(m.id));
+                              setData(prev => {
+                                const existingRoomMsgs = (prev.inbox || []).filter(m => m.room === conv.room);
+                                const existingMsgMap = new Map(existingRoomMsgs.map(m => [String(m.m_id || m.id), m]));
+                                const readRoomMsgs = res.data.messages.map(m => {
+                                  if (m.m_id) readMessageIdsRef.current.add(String(m.m_id));
+                                  if (m.id) readMessageIdsRef.current.add(String(m.id));
+                                  const old = existingMsgMap.get(String(m.m_id || m.id));
+                                  const appNo = m.applicant_no || old?.applicant_no || conv.applicant_no || (conv.room?.includes('+') ? conv.room.split('+')[0] : null);
+                                  const currentStatus = m.student_status || m.studentStatus || old?.student_status || old?.studentStatus || conv.lastMessage?.studentStatus;
+                                  const normStatus = getStudentStatus(appNo, conv.studentName, currentStatus, conv.studentEmail);
+                                  return {
+                                    ...old,
+                                    ...m,
+                                    applicant_no: appNo,
+                                    student_status: normStatus,
+                                    studentStatus: normStatus,
+                                    studentName: m.applicant_name || m.username || old?.studentName || conv.studentName,
+                                    read: true,
+                                    room: conv.room
+                                  };
+                                });
                                 return {
-                                  ...m,
-                                  read: true,
-                                  room: conv.room
+                                  ...prev,
+                                  inbox: sortMessages([
+                                    ...(prev.inbox || []).filter(m => m.room !== conv.room),
+                                    ...readRoomMsgs
+                                  ])
                                 };
                               });
-                              setData(prev => ({
-                                ...prev,
-                                inbox: sortMessages([
-                                  ...(prev.inbox || []).filter(m => m.room !== conv.room),
-                                  ...readRoomMsgs
-                                ])
-                              }));
                             }
                           }).catch(() => { });
                         }
@@ -8261,7 +8311,7 @@ export default function ScholarshipDashboard({
                     <p className="text-[11px] sm:text-xs text-gray-500 truncate">
                       {currentConversation.isAdminRoom
                         ? 'Official Admin Communication Channel'
-                        : (currentConversation.studentEmail || `Status: ${getStudentStatus(currentConversation.applicant_no, currentConversation.studentName)}`)}
+                        : (currentConversation.studentEmail || `Status: ${getStudentStatus(currentConversation.applicant_no, currentConversation.studentName, currentConversation.lastMessage?.studentStatus, currentConversation.studentEmail)}`)}
                     </p>
                   </div>
                 </div>

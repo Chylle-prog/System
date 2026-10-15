@@ -2336,11 +2336,14 @@ def init_socketio(socketio):
                     try:
                         app_no, pro_no = map(int, room.split('+'))
                         query = """
-                            SELECT m.m_id, m.username, m.message, m.timestamp,
+                            SELECT m.m_id, m.applicant_no, m.pro_no, m.username, m.message, m.timestamp,
                                    m.sender_id, m.is_student_sender,
                                    COALESCE(m.is_read, FALSE) as is_read,
-                                   COALESCE(ast.is_accepted, 'Pending') as student_status
+                                   COALESCE(ast.is_accepted, 'Pending') as student_status,
+                                   NULLIF(TRIM(CONCAT_WS(' ', a.first_name, a.last_name)), '') as applicant_name,
+                                   a.first_name, a.last_name
                             FROM message m
+                            LEFT JOIN applicants a ON a.applicant_no = m.applicant_no
                             LEFT JOIN LATERAL (
                                 SELECT is_accepted
                                 FROM applicant_status
@@ -2395,8 +2398,12 @@ def init_socketio(socketio):
 
                 formatted_list = []
                 for msg in messages:
+                    raw_stat = msg.get('student_status', 'Pending')
+                    norm_stat = 'Declined' if raw_stat in ('Rejected', 'Declined') else ('Pending' if raw_stat in ('Active', 'active') else (raw_stat or 'Pending'))
                     fmt = {
                         'm_id': msg['m_id'],
+                        'applicant_no': msg.get('applicant_no'),
+                        'pro_no': msg.get('pro_no'),
                         'username': msg['username'],
                         'applicant_name': msg.get('applicant_name'),
                         'first_name': msg.get('first_name'),
@@ -2406,7 +2413,7 @@ def init_socketio(socketio):
                         'message': msg['message'],
                         'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(msg['timestamp'], 'strftime') else str(msg['timestamp']),
                         'room': room,
-                        'student_status': msg.get('student_status', 'Pending'),
+                        'student_status': norm_stat,
                         'read': bool(msg.get('is_read', False))
                     }
                     formatted_list.append(fmt)
@@ -6808,7 +6815,7 @@ def get_all_messages_rest(pro_no=None):
                 'timestamp': r['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(r['timestamp'], 'strftime') else str(r['timestamp']),
                 'sender_id': r['sender_id'],
                 'is_student_sender': r['is_student_sender'],
-                'student_status': r['student_status'] or 'Pending',
+                'student_status': 'Declined' if (r.get('student_status') in ('Rejected', 'Declined')) else ('Pending' if r.get('student_status') in ('Active', 'active') else (r.get('student_status') or 'Pending')),
                 'read': bool(r.get('is_read', False))
             } for r in rows]
             return jsonify({'success': True, 'messages': messages}), 200
@@ -6937,30 +6944,64 @@ def handle_room_messages_rest(room_id):
                 cursor = conn.cursor()
                 if app_no and pro_no:
                     cursor.execute("""
-                        SELECT m_id, room, username, message, timestamp, sender_id, is_student_sender,
-                               COALESCE(is_read, FALSE) as is_read
-                        FROM message
-                        WHERE room = %s OR (applicant_no = %s AND pro_no = %s)
-                        ORDER BY timestamp ASC
-                    """, (room_id, app_no, pro_no))
+                        SELECT m.m_id, m.applicant_no, m.pro_no, m.room, m.username,
+                               m.message, m.timestamp, m.sender_id, m.is_student_sender,
+                               COALESCE(m.is_read, FALSE) as is_read,
+                               COALESCE(ast.is_accepted, 'Pending') as student_status,
+                               NULLIF(TRIM(CONCAT_WS(' ', a.first_name, a.last_name)), '') as applicant_name,
+                               a.first_name, a.last_name
+                        FROM message m
+                        LEFT JOIN applicants a ON a.applicant_no = m.applicant_no
+                        LEFT JOIN LATERAL (
+                            SELECT ast_sub.is_accepted 
+                            FROM applicant_status ast_sub
+                            LEFT JOIN scholarships sch ON ast_sub.scholarship_no = sch.req_no
+                            WHERE ast_sub.applicant_no = m.applicant_no 
+                              AND (sch.pro_no = %s OR sch.pro_no = m.pro_no)
+                            ORDER BY (CASE WHEN LOWER(COALESCE(ast_sub.is_accepted, '')) IN ('pending', 'accepted', 'submitted') THEN 1 ELSE 2 END)
+                            LIMIT 1
+                        ) ast ON TRUE
+                        WHERE m.room = %s OR (m.applicant_no = %s AND m.pro_no = %s)
+                        ORDER BY m.timestamp ASC
+                    """, (pro_no, room_id, app_no, pro_no))
                 else:
                     cursor.execute("""
-                        SELECT m_id, room, username, message, timestamp, sender_id, is_student_sender,
-                               COALESCE(is_read, FALSE) as is_read
-                        FROM message
-                        WHERE room = %s
-                        ORDER BY timestamp ASC
+                        SELECT m.m_id, m.applicant_no, m.pro_no, m.room, m.username,
+                               m.message, m.timestamp, m.sender_id, m.is_student_sender,
+                               COALESCE(m.is_read, FALSE) as is_read,
+                               COALESCE(ast.is_accepted, 'Pending') as student_status,
+                               NULLIF(TRIM(CONCAT_WS(' ', a.first_name, a.last_name)), '') as applicant_name,
+                               a.first_name, a.last_name
+                        FROM message m
+                        LEFT JOIN applicants a ON a.applicant_no = m.applicant_no
+                        LEFT JOIN LATERAL (
+                            SELECT ast_sub.is_accepted 
+                            FROM applicant_status ast_sub
+                            LEFT JOIN scholarships sch ON ast_sub.scholarship_no = sch.req_no
+                            WHERE ast_sub.applicant_no = m.applicant_no 
+                              AND (sch.pro_no = m.pro_no OR m.pro_no IS NULL)
+                            ORDER BY (CASE WHEN LOWER(COALESCE(ast_sub.is_accepted, '')) IN ('pending', 'accepted', 'submitted') THEN 1 ELSE 2 END)
+                            LIMIT 1
+                        ) ast ON TRUE
+                        WHERE m.room = %s
+                        ORDER BY m.timestamp ASC
                     """, (room_id,))
 
                 rows = cursor.fetchall()
                 messages = [{
                     'm_id': r['m_id'],
+                    'applicant_no': r.get('applicant_no'),
+                    'pro_no': r.get('pro_no'),
                     'room': r['room'],
                     'username': r['username'],
+                    'applicant_name': r.get('applicant_name'),
+                    'first_name': r.get('first_name'),
+                    'last_name': r.get('last_name'),
                     'message': r['message'],
                     'timestamp': r['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(r['timestamp'], 'strftime') else str(r['timestamp']),
                     'sender_id': r['sender_id'],
                     'is_student_sender': r['is_student_sender'],
+                    'student_status': 'Declined' if (r.get('student_status') in ('Rejected', 'Declined')) else ('Pending' if r.get('student_status') in ('Active', 'active') else (r.get('student_status') or 'Pending')),
                     'read': bool(r.get('is_read', False))
                 } for r in rows]
                 return jsonify({'success': True, 'messages': messages}), 200
