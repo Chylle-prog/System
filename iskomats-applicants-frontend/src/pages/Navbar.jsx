@@ -12,7 +12,6 @@ const Navbar = ({ showMenu = false, userEmail = '', onApplyClick }) => {
 
   const handleLogout = () => {
     logout();
-    navigate('/');
   };
 
   const toggleMobileMenu = () => {

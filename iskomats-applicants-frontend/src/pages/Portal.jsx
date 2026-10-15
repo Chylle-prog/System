@@ -845,8 +845,7 @@ const Portal = () => {
   }, [activeSection]);
 
   const logout = () => {
-    authLogout();  // This clears currentUser, authToken, and applicantNo
-    navigate('/');
+    authLogout();
   };
 
   const openChat = (scholarId, scholarName) => {
@@ -1151,6 +1150,13 @@ const Portal = () => {
 
   const handleEditApplication = (app) => {
     const schId = app.scholarship_no || app.req_no;
+    sessionStorage.setItem('activeApplicationIntent', JSON.stringify({
+      user: currentUser,
+      scholarshipName: app.name,
+      reqNo: String(schId),
+      isEdit: true,
+      timestamp: Date.now()
+    }));
     navigate(`/studentinfo?scholarship=${encodeURIComponent(app.name)}&reqNo=${schId}&edit=true`);
   };
 
@@ -4012,7 +4018,17 @@ const Portal = () => {
                               <button
                                 className="edit-btn"
                                 style={{ backgroundColor: '#2563eb', color: '#fff', borderColor: '#2563eb' }}
-                                onClick={() => navigate(`/studentinfo?scholarship=${encodeURIComponent(app.name)}&reqNo=${app.scholarship_no || app.req_no}`)}
+                                onClick={() => {
+                                  const schId = app.scholarship_no || app.req_no;
+                                  sessionStorage.setItem('activeApplicationIntent', JSON.stringify({
+                                    user: currentUser,
+                                    scholarshipName: app.name,
+                                    reqNo: String(schId),
+                                    isEdit: false,
+                                    timestamp: Date.now()
+                                  }));
+                                  navigate(`/studentinfo?scholarship=${encodeURIComponent(app.name)}&reqNo=${schId}`);
+                                }}
                                 title="Re-apply for this scholarship"
                               >
                                 <i className="fas fa-redo"></i> Re-apply

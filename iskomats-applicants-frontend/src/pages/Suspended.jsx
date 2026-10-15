@@ -9,6 +9,7 @@ const Suspended = () => {
     localStorage.removeItem('authToken');
     localStorage.removeItem('currentUser');
     localStorage.removeItem('applicantNo');
+    sessionStorage.clear();
     navigate('/login', { replace: true });
   };
 

@@ -577,8 +577,10 @@ const makeRequest = async (endpoint, options = {}) => {
         // Clear auth data and redirect to login if unauthorized
         localStorage.removeItem('authToken');
         localStorage.removeItem('currentUser');
+        localStorage.removeItem('applicantNo');
+        sessionStorage.clear();
         if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
+          window.location.replace('/login');
         }
       }
 

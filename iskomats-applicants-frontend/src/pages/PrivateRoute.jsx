@@ -6,8 +6,51 @@ const PrivateRoute = ({ children }) => {
   const { currentUser, userProfile, loading } = useAuth();
   const location = useLocation();
 
+  React.useEffect(() => {
+    if (currentUser) {
+      let currentSessionId = sessionStorage.getItem('appSessionId');
+      if (!currentSessionId) {
+        currentSessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        sessionStorage.setItem('appSessionId', currentSessionId);
+        sessionStorage.setItem('appSessionUser', currentUser);
+      }
+
+      const stateSessionId = window.history.state?.appSessionId;
+      const stateSessionUser = window.history.state?.appSessionUser;
+
+      // If this history entry belongs to a previous/different user session, route to portal
+      if (
+        (stateSessionId && stateSessionId !== currentSessionId) ||
+        (stateSessionUser && stateSessionUser.toLowerCase() !== currentUser.toLowerCase())
+      ) {
+        window.history.replaceState({
+          ...window.history.state,
+          appSessionId: currentSessionId,
+          appSessionUser: currentUser
+        }, '');
+        window.location.replace('/portal');
+        return;
+      }
+
+      // Tag the current history entry
+      if (!stateSessionId || !stateSessionUser) {
+        window.history.replaceState({
+          ...window.history.state,
+          appSessionId: currentSessionId,
+          appSessionUser: currentUser
+        }, '');
+      }
+    }
+  }, [location.pathname, location.search, currentUser]);
+
   if (localStorage.getItem('accountSuspended') === 'true') {
     return <Navigate to="/suspended" replace />;
+  }
+
+  const storedToken = localStorage.getItem('authToken');
+  const storedUser = localStorage.getItem('currentUser');
+  if (!storedToken || !storedUser) {
+    return <Navigate to="/login" replace />;
   }
 
   if (loading) {
@@ -29,12 +72,12 @@ const PrivateRoute = ({ children }) => {
     const isSetupPage = isSetupPath || (isLoginPage && isSetupQuery);
     
     if (userProfile && !userProfile.town_city_municipality && !isSetupPage) {
-      return <Navigate to="/login?setup=true" />;
+      return <Navigate to="/login?setup=true" replace />;
     }
     return children;
   }
 
-  return <Navigate to="/login" />;
+  return <Navigate to="/login" replace />;
 };
 
 export default PrivateRoute;

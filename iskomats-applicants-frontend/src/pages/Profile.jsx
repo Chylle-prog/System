@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { applicantAPI } from '../services/api';
 import { compressImage } from '../utils/imageCompressor';
 import iskoLogo from '../assets/iskologo.png';
@@ -41,6 +42,7 @@ const BARANGAY_OPTIONS = [
 
 const Profile = () => {
   const navigate = useNavigate();
+  const { logout: authLogout } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -156,8 +158,7 @@ const Profile = () => {
   };
 
   const logout = () => {
-    localStorage.removeItem('currentUser');
-    navigate('/');
+    authLogout();
   };
 
   const handleInputChange = (e) => {

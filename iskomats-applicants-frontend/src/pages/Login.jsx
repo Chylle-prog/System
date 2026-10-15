@@ -72,6 +72,15 @@ const Login = () => {
       setCurrentUser(email); // local state
       if (setCurrentUserState) setCurrentUserState(email); // global AuthContext state
 
+      const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      sessionStorage.setItem('appSessionId', sessionId);
+      sessionStorage.setItem('appSessionUser', email);
+      window.history.replaceState({
+        ...window.history.state,
+        appSessionId: sessionId,
+        appSessionUser: email
+      }, '');
+
       localStorage.setItem('currentUser', email);
       localStorage.setItem('authToken', response.token);
       localStorage.setItem('applicantNo', response.applicant_no);
@@ -87,13 +96,13 @@ const Login = () => {
           if (profile && !profile.town_city_municipality) {
             setShowProfile(true);
           } else {
-            navigate('/portal');
+            navigate('/portal', { replace: true });
           }
         } catch (err) {
           console.warn('Redirect check failed:', err);
           setShowLoadingOverlay(false);
           setIsLoginLoading(false);
-          navigate('/portal'); // Fallback
+          navigate('/portal', { replace: true }); // Fallback
         }
       }, 500);
     } catch (error) {
@@ -269,7 +278,7 @@ const Login = () => {
       // Redirect to portal promptly
       setTimeout(() => {
         setShowLoadingOverlay(false);
-        navigate('/portal');
+        navigate('/portal', { replace: true });
       }, 600);
     } catch (error) {
       setErrorMessage(error.message || 'Profile creation failed. Please try again.');
@@ -321,6 +330,15 @@ const Login = () => {
       setCurrentUser(email);
       if (setCurrentUserState) setCurrentUserState(email);
 
+      const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      sessionStorage.setItem('appSessionId', sessionId);
+      sessionStorage.setItem('appSessionUser', email);
+      window.history.replaceState({
+        ...window.history.state,
+        appSessionId: sessionId,
+        appSessionUser: email
+      }, '');
+
       localStorage.setItem('currentUser', email);
       localStorage.setItem('authToken', response.token);
       localStorage.setItem('applicantNo', response.applicant_no);
@@ -341,13 +359,13 @@ const Login = () => {
           if (profile && !profile.town_city_municipality) {
             setShowProfile(true);
           } else {
-            navigate('/portal');
+            navigate('/portal', { replace: true });
           }
         } catch (err) {
           console.warn('Redirect check failed:', err);
           setShowLoadingOverlay(false);
           setIsLoginLoading(false);
-          navigate('/portal');
+          navigate('/portal', { replace: true });
         }
       }, 500);
     } catch (error) {

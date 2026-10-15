@@ -105,11 +105,21 @@ function App() {
         pingBackend();
       }
     };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    const handlePageShow = (event) => {
+      if (event.persisted) {
+        const token = localStorage.getItem('authToken');
+        const user = localStorage.getItem('currentUser');
+        if (!token || !user) {
+          window.location.replace('/login');
+        }
+      }
+    };
+    window.addEventListener('pageshow', handlePageShow);
 
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pageshow', handlePageShow);
     };
   }, []);
 

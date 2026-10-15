@@ -21,7 +21,7 @@ const splitFullName = (fullName) => {
 
 const FindScholarship = () => {
   const navigate = useNavigate();
-  const { userProfile: globalProfile } = useAuth();
+  const { userProfile: globalProfile, logout: authLogout } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -119,8 +119,7 @@ const FindScholarship = () => {
   }, [navigate]);
 
   const logout = () => {
-    localStorage.removeItem('currentUser');
-    navigate('/');
+    authLogout();
   };
 
   // Form handling
@@ -345,6 +344,15 @@ const FindScholarship = () => {
   };
 
   const applyForScholarship = (scholarshipName, reqNo) => {
+    // Record active application intent to prevent cross-account or direct URL bypass
+    sessionStorage.setItem('activeApplicationIntent', JSON.stringify({
+      user: currentUser,
+      scholarshipName,
+      reqNo: String(reqNo),
+      isEdit: false,
+      timestamp: Date.now()
+    }));
+
     // Navigate to student info page with scholarship details and search criteria
     sessionStorage.setItem(FIND_SCHOLARSHIP_PROFILE_KEY, JSON.stringify({
       fullName: formData.fullName,

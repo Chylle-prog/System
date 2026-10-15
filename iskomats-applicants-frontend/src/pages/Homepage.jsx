@@ -175,6 +175,20 @@ const HomePage = () => {
   const handleAcceptTerms = () => {
     sessionStorage.setItem('acceptedTerms', 'true');
     setShowTermsOverlay(false);
+    if (currentUser && pendingTargetUrl.includes('studentinfo')) {
+      try {
+        const url = new URL(pendingTargetUrl, window.location.origin);
+        const schName = url.searchParams.get('scholarship') || '';
+        const reqNo = url.searchParams.get('reqNo') || url.searchParams.get('scholarship_id') || '';
+        sessionStorage.setItem('activeApplicationIntent', JSON.stringify({
+          user: currentUser,
+          scholarshipName: schName,
+          reqNo: String(reqNo),
+          isEdit: false,
+          timestamp: Date.now()
+        }));
+      } catch (_) {}
+    }
     navigate(pendingTargetUrl);
   };
 

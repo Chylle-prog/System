@@ -95,7 +95,19 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('currentUser');
     localStorage.removeItem('authToken');
     localStorage.removeItem('applicantNo');
+    localStorage.removeItem('userFirstName');
+    localStorage.removeItem('accountSuspended');
+    localStorage.removeItem('activeScholarshipNo');
+    localStorage.removeItem('last_submitted_scholarship_id');
+    localStorage.removeItem('registrationEmail');
+    localStorage.removeItem('authSessionId');
+
+    sessionStorage.clear();
+
     setCurrentUserState(null);
+    setUserProfile(null);
+
+    window.location.replace('/login');
   };
 
   const updateProfile = (email, profileData) => {

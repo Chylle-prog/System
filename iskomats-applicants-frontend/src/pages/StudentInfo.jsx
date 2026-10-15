@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import SignaturePad from '../components/SignaturePad';
 import VideoRecorder from '../components/VideoRecorder';
 import { applicantAPI, applicationAPI, scholarshipAPI, verificationAPI, uploadProfilePicture, uploadDocumentImageDirect, API_ORIGIN, debugAPI, isAltCheckBypassed } from '../services/api';
@@ -2856,6 +2857,7 @@ export function merit_matches_text(detectedText, meritTitle) {
 
 const StudentInfo = () => {
   const navigate = useNavigate();
+  const { logout: authLogout } = useAuth();
   const [searchParams] = useSearchParams();
   const isEditMode = searchParams.get('edit') === 'true';
   const [applicationDocNo, setApplicationDocNo] = useState(null);
@@ -6433,13 +6435,42 @@ const StudentInfo = () => {
     const user = localStorage.getItem('currentUser');
 
     if (!user) {
-      navigate('/login');
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    const scholarship = searchParams.get('scholarship');
+    const targetReqNo = searchParams.get('reqNo') || searchParams.get('scholarship_id');
+
+    // Verify that the active user initiated this application in the current session
+    let hasValidIntent = false;
+    try {
+      const rawIntent = sessionStorage.getItem('activeApplicationIntent');
+      if (rawIntent) {
+        const intent = JSON.parse(rawIntent);
+        const matchesUser = intent.user && intent.user.toLowerCase() === user.toLowerCase();
+        const matchesReqNo = !targetReqNo || !intent.reqNo || String(intent.reqNo) === String(targetReqNo);
+        const matchesName = !scholarship || !intent.scholarshipName || intent.scholarshipName === scholarship;
+        if (matchesUser && matchesReqNo && matchesName) {
+          hasValidIntent = true;
+        }
+      }
+    } catch (_) {
+      hasValidIntent = false;
+    }
+
+    if (!hasValidIntent) {
+      console.warn('[StudentInfo] No active application intent for current user. Redirecting to scholarship selection.');
+      if (isEditMode) {
+        navigate('/portal', { replace: true });
+      } else {
+        navigate('/findscholarship', { replace: true });
+      }
       return;
     }
 
     setCurrentUser(user);
 
-    const scholarship = searchParams.get('scholarship');
     const urlGpa = searchParams.get('gpa');
     const urlIncome = searchParams.get('income');
     let scholarshipSearchProfile = null;
@@ -7209,8 +7240,7 @@ const StudentInfo = () => {
   };
 
   const logout = () => {
-    localStorage.removeItem('currentUser');
-    navigate('/');
+    authLogout();
   };
 
   const isAnyVideoUploading = Object.keys(uploadingFields).some(key => key.toLowerCase().includes('video'));
@@ -8044,9 +8074,10 @@ const StudentInfo = () => {
       console.log('Submission result:', result);
 
       clearDraft();
+      sessionStorage.removeItem('activeApplicationIntent');
       setShowSubmissionModal(true);
       setTimeout(() => {
-        navigate('/portal');
+        navigate('/portal', { replace: true });
       }, 3000);
     } catch (err) {
       console.error('Submission error:', err);
@@ -9155,8 +9186,7 @@ const StudentInfo = () => {
         <div className="navbar-menu">
           <span>{currentUser}</span>
           <button className="logout-btn" onClick={() => {
-            localStorage.removeItem('currentUser');
-            navigate('/login');
+            logout();
           }}>
             <i className="fas fa-sign-out-alt" style={{ marginRight: '6px' }}></i>Logout
           </button>
@@ -11191,7 +11221,7 @@ const StudentInfo = () => {
               <div className="dot"></div><div className="dot"></div><div className="dot"></div>
             </div>
           </div>
-          <button className="submit-btn" onClick={() => navigate('/portal')} style={{ marginTop: '1.5rem', width: '100%' }}>
+          <button className="submit-btn" onClick={() => navigate('/portal', { replace: true })} style={{ marginTop: '1.5rem', width: '100%' }}>
             Return to Portal
           </button>
         </div>
